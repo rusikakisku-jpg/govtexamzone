@@ -80,7 +80,13 @@ console.log('📦 Step 3: Bundling worker for Cloudflare Pages Advanced Mode (_w
         'cloudflare:node',
         'cloudflare:workers'
       ],
+      banner: {
+        js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);"
+      },
       alias: {
+        'tty': path.resolve('src/shims/tty.js'),
+        'node:tty': path.resolve('src/shims/tty.js'),
+        'supports-color': path.resolve('src/shims/supports-color.js'),
         'crypto': 'node:crypto',
         'path': 'node:path',
         'fs': 'node:fs',

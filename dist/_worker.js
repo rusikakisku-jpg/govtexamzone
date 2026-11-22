@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -510,10 +511,33 @@ var require_browser = __commonJS({
   }
 });
 
+// src/shims/tty.js
+var require_tty = __commonJS({
+  "src/shims/tty.js"(exports, module) {
+    module.exports = {
+      isatty: () => false,
+      ReadStream: class ReadStream {
+      },
+      WriteStream: class WriteStream {
+      }
+    };
+  }
+});
+
+// src/shims/supports-color.js
+var require_supports_color = __commonJS({
+  "src/shims/supports-color.js"(exports, module) {
+    module.exports = {
+      stdout: false,
+      stderr: false
+    };
+  }
+});
+
 // node_modules/debug/src/node.js
 var require_node = __commonJS({
   "node_modules/debug/src/node.js"(exports, module) {
-    var tty = __require("tty");
+    var tty = require_tty();
     var util = __require("node:util");
     exports.init = init;
     exports.log = log;
@@ -528,7 +552,7 @@ var require_node = __commonJS({
     );
     exports.colors = [6, 2, 3, 4, 5, 1];
     try {
-      const supportsColor = __require("supports-color");
+      const supportsColor = require_supports_color();
       if (supportsColor && (supportsColor.stderr || supportsColor).level >= 2) {
         exports.colors = [
           20,
