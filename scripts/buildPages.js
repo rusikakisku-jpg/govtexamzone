@@ -77,7 +77,6 @@ console.log('📦 Step 3: Bundling worker for Cloudflare Pages Advanced Mode (_w
       format: 'esm',
       outfile: outPath,
       external: [
-        'cloudflare:node',
         'cloudflare:workers'
       ],
       banner: {
@@ -147,6 +146,36 @@ const cjsFsPromises = toCJS(nodeFsPromises);
 const cjsHttp = toCJS(nodeHttp);
 const cjsHttp2 = toCJS(nodeHttp2);
 const cjsHttps = toCJS(nodeHttps);
+
+const origCreateHttpServer = cjsHttp.createServer;
+cjsHttp.createServer = function(...args) {
+  try {
+    if (typeof origCreateHttpServer === 'function') {
+      const res = origCreateHttpServer.apply(this, args);
+      if (res && typeof res.listen === 'function') return res;
+    }
+  } catch (e) {}
+  const s = new cjsEvents();
+  s.listen = function(port, cb) { if (typeof cb === 'function') setTimeout(cb, 0); return s; };
+  s.close = function(cb) { if (typeof cb === 'function') setTimeout(cb, 0); return s; };
+  s.address = function() { return { port: 3000, family: 'IPv4', address: '127.0.0.1' }; };
+  return s;
+};
+
+const origCreateHttpsServer = cjsHttps.createServer;
+cjsHttps.createServer = function(...args) {
+  try {
+    if (typeof origCreateHttpsServer === 'function') {
+      const res = origCreateHttpsServer.apply(this, args);
+      if (res && typeof res.listen === 'function') return res;
+    }
+  } catch (e) {}
+  const s = new cjsEvents();
+  s.listen = function(port, cb) { if (typeof cb === 'function') setTimeout(cb, 0); return s; };
+  s.close = function(cb) { if (typeof cb === 'function') setTimeout(cb, 0); return s; };
+  s.address = function() { return { port: 3000, family: 'IPv4', address: '127.0.0.1' }; };
+  return s;
+};
 const cjsNet = toCJS(nodeNet);
 const cjsOs = toCJS(nodeOs);
 const cjsPath = toCJS(nodePath);

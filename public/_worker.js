@@ -64,6 +64,36 @@ const cjsFsPromises = toCJS(nodeFsPromises);
 const cjsHttp = toCJS(nodeHttp);
 const cjsHttp2 = toCJS(nodeHttp2);
 const cjsHttps = toCJS(nodeHttps);
+
+const origCreateHttpServer = cjsHttp.createServer;
+cjsHttp.createServer = function(...args) {
+  try {
+    if (typeof origCreateHttpServer === 'function') {
+      const res = origCreateHttpServer.apply(this, args);
+      if (res && typeof res.listen === 'function') return res;
+    }
+  } catch (e) {}
+  const s = new cjsEvents();
+  s.listen = function(port, cb) { if (typeof cb === 'function') setTimeout(cb, 0); return s; };
+  s.close = function(cb) { if (typeof cb === 'function') setTimeout(cb, 0); return s; };
+  s.address = function() { return { port: 3000, family: 'IPv4', address: '127.0.0.1' }; };
+  return s;
+};
+
+const origCreateHttpsServer = cjsHttps.createServer;
+cjsHttps.createServer = function(...args) {
+  try {
+    if (typeof origCreateHttpsServer === 'function') {
+      const res = origCreateHttpsServer.apply(this, args);
+      if (res && typeof res.listen === 'function') return res;
+    }
+  } catch (e) {}
+  const s = new cjsEvents();
+  s.listen = function(port, cb) { if (typeof cb === 'function') setTimeout(cb, 0); return s; };
+  s.close = function(cb) { if (typeof cb === 'function') setTimeout(cb, 0); return s; };
+  s.address = function() { return { port: 3000, family: 'IPv4', address: '127.0.0.1' }; };
+  return s;
+};
 const cjsNet = toCJS(nodeNet);
 const cjsOs = toCJS(nodeOs);
 const cjsPath = toCJS(nodePath);
@@ -20959,7 +20989,7 @@ var require_route = __commonJS({
         sync = 0;
       }
     };
-    Route.prototype.all = function all(handler2) {
+    Route.prototype.all = function all(handler) {
       const callbacks = flatten.call(slice.call(arguments), Infinity);
       if (callbacks.length === 0) {
         throw new TypeError("argument handler is required");
@@ -20977,7 +21007,7 @@ var require_route = __commonJS({
       return this;
     };
     methods.forEach(function(method) {
-      Route.prototype[method] = function(handler2) {
+      Route.prototype[method] = function(handler) {
         const callbacks = flatten.call(slice.call(arguments), Infinity);
         if (callbacks.length === 0) {
           throw new TypeError("argument handler is required");
@@ -21180,17 +21210,17 @@ var require_router = __commonJS({
         }
       }
     };
-    Router.prototype.use = function use(handler2) {
+    Router.prototype.use = function use(handler) {
       let offset = 0;
       let path = "/";
-      if (typeof handler2 !== "function") {
-        let arg = handler2;
+      if (typeof handler !== "function") {
+        let arg = handler;
         while (Array.isArray(arg) && arg.length !== 0) {
           arg = arg[0];
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path = handler2;
+          path = handler;
         }
       }
       const callbacks = flatten.call(slice.call(arguments, offset), Infinity);
@@ -21414,9 +21444,9 @@ var require_application = __commonJS({
     var Router = require_router();
     var slice = Array.prototype.slice;
     var flatten = Array.prototype.flat;
-    var app = exports = module.exports = {};
+    var app2 = exports = module.exports = {};
     var trustProxyDefaultSymbol = "@@symbol:trust_proxy_default";
-    app.init = function init() {
+    app2.init = function init() {
       var router = null;
       this.cache = /* @__PURE__ */ Object.create(null);
       this.engines = /* @__PURE__ */ Object.create(null);
@@ -21436,7 +21466,7 @@ var require_application = __commonJS({
         }
       });
     };
-    app.defaultConfiguration = function defaultConfiguration() {
+    app2.defaultConfiguration = function defaultConfiguration() {
       var env2 = process.env.NODE_ENV || "development";
       this.enable("x-powered-by");
       this.set("etag", "weak");
@@ -21469,7 +21499,7 @@ var require_application = __commonJS({
         this.enable("view cache");
       }
     };
-    app.handle = function handle(req, res, callback) {
+    app2.handle = function handle(req, res, callback) {
       var done = callback || finalhandler(req, res, {
         env: this.get("env"),
         onerror: logerror.bind(this)
@@ -21486,7 +21516,7 @@ var require_application = __commonJS({
       }
       this.router.handle(req, res, done);
     };
-    app.use = function use(fn) {
+    app2.use = function use(fn) {
       var offset = 0;
       var path = "/";
       if (typeof fn !== "function") {
@@ -21523,10 +21553,10 @@ var require_application = __commonJS({
       }, this);
       return this;
     };
-    app.route = function route(path) {
+    app2.route = function route(path) {
       return this.router.route(path);
     };
-    app.engine = function engine(ext, fn) {
+    app2.engine = function engine(ext, fn) {
       if (typeof fn !== "function") {
         throw new Error("callback function required");
       }
@@ -21534,7 +21564,7 @@ var require_application = __commonJS({
       this.engines[extension] = fn;
       return this;
     };
-    app.param = function param(name, fn) {
+    app2.param = function param(name, fn) {
       if (Array.isArray(name)) {
         for (var i = 0; i < name.length; i++) {
           this.param(name[i], fn);
@@ -21544,7 +21574,7 @@ var require_application = __commonJS({
       this.router.param(name, fn);
       return this;
     };
-    app.set = function set(setting, val2) {
+    app2.set = function set(setting, val2) {
       if (arguments.length === 1) {
         return this.settings[setting];
       }
@@ -21567,23 +21597,23 @@ var require_application = __commonJS({
       }
       return this;
     };
-    app.path = function path() {
+    app2.path = function path() {
       return this.parent ? this.parent.path() + this.mountpath : "";
     };
-    app.enabled = function enabled(setting) {
+    app2.enabled = function enabled(setting) {
       return Boolean(this.set(setting));
     };
-    app.disabled = function disabled(setting) {
+    app2.disabled = function disabled(setting) {
       return !this.set(setting);
     };
-    app.enable = function enable(setting) {
+    app2.enable = function enable(setting) {
       return this.set(setting, true);
     };
-    app.disable = function disable(setting) {
+    app2.disable = function disable(setting) {
       return this.set(setting, false);
     };
     methods.forEach(function(method) {
-      app[method] = function(path) {
+      app2[method] = function(path) {
         if (method === "get" && arguments.length === 1) {
           return this.set(path);
         }
@@ -21592,7 +21622,7 @@ var require_application = __commonJS({
         return this;
       };
     });
-    app.all = function all(path) {
+    app2.all = function all(path) {
       var route = this.route(path);
       var args = slice.call(arguments, 1);
       for (var i = 0; i < methods.length; i++) {
@@ -21600,7 +21630,7 @@ var require_application = __commonJS({
       }
       return this;
     };
-    app.render = function render(name, options, callback) {
+    app2.render = function render(name, options, callback) {
       var cache = this.cache;
       var done = callback;
       var engines = this.engines;
@@ -21636,7 +21666,7 @@ var require_application = __commonJS({
       }
       tryRender(view, renderOptions, done);
     };
-    app.listen = function listen() {
+    app2.listen = function listen() {
       var server = http.createServer(this);
       var args = slice.call(arguments);
       if (typeof args[args.length - 1] === "function") {
@@ -23632,7 +23662,7 @@ var require_response = __commonJS({
       var encoding;
       var req = this.req;
       var type;
-      var app = this.app;
+      var app2 = this.app;
       switch (typeof chunk) {
         // string defaulting to html
         case "string":
@@ -23661,7 +23691,7 @@ var require_response = __commonJS({
           this.set("Content-Type", setCharset(type, "utf-8"));
         }
       }
-      var etagFn = app.get("etag fn");
+      var etagFn = app2.get("etag fn");
       var generateETag = !this.get("ETag") && typeof etagFn === "function";
       var len;
       if (chunk !== void 0) {
@@ -23702,10 +23732,10 @@ var require_response = __commonJS({
       return this;
     };
     res.json = function json(obj) {
-      var app = this.app;
-      var escape2 = app.get("json escape");
-      var replacer = app.get("json replacer");
-      var spaces = app.get("json spaces");
+      var app2 = this.app;
+      var escape2 = app2.get("json escape");
+      var replacer = app2.get("json replacer");
+      var spaces = app2.get("json spaces");
       var body = stringify2(obj, replacer, spaces, escape2);
       if (!this.get("Content-Type")) {
         this.set("Content-Type", "application/json");
@@ -23713,12 +23743,12 @@ var require_response = __commonJS({
       return this.send(body);
     };
     res.jsonp = function jsonp(obj) {
-      var app = this.app;
-      var escape2 = app.get("json escape");
-      var replacer = app.get("json replacer");
-      var spaces = app.get("json spaces");
+      var app2 = this.app;
+      var escape2 = app2.get("json escape");
+      var replacer = app2.get("json replacer");
+      var spaces = app2.get("json spaces");
       var body = stringify2(obj, replacer, spaces, escape2);
-      var callback = this.req.query[app.get("jsonp callback name")];
+      var callback = this.req.query[app2.get("jsonp callback name")];
       if (!this.get("Content-Type")) {
         this.set("X-Content-Type-Options", "nosniff");
         this.set("Content-Type", "application/json");
@@ -23944,7 +23974,7 @@ var require_response = __commonJS({
       return this;
     };
     res.render = function render(view, options, callback) {
-      var app = this.req.app;
+      var app2 = this.req.app;
       var done = callback;
       var opts = options || {};
       var req = this.req;
@@ -23958,7 +23988,7 @@ var require_response = __commonJS({
         if (err) return req.next(err);
         self2.send(str);
       };
-      app.render(view, opts, done);
+      app2.render(view, opts, done);
     };
     function sendfile(res2, file, options, callback) {
       var done = false;
@@ -24156,7 +24186,7 @@ var require_express = __commonJS({
   "node_modules/express/lib/express.js"(exports, module) {
     "use strict";
     var bodyParser = require_body_parser();
-    var EventEmitter = __require("node:events").EventEmitter;
+    var EventEmitter2 = __require("node:events").EventEmitter;
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Router = require_router();
@@ -24164,19 +24194,19 @@ var require_express = __commonJS({
     var res = require_response();
     exports = module.exports = createApplication;
     function createApplication() {
-      var app = function(req2, res2, next) {
-        app.handle(req2, res2, next);
+      var app2 = function(req2, res2, next) {
+        app2.handle(req2, res2, next);
       };
-      mixin(app, EventEmitter.prototype, false);
-      mixin(app, proto, false);
-      app.request = Object.create(req, {
-        app: { configurable: true, enumerable: true, writable: true, value: app }
+      mixin(app2, EventEmitter2.prototype, false);
+      mixin(app2, proto, false);
+      app2.request = Object.create(req, {
+        app: { configurable: true, enumerable: true, writable: true, value: app2 }
       });
-      app.response = Object.create(res, {
-        app: { configurable: true, enumerable: true, writable: true, value: app }
+      app2.response = Object.create(res, {
+        app: { configurable: true, enumerable: true, writable: true, value: app2 }
       });
-      app.init();
-      return app;
+      app2.init();
+      return app2;
     }
     exports.application = proto;
     exports.request = req;
@@ -39869,7 +39899,7 @@ var require_sbmh = __commonJS({
 var require_multipart = __commonJS({
   "node_modules/busboy/lib/types/multipart.js"(exports, module) {
     "use strict";
-    var { Readable, Writable } = __require("node:stream");
+    var { Readable: Readable2, Writable } = __require("node:stream");
     var StreamSearch = require_sbmh();
     var {
       basename,
@@ -40025,7 +40055,7 @@ var require_multipart = __commonJS({
         return pos;
       }
     };
-    var FileStream = class extends Readable {
+    var FileStream = class extends Readable2 {
       constructor(opts, owner) {
         super(opts);
         this.truncated = false;
@@ -41641,12 +41671,12 @@ var require_append_field = __commonJS({
 // node_modules/multer/lib/counter.js
 var require_counter = __commonJS({
   "node_modules/multer/lib/counter.js"(exports, module) {
-    var EventEmitter = __require("node:events").EventEmitter;
+    var EventEmitter2 = __require("node:events").EventEmitter;
     function Counter() {
-      EventEmitter.call(this);
+      EventEmitter2.call(this);
       this.value = 0;
     }
-    Counter.prototype = Object.create(EventEmitter.prototype);
+    Counter.prototype = Object.create(EventEmitter2.prototype);
     Counter.prototype.increment = function increment() {
       this.value++;
     };
@@ -42557,8 +42587,8 @@ var require_dist_cjs2 = __commonJS({
     var getHttpHandlerExtensionConfiguration = /* @__PURE__ */ __name((runtimeConfig) => {
       let httpHandler = runtimeConfig.httpHandler;
       return {
-        setHttpHandler(handler2) {
-          httpHandler = handler2;
+        setHttpHandler(handler) {
+          httpHandler = handler;
         },
         httpHandler() {
           return httpHandler;
@@ -43316,14 +43346,14 @@ var require_dist_cjs7 = __commonJS({
             identifyOnResolve = toggle;
           return identifyOnResolve;
         },
-        resolve: (handler2, context) => {
+        resolve: (handler, context) => {
           for (const middleware of getMiddlewareList().map((entry) => entry.middleware).reverse()) {
-            handler2 = middleware(handler2, context);
+            handler = middleware(handler, context);
           }
           if (identifyOnResolve) {
             console.log(stack.identify());
           }
-          return handler2;
+          return handler;
         }
       };
       return stack;
@@ -45473,24 +45503,24 @@ var require_dist_cjs18 = __commonJS({
         const options = typeof optionsOrCb !== "function" ? optionsOrCb : void 0;
         const callback = typeof optionsOrCb === "function" ? optionsOrCb : cb;
         const useHandlerCache = options === void 0 && this.config.cacheMiddleware === true;
-        let handler2;
+        let handler;
         if (useHandlerCache) {
           if (!this.handlers) {
             this.handlers = /* @__PURE__ */ new WeakMap();
           }
           const handlers = this.handlers;
           if (handlers.has(command.constructor)) {
-            handler2 = handlers.get(command.constructor);
+            handler = handlers.get(command.constructor);
           } else {
-            handler2 = command.resolveMiddleware(this.middlewareStack, this.config, options);
-            handlers.set(command.constructor, handler2);
+            handler = command.resolveMiddleware(this.middlewareStack, this.config, options);
+            handlers.set(command.constructor, handler);
           }
         } else {
           delete this.handlers;
-          handler2 = command.resolveMiddleware(this.middlewareStack, this.config, options);
+          handler = command.resolveMiddleware(this.middlewareStack, this.config, options);
         }
         if (callback) {
-          handler2(command).then(
+          handler(command).then(
             (result) => callback(null, result.output),
             (err) => callback(err)
           ).catch(
@@ -45500,7 +45530,7 @@ var require_dist_cjs18 = __commonJS({
             }
           );
         } else {
-          return handler2(command).then((result) => result.output);
+          return handler(command).then((result) => result.output);
         }
       }
       destroy() {
@@ -81094,18 +81124,18 @@ var require_server = __commonJS({
     var authorRoutes = require_authorRoutes();
     var apiRoutes = require_apiRoutes();
     var { templateEngine } = require_templateEngine();
-    var app = express();
-    app.set("trust proxy", 1);
-    app.engine("ejs", templateEngine);
-    app.set("view engine", "ejs");
-    app.set("views", path.resolve("views"));
-    app.use(cors());
-    app.use(express.json());
-    app.use(express.urlencoded({ extended: true }));
-    app.use(cookieParser());
-    app.use(express.static(path.resolve("public")));
-    app.use("/uploads", express.static(path.resolve("uploads")));
-    app.get("/api/seed-db", async (req, res) => {
+    var app2 = express();
+    app2.set("trust proxy", 1);
+    app2.engine("ejs", templateEngine);
+    app2.set("view engine", "ejs");
+    app2.set("views", path.resolve("views"));
+    app2.use(cors());
+    app2.use(express.json());
+    app2.use(express.urlencoded({ extended: true }));
+    app2.use(cookieParser());
+    app2.use(express.static(path.resolve("public")));
+    app2.use("/uploads", express.static(path.resolve("uploads")));
+    app2.get("/api/seed-db", async (req, res) => {
       try {
         await d1.init();
         await seedDatabase();
@@ -81115,20 +81145,20 @@ var require_server = __commonJS({
         res.status(500).json({ success: false, error: err.message });
       }
     });
-    app.use("/admin", adminRoutes);
-    app.use("/author-portal", authorRoutes);
-    app.use("/editor-portal", authorRoutes);
-    app.get("/editor", (req, res) => res.redirect("/author-portal/login"));
-    app.get("/author", (req, res) => res.redirect("/author-portal/login"));
-    app.use("/api", apiRoutes);
-    app.use("/", webRoutes);
-    app.use((req, res) => {
+    app2.use("/admin", adminRoutes);
+    app2.use("/author-portal", authorRoutes);
+    app2.use("/editor-portal", authorRoutes);
+    app2.get("/editor", (req, res) => res.redirect("/author-portal/login"));
+    app2.get("/author", (req, res) => res.redirect("/author-portal/login"));
+    app2.use("/api", apiRoutes);
+    app2.use("/", webRoutes);
+    app2.use((req, res) => {
       res.status(404).render("pages/error", {
         title: "404 - Page Not Found | SarkariResult.com",
         message: "The page you are looking for does not exist on SarkariResult.com."
       });
     });
-    app.use((err, req, res, next) => {
+    app2.use((err, req, res, next) => {
       console.error("Server Error:", err);
       try {
         res.status(500).render("pages/error", {
@@ -81140,15 +81170,17 @@ var require_server = __commonJS({
       }
     });
     var PORT = config.server.port || 3e3;
-    app.listen(PORT, () => {
-      console.log(`=======================================================`);
-      console.log(`\u2705 Sarkari Result Server running on http://localhost:${PORT}`);
-      console.log(`\u{1F512} Admin Panel available at http://localhost:${PORT}/admin`);
-      console.log(`   Default credentials: user=${config.admin.username}, pass=${config.admin.password}`);
-      console.log(`\u{1F4BE} Cloudflare D1 Database: ${d1.isCloudflareD1 ? "Connected (Remote)" : "Active (Local SQLite emulation)"}`);
-      console.log(`\u2601\uFE0F Cloudflare R2 Storage: ${config.cloudflare.r2.isConfigured ? "Active (Remote Bucket)" : "Fallback (Local /uploads)"}`);
-      console.log(`=======================================================`);
-    });
+    if (typeof WebSocketPair === "undefined" && !globalThis.__CF_ENV__ && !globalThis.__CF_PAGES__) {
+      app2.listen(PORT, () => {
+        console.log(`=======================================================`);
+        console.log(`\u2705 Sarkari Result Server running on http://localhost:${PORT}`);
+        console.log(`\u{1F512} Admin Panel available at http://localhost:${PORT}/admin`);
+        console.log(`   Default credentials: user=${config.admin.username}, pass=${config.admin.password}`);
+        console.log(`\u{1F4BE} Cloudflare D1 Database: ${d1.isCloudflareD1 ? "Connected (Remote)" : "Active (Local SQLite emulation)"}`);
+        console.log(`\u2601\uFE0F Cloudflare R2 Storage: ${config.cloudflare.r2.isConfigured ? "Active (Remote Bucket)" : "Fallback (Local /uploads)"}`);
+        console.log(`=======================================================`);
+      });
+    }
     (async function initDatabase() {
       try {
         console.log("\u{1F680} Initializing Sarkari Result Portal DB...");
@@ -81161,24 +81193,108 @@ var require_server = __commonJS({
         console.warn("\u26A0\uFE0F Database init notice:", err.message);
       }
     })();
-    module.exports = app;
+    module.exports = app2;
   }
 });
 
 // worker.mjs
-import { httpServerHandler } from "cloudflare:node";
 import { env } from "cloudflare:workers";
+import { EventEmitter } from "node:events";
+import { Readable } from "node:stream";
 globalThis.__CF_ENV__ = env;
+globalThis.__CF_PAGES__ = true;
 if (env) {
   if (env.DB) globalThis.DB = env.DB;
   if (env.STORAGE_BUCKET) globalThis.STORAGE_BUCKET = env.STORAGE_BUCKET;
 }
-await Promise.resolve().then(() => __toESM(require_server(), 1));
-var handler = httpServerHandler({ port: 3e3 });
+var serverModule = await Promise.resolve().then(() => __toESM(require_server(), 1));
+var app = serverModule.default || serverModule;
+async function handleExpressRequest(app2, request) {
+  const url = new URL(request.url);
+  const req = new Readable({ read() {
+  } });
+  req.url = url.pathname + url.search;
+  req.method = request.method;
+  req.headers = Object.fromEntries(request.headers.entries());
+  req.connection = { remoteAddress: request.headers.get("cf-connecting-ip") || "127.0.0.1" };
+  req.socket = req.connection;
+  req.ip = req.connection.remoteAddress;
+  if (request.body && request.method !== "GET" && request.method !== "HEAD") {
+    const arrayBuffer = await request.arrayBuffer();
+    if (arrayBuffer.byteLength > 0) {
+      req.push(Buffer.from(arrayBuffer));
+    }
+  }
+  req.push(null);
+  return new Promise((resolve) => {
+    const resHeaders = new Headers();
+    const chunks = [];
+    const res = new EventEmitter();
+    res.statusCode = 200;
+    res.statusMessage = "OK";
+    res.headersSent = false;
+    res.finished = false;
+    res.setHeader = (name, value) => {
+      const lower = name.toLowerCase();
+      if (lower === "set-cookie") {
+        if (Array.isArray(value)) {
+          for (const v of value) resHeaders.append("set-cookie", v);
+        } else {
+          resHeaders.append("set-cookie", value);
+        }
+      } else if (Array.isArray(value)) {
+        resHeaders.delete(name);
+        for (const v of value) resHeaders.append(name, v);
+      } else {
+        resHeaders.set(name, value);
+      }
+    };
+    res.getHeader = (name) => resHeaders.get(name);
+    res.getHeaders = () => Object.fromEntries(resHeaders.entries());
+    res.hasHeader = (name) => resHeaders.has(name);
+    res.removeHeader = (name) => resHeaders.delete(name);
+    res.writeHead = (status, reason, headers) => {
+      res.statusCode = status;
+      res.headersSent = true;
+      if (typeof reason === "string") res.statusMessage = reason;
+      const h = typeof reason === "object" ? reason : headers;
+      if (h) {
+        for (const [k, v] of Object.entries(h)) {
+          res.setHeader(k, v);
+        }
+      }
+      return res;
+    };
+    res.write = (chunk, encoding, cb) => {
+      res.headersSent = true;
+      if (chunk) {
+        chunks.push(typeof chunk === "string" ? Buffer.from(chunk, encoding) : chunk);
+      }
+      if (typeof cb === "function") cb();
+      return true;
+    };
+    res.end = (chunk, encoding, cb) => {
+      res.headersSent = true;
+      res.finished = true;
+      if (chunk) {
+        chunks.push(typeof chunk === "string" ? Buffer.from(chunk, encoding) : chunk);
+      }
+      if (typeof cb === "function") cb();
+      const body = chunks.length > 0 ? Buffer.concat(chunks) : null;
+      resolve(new Response(body, {
+        status: res.statusCode || 200,
+        statusText: res.statusMessage || "OK",
+        headers: resHeaders
+      }));
+    };
+    app2(req, res);
+  });
+}
 var worker_default = {
   async fetch(request, env2, ctx) {
     try {
       globalThis.__CF_ENV__ = env2;
+      globalThis.__CF_PAGES__ = true;
       if (env2) {
         if (env2.DB) globalThis.DB = env2.DB;
         if (env2.STORAGE_BUCKET) globalThis.STORAGE_BUCKET = env2.STORAGE_BUCKET;
@@ -81194,7 +81310,7 @@ var worker_default = {
         } catch (assetErr) {
         }
       }
-      return await handler.fetch(request, env2, ctx);
+      return await handleExpressRequest(app, request);
     } catch (err) {
       console.error("Worker fetch exception:", err);
       return new Response(

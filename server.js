@@ -72,17 +72,19 @@ app.use((err, req, res, next) => {
   }
 });
 
-// Synchronous Server Listen: Crucial for Cloudflare Workers httpServerHandler bridge
+// Synchronous Server Listen: Only run when running directly under Node.js (e.g. npm start / pm2)
 const PORT = config.server.port || 3000;
-app.listen(PORT, () => {
-  console.log(`=======================================================`);
-  console.log(`✅ Sarkari Result Server running on http://localhost:${PORT}`);
-  console.log(`🔒 Admin Panel available at http://localhost:${PORT}/admin`);
-  console.log(`   Default credentials: user=${config.admin.username}, pass=${config.admin.password}`);
-  console.log(`💾 Cloudflare D1 Database: ${d1.isCloudflareD1 ? 'Connected (Remote)' : 'Active (Local SQLite emulation)'}`);
-  console.log(`☁️ Cloudflare R2 Storage: ${config.cloudflare.r2.isConfigured ? 'Active (Remote Bucket)' : 'Fallback (Local /uploads)'}`);
-  console.log(`=======================================================`);
-});
+if (typeof WebSocketPair === 'undefined' && !globalThis.__CF_ENV__ && !globalThis.__CF_PAGES__) {
+  app.listen(PORT, () => {
+    console.log(`=======================================================`);
+    console.log(`✅ Sarkari Result Server running on http://localhost:${PORT}`);
+    console.log(`🔒 Admin Panel available at http://localhost:${PORT}/admin`);
+    console.log(`   Default credentials: user=${config.admin.username}, pass=${config.admin.password}`);
+    console.log(`💾 Cloudflare D1 Database: ${d1.isCloudflareD1 ? 'Connected (Remote)' : 'Active (Local SQLite emulation)'}`);
+    console.log(`☁️ Cloudflare R2 Storage: ${config.cloudflare.r2.isConfigured ? 'Active (Remote Bucket)' : 'Fallback (Local /uploads)'}`);
+    console.log(`=======================================================`);
+  });
+}
 
 // Run async database initialization in background without blocking port listener
 (async function initDatabase() {
