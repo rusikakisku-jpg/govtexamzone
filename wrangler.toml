@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "govtexamzone-db"
-database_id = "your-d1-database-uuid-here"
+database_id = "ce83a546-323f-467b-8748-4fe6be6a3e12"
 
 # Cloudflare R2 Object Storage Binding
 [[r2_buckets]]
