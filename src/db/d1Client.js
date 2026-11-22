@@ -130,16 +130,19 @@ class D1Client {
   }
 
   async init() {
-    if (this.initialized) return;
-
     // 1. Native Cloudflare D1 Binding check (when running on Cloudflare Workers)
     const nativeD1 = this.getNativeD1();
     if (nativeD1) {
-      console.log('⚡ Connected to Native Cloudflare D1 Database Binding');
-      this.initialized = true;
-      await this.runNativeSchema();
+      if (!this.nativeSchemaRun) {
+        this.nativeSchemaRun = true;
+        this.initialized = true;
+        console.log('⚡ Connected to Native Cloudflare D1 Database Binding');
+        await this.runNativeSchema();
+      }
       return;
     }
+
+    if (this.initialized) return;
 
     if (this.isCloudflareD1) {
       console.log('⚡ Connected to remote Cloudflare D1 Database:', config.cloudflare.d1.databaseId);
@@ -267,19 +270,38 @@ class D1Client {
       const nativeD1 = this.getNativeD1();
       if (!nativeD1) return;
       const schemaSql = getSchemaSql();
-      const statements = schemaSql
-        .split(';')
-        .map(s => s.trim())
-        .filter(s => s.length > 0);
 
-      for (const statement of statements) {
-        try {
-          await nativeD1.prepare(statement).run();
-        } catch (e) {
-          // Ignore if table/index already exists
+      if (typeof nativeD1.exec === 'function') {
+        await nativeD1.exec(schemaSql);
+        console.log('✅ Native Cloudflare D1 schema verified via exec().');
+      } else {
+        const statements = schemaSql
+          .split(';')
+          .map(s => s.trim())
+          .filter(s => s.length > 0);
+
+        for (const statement of statements) {
+          try {
+            await nativeD1.prepare(statement).run();
+          } catch (e) {
+            // Ignore if table/index already exists
+          }
         }
+        console.log('✅ Native Cloudflare D1 schema verified.');
       }
-      console.log('✅ Native Cloudflare D1 schema verified.');
+
+      // Check if seeded; if empty, auto-seed initial Govt Exam Zone data
+      try {
+        const countRow = await nativeD1.prepare('SELECT COUNT(*) as count FROM marquees').first();
+        if (!countRow || countRow.count === 0) {
+          console.log('🌱 Seeding initial Cloudflare D1 database records...');
+          const seedDatabase = require('./seed');
+          await seedDatabase();
+          console.log('🎉 Cloudflare D1 initial seeding complete!');
+        }
+      } catch (seedCheckErr) {
+        console.warn('D1 auto-seed notice:', seedCheckErr.message);
+      }
     } catch (err) {
       console.warn('⚠️ Warning during native D1 schema check:', err.message);
     }

@@ -27222,353 +27222,6 @@ var require_sql_wasm = __commonJS({
   }
 });
 
-// src/db/d1Client.js
-var require_d1Client = __commonJS({
-  "src/db/d1Client.js"(exports, module) {
-    var fs = __require("node:fs");
-    var path = __require("node:path");
-    var initSqlJs = require_sql_wasm();
-    var config = require_env();
-    var DB_FILE_PATH = path.resolve("data/sarkariresult.db");
-    var SCHEMA_FILE_PATH = path.resolve("schema.sql");
-    var EMBEDDED_SCHEMA_SQL = `
-CREATE TABLE IF NOT EXISTS posts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    slug TEXT UNIQUE NOT NULL,
-    category TEXT NOT NULL,
-    department TEXT,
-    post_date TEXT,
-    last_date TEXT,
-    short_desc TEXT,
-    total_vacancy TEXT,
-    important_dates TEXT,
-    application_fee TEXT,
-    age_limit TEXT,
-    vacancy_details TEXT,
-    category_details TEXT,
-    how_to_apply TEXT,
-    links TEXT,
-    notification_pdf TEXT,
-    admit_card_url TEXT,
-    result_url TEXT,
-    apply_online_url TEXT,
-    official_website_url TEXT,
-    views INTEGER DEFAULT 0,
-    is_featured INTEGER DEFAULT 0,
-    status TEXT DEFAULT 'active',
-    author_id INTEGER DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_posts_category ON posts(category);
-CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug);
-CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
-CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id);
-CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC);
-
-CREATE TABLE IF NOT EXISTS authors (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    slug TEXT UNIQUE NOT NULL,
-    role TEXT DEFAULT 'Senior Recruitment Analyst & Fact-Checker',
-    email TEXT,
-    password_hash TEXT,
-    bio TEXT,
-    avatar_url TEXT DEFAULT '/images/default-avatar.svg',
-    qualification TEXT,
-    experience TEXT,
-    twitter_url TEXT,
-    linkedin_url TEXT,
-    telegram_url TEXT,
-    last_login DATETIME,
-    is_active INTEGER DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_authors_slug ON authors(slug);
-
-CREATE TABLE IF NOT EXISTS marquees (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    url TEXT NOT NULL,
-    is_active INTEGER DEFAULT 1,
-    display_order INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS badges (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    subtitle TEXT,
-    url TEXT NOT NULL,
-    bg_color TEXT NOT NULL,
-    display_order INTEGER DEFAULT 0,
-    is_active INTEGER DEFAULT 1
-);
-
-CREATE TABLE IF NOT EXISTS uploads (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    original_name TEXT NOT NULL,
-    file_key TEXT NOT NULL,
-    file_url TEXT NOT NULL,
-    storage_type TEXT NOT NULL,
-    mime_type TEXT,
-    file_size INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT
-);
-`;
-    function getSchemaSql() {
-      try {
-        if (typeof fs.readFileSync === "function" && typeof fs.existsSync === "function" && fs.existsSync(SCHEMA_FILE_PATH)) {
-          const content = fs.readFileSync(SCHEMA_FILE_PATH, "utf-8");
-          if (content && content.trim()) return content;
-        }
-      } catch (err) {
-      }
-      return EMBEDDED_SCHEMA_SQL;
-    }
-    var D1Client = class {
-      constructor() {
-        this.isCloudflareD1 = config.cloudflare.d1.isConfigured;
-        this.localDb = null;
-        this.SQL = null;
-        this.initialized = false;
-      }
-      getNativeD1() {
-        if (this.nativeD1) return this.nativeD1;
-        const db = globalThis.DB || globalThis.__CF_ENV__ && globalThis.__CF_ENV__.DB;
-        if (db && typeof db.prepare === "function") {
-          this.nativeD1 = db;
-          this.isNativeD1 = true;
-          return db;
-        }
-        return null;
-      }
-      async init() {
-        if (this.initialized) return;
-        const nativeD1 = this.getNativeD1();
-        if (nativeD1) {
-          console.log("\u26A1 Connected to Native Cloudflare D1 Database Binding");
-          this.initialized = true;
-          await this.runNativeSchema();
-          return;
-        }
-        if (this.isCloudflareD1) {
-          console.log("\u26A1 Connected to remote Cloudflare D1 Database:", config.cloudflare.d1.databaseId);
-          await this.runRemoteSchema();
-          this.initialized = true;
-          return;
-        }
-        console.log("\u{1F4C2} Initializing Local SQLite Engine (Cloudflare D1 compatible emulation)...");
-        this.SQL = await initSqlJs();
-        try {
-          const dbDir = path.dirname(DB_FILE_PATH);
-          if (typeof fs.existsSync === "function" && !fs.existsSync(dbDir)) {
-            if (typeof fs.mkdirSync === "function") {
-              fs.mkdirSync(dbDir, { recursive: true });
-            }
-          }
-        } catch (e) {
-        }
-        let loadedFromFile = false;
-        try {
-          if (typeof fs.existsSync === "function" && fs.existsSync(DB_FILE_PATH)) {
-            const fileBuffer = fs.readFileSync(DB_FILE_PATH);
-            this.localDb = new this.SQL.Database(fileBuffer);
-            loadedFromFile = true;
-            console.log("\u2705 Loaded existing SQLite database from:", DB_FILE_PATH);
-          }
-        } catch (e) {
-        }
-        if (!loadedFromFile) {
-          this.localDb = new this.SQL.Database();
-          console.log("\u{1F195} Created new SQLite database in memory, initializing schema...");
-        }
-        try {
-          const resPosts = this.localDb.exec("PRAGMA table_info(posts)");
-          if (resPosts && resPosts[0] && resPosts[0].values) {
-            const colNames = resPosts[0].values.map((v) => v[1]);
-            if (!colNames.includes("author_id")) {
-              this.localDb.run("ALTER TABLE posts ADD COLUMN author_id INTEGER DEFAULT 1");
-              console.log("\u2705 Migrated: added author_id column to posts table.");
-            }
-          }
-          const resAuthors = this.localDb.exec("PRAGMA table_info(authors)");
-          if (resAuthors && resAuthors[0] && resAuthors[0].values) {
-            const authorCols = resAuthors[0].values.map((v) => v[1]);
-            if (!authorCols.includes("password_hash")) {
-              this.localDb.run("ALTER TABLE authors ADD COLUMN password_hash TEXT");
-              console.log("\u2705 Migrated: added password_hash column to authors table.");
-            }
-            if (!authorCols.includes("last_login")) {
-              this.localDb.run("ALTER TABLE authors ADD COLUMN last_login DATETIME");
-              console.log("\u2705 Migrated: added last_login column to authors table.");
-            }
-          }
-        } catch (migErr) {
-          console.warn("Migration note:", migErr.message);
-        }
-        const schemaSql = getSchemaSql();
-        this.localDb.run(schemaSql);
-        this.saveLocal();
-        this.initialized = true;
-        console.log("\u2705 Database schema verified and active.");
-      }
-      saveLocal() {
-        if (this.isNativeD1 || this.isCloudflareD1) return;
-        try {
-          if (this.localDb && typeof fs.writeFileSync === "function") {
-            const data = this.localDb.export();
-            const buffer = Buffer.from(data);
-            fs.writeFileSync(DB_FILE_PATH, buffer);
-          }
-        } catch (err) {
-        }
-      }
-      // Cloudflare D1 REST API query
-      async queryRemote(sql, params = []) {
-        const { accountId, databaseId, apiToken } = config.cloudflare.d1;
-        const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
-        const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${apiToken}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ sql, params })
-        });
-        const json = await response.json();
-        if (!json.success) {
-          const err = json.errors?.[0]?.message || "Cloudflare D1 Query Failed";
-          throw new Error(`D1 API Error: ${err}`);
-        }
-        return json.result?.[0]?.results || [];
-      }
-      async runRemoteSchema() {
-        try {
-          const schemaSql = getSchemaSql();
-          const statements = schemaSql.split(";").map((s) => s.trim()).filter((s) => s.length > 0);
-          for (const statement of statements) {
-            await this.queryRemote(statement);
-          }
-          console.log("\u2705 Cloudflare D1 remote schema verified.");
-        } catch (err) {
-          console.warn("\u26A0\uFE0F Warning during remote D1 schema initialization:", err.message);
-        }
-      }
-      async runNativeSchema() {
-        try {
-          const nativeD1 = this.getNativeD1();
-          if (!nativeD1) return;
-          const schemaSql = getSchemaSql();
-          const statements = schemaSql.split(";").map((s) => s.trim()).filter((s) => s.length > 0);
-          for (const statement of statements) {
-            try {
-              await nativeD1.prepare(statement).run();
-            } catch (e) {
-            }
-          }
-          console.log("\u2705 Native Cloudflare D1 schema verified.");
-        } catch (err) {
-          console.warn("\u26A0\uFE0F Warning during native D1 schema check:", err.message);
-        }
-      }
-      prepare(sql) {
-        const self2 = this;
-        self2.getNativeD1();
-        return {
-          bind(...params) {
-            const rawParams = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
-            const boundParams = rawParams.map((p) => p === void 0 ? null : p);
-            return {
-              async all() {
-                if (self2.isNativeD1) {
-                  const res = await self2.nativeD1.prepare(sql).bind(...boundParams).all();
-                  return res && res.results ? res.results : [];
-                }
-                if (self2.isCloudflareD1) {
-                  return await self2.queryRemote(sql, boundParams);
-                }
-                try {
-                  const stmt = self2.localDb.prepare(sql);
-                  stmt.bind(boundParams);
-                  const rows = [];
-                  while (stmt.step()) {
-                    rows.push(stmt.getAsObject());
-                  }
-                  stmt.free();
-                  return rows;
-                } catch (err) {
-                  console.error("Error executing query:", sql, err);
-                  throw err;
-                }
-              },
-              async first() {
-                if (self2.isNativeD1) {
-                  return await self2.nativeD1.prepare(sql).bind(...boundParams).first();
-                }
-                const rows = await this.all();
-                return rows.length > 0 ? rows[0] : null;
-              },
-              async run() {
-                if (self2.isNativeD1) {
-                  const res = await self2.nativeD1.prepare(sql).bind(...boundParams).run();
-                  return { success: true, changes: res?.meta?.changes || 0, lastInsertRowid: res?.meta?.last_row_id || null };
-                }
-                if (self2.isCloudflareD1) {
-                  const res = await self2.queryRemote(sql, boundParams);
-                  return { success: true, result: res };
-                }
-                try {
-                  self2.localDb.run(sql, boundParams);
-                  self2.saveLocal();
-                  const lastIdRow = self2.localDb.exec("SELECT last_insert_rowid() AS id;");
-                  const lastInsertRowid = lastIdRow[0]?.values[0]?.[0] || null;
-                  const changesRow = self2.localDb.exec("SELECT changes() AS ch;");
-                  const changes = changesRow[0]?.values[0]?.[0] || 0;
-                  return { success: true, changes, lastInsertRowid };
-                } catch (err) {
-                  console.error("Error in run():", sql, err);
-                  throw err;
-                }
-              }
-            };
-          },
-          async all() {
-            return this.bind().all();
-          },
-          async first() {
-            return this.bind().first();
-          },
-          async run() {
-            return this.bind().run();
-          }
-        };
-      }
-      async exec(sql) {
-        if (this.getNativeD1()) {
-          return await this.nativeD1.exec(sql);
-        }
-        if (this.isCloudflareD1) {
-          return await this.queryRemote(sql);
-        }
-        const res = this.localDb.exec(sql);
-        this.saveLocal();
-        return res;
-      }
-    };
-    var d1 = new D1Client();
-    module.exports = d1;
-  }
-});
-
 // src/middleware/authorAuth.js
 var require_authorAuth = __commonJS({
   "src/middleware/authorAuth.js"(exports, module) {
@@ -28536,6 +28189,372 @@ var require_seed = __commonJS({
         process.exit(1);
       });
     }
+  }
+});
+
+// src/db/d1Client.js
+var require_d1Client = __commonJS({
+  "src/db/d1Client.js"(exports, module) {
+    var fs = __require("node:fs");
+    var path = __require("node:path");
+    var initSqlJs = require_sql_wasm();
+    var config = require_env();
+    var DB_FILE_PATH = path.resolve("data/sarkariresult.db");
+    var SCHEMA_FILE_PATH = path.resolve("schema.sql");
+    var EMBEDDED_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    slug TEXT UNIQUE NOT NULL,
+    category TEXT NOT NULL,
+    department TEXT,
+    post_date TEXT,
+    last_date TEXT,
+    short_desc TEXT,
+    total_vacancy TEXT,
+    important_dates TEXT,
+    application_fee TEXT,
+    age_limit TEXT,
+    vacancy_details TEXT,
+    category_details TEXT,
+    how_to_apply TEXT,
+    links TEXT,
+    notification_pdf TEXT,
+    admit_card_url TEXT,
+    result_url TEXT,
+    apply_online_url TEXT,
+    official_website_url TEXT,
+    views INTEGER DEFAULT 0,
+    is_featured INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'active',
+    author_id INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_posts_category ON posts(category);
+CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug);
+CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
+CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id);
+CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS authors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    slug TEXT UNIQUE NOT NULL,
+    role TEXT DEFAULT 'Senior Recruitment Analyst & Fact-Checker',
+    email TEXT,
+    password_hash TEXT,
+    bio TEXT,
+    avatar_url TEXT DEFAULT '/images/default-avatar.svg',
+    qualification TEXT,
+    experience TEXT,
+    twitter_url TEXT,
+    linkedin_url TEXT,
+    telegram_url TEXT,
+    last_login DATETIME,
+    is_active INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_authors_slug ON authors(slug);
+
+CREATE TABLE IF NOT EXISTS marquees (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    url TEXT NOT NULL,
+    is_active INTEGER DEFAULT 1,
+    display_order INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS badges (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    subtitle TEXT,
+    url TEXT NOT NULL,
+    bg_color TEXT NOT NULL,
+    display_order INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS uploads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    original_name TEXT NOT NULL,
+    file_key TEXT NOT NULL,
+    file_url TEXT NOT NULL,
+    storage_type TEXT NOT NULL,
+    mime_type TEXT,
+    file_size INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+`;
+    function getSchemaSql() {
+      try {
+        if (typeof fs.readFileSync === "function" && typeof fs.existsSync === "function" && fs.existsSync(SCHEMA_FILE_PATH)) {
+          const content = fs.readFileSync(SCHEMA_FILE_PATH, "utf-8");
+          if (content && content.trim()) return content;
+        }
+      } catch (err) {
+      }
+      return EMBEDDED_SCHEMA_SQL;
+    }
+    var D1Client = class {
+      constructor() {
+        this.isCloudflareD1 = config.cloudflare.d1.isConfigured;
+        this.localDb = null;
+        this.SQL = null;
+        this.initialized = false;
+      }
+      getNativeD1() {
+        if (this.nativeD1) return this.nativeD1;
+        const db = globalThis.DB || globalThis.__CF_ENV__ && globalThis.__CF_ENV__.DB;
+        if (db && typeof db.prepare === "function") {
+          this.nativeD1 = db;
+          this.isNativeD1 = true;
+          return db;
+        }
+        return null;
+      }
+      async init() {
+        const nativeD1 = this.getNativeD1();
+        if (nativeD1) {
+          if (!this.nativeSchemaRun) {
+            this.nativeSchemaRun = true;
+            this.initialized = true;
+            console.log("\u26A1 Connected to Native Cloudflare D1 Database Binding");
+            await this.runNativeSchema();
+          }
+          return;
+        }
+        if (this.initialized) return;
+        if (this.isCloudflareD1) {
+          console.log("\u26A1 Connected to remote Cloudflare D1 Database:", config.cloudflare.d1.databaseId);
+          await this.runRemoteSchema();
+          this.initialized = true;
+          return;
+        }
+        console.log("\u{1F4C2} Initializing Local SQLite Engine (Cloudflare D1 compatible emulation)...");
+        this.SQL = await initSqlJs();
+        try {
+          const dbDir = path.dirname(DB_FILE_PATH);
+          if (typeof fs.existsSync === "function" && !fs.existsSync(dbDir)) {
+            if (typeof fs.mkdirSync === "function") {
+              fs.mkdirSync(dbDir, { recursive: true });
+            }
+          }
+        } catch (e) {
+        }
+        let loadedFromFile = false;
+        try {
+          if (typeof fs.existsSync === "function" && fs.existsSync(DB_FILE_PATH)) {
+            const fileBuffer = fs.readFileSync(DB_FILE_PATH);
+            this.localDb = new this.SQL.Database(fileBuffer);
+            loadedFromFile = true;
+            console.log("\u2705 Loaded existing SQLite database from:", DB_FILE_PATH);
+          }
+        } catch (e) {
+        }
+        if (!loadedFromFile) {
+          this.localDb = new this.SQL.Database();
+          console.log("\u{1F195} Created new SQLite database in memory, initializing schema...");
+        }
+        try {
+          const resPosts = this.localDb.exec("PRAGMA table_info(posts)");
+          if (resPosts && resPosts[0] && resPosts[0].values) {
+            const colNames = resPosts[0].values.map((v) => v[1]);
+            if (!colNames.includes("author_id")) {
+              this.localDb.run("ALTER TABLE posts ADD COLUMN author_id INTEGER DEFAULT 1");
+              console.log("\u2705 Migrated: added author_id column to posts table.");
+            }
+          }
+          const resAuthors = this.localDb.exec("PRAGMA table_info(authors)");
+          if (resAuthors && resAuthors[0] && resAuthors[0].values) {
+            const authorCols = resAuthors[0].values.map((v) => v[1]);
+            if (!authorCols.includes("password_hash")) {
+              this.localDb.run("ALTER TABLE authors ADD COLUMN password_hash TEXT");
+              console.log("\u2705 Migrated: added password_hash column to authors table.");
+            }
+            if (!authorCols.includes("last_login")) {
+              this.localDb.run("ALTER TABLE authors ADD COLUMN last_login DATETIME");
+              console.log("\u2705 Migrated: added last_login column to authors table.");
+            }
+          }
+        } catch (migErr) {
+          console.warn("Migration note:", migErr.message);
+        }
+        const schemaSql = getSchemaSql();
+        this.localDb.run(schemaSql);
+        this.saveLocal();
+        this.initialized = true;
+        console.log("\u2705 Database schema verified and active.");
+      }
+      saveLocal() {
+        if (this.isNativeD1 || this.isCloudflareD1) return;
+        try {
+          if (this.localDb && typeof fs.writeFileSync === "function") {
+            const data = this.localDb.export();
+            const buffer = Buffer.from(data);
+            fs.writeFileSync(DB_FILE_PATH, buffer);
+          }
+        } catch (err) {
+        }
+      }
+      // Cloudflare D1 REST API query
+      async queryRemote(sql, params = []) {
+        const { accountId, databaseId, apiToken } = config.cloudflare.d1;
+        const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ sql, params })
+        });
+        const json = await response.json();
+        if (!json.success) {
+          const err = json.errors?.[0]?.message || "Cloudflare D1 Query Failed";
+          throw new Error(`D1 API Error: ${err}`);
+        }
+        return json.result?.[0]?.results || [];
+      }
+      async runRemoteSchema() {
+        try {
+          const schemaSql = getSchemaSql();
+          const statements = schemaSql.split(";").map((s) => s.trim()).filter((s) => s.length > 0);
+          for (const statement of statements) {
+            await this.queryRemote(statement);
+          }
+          console.log("\u2705 Cloudflare D1 remote schema verified.");
+        } catch (err) {
+          console.warn("\u26A0\uFE0F Warning during remote D1 schema initialization:", err.message);
+        }
+      }
+      async runNativeSchema() {
+        try {
+          const nativeD1 = this.getNativeD1();
+          if (!nativeD1) return;
+          const schemaSql = getSchemaSql();
+          if (typeof nativeD1.exec === "function") {
+            await nativeD1.exec(schemaSql);
+            console.log("\u2705 Native Cloudflare D1 schema verified via exec().");
+          } else {
+            const statements = schemaSql.split(";").map((s) => s.trim()).filter((s) => s.length > 0);
+            for (const statement of statements) {
+              try {
+                await nativeD1.prepare(statement).run();
+              } catch (e) {
+              }
+            }
+            console.log("\u2705 Native Cloudflare D1 schema verified.");
+          }
+          try {
+            const countRow = await nativeD1.prepare("SELECT COUNT(*) as count FROM marquees").first();
+            if (!countRow || countRow.count === 0) {
+              console.log("\u{1F331} Seeding initial Cloudflare D1 database records...");
+              const seedDatabase = require_seed();
+              await seedDatabase();
+              console.log("\u{1F389} Cloudflare D1 initial seeding complete!");
+            }
+          } catch (seedCheckErr) {
+            console.warn("D1 auto-seed notice:", seedCheckErr.message);
+          }
+        } catch (err) {
+          console.warn("\u26A0\uFE0F Warning during native D1 schema check:", err.message);
+        }
+      }
+      prepare(sql) {
+        const self2 = this;
+        self2.getNativeD1();
+        return {
+          bind(...params) {
+            const rawParams = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
+            const boundParams = rawParams.map((p) => p === void 0 ? null : p);
+            return {
+              async all() {
+                if (self2.isNativeD1) {
+                  const res = await self2.nativeD1.prepare(sql).bind(...boundParams).all();
+                  return res && res.results ? res.results : [];
+                }
+                if (self2.isCloudflareD1) {
+                  return await self2.queryRemote(sql, boundParams);
+                }
+                try {
+                  const stmt = self2.localDb.prepare(sql);
+                  stmt.bind(boundParams);
+                  const rows = [];
+                  while (stmt.step()) {
+                    rows.push(stmt.getAsObject());
+                  }
+                  stmt.free();
+                  return rows;
+                } catch (err) {
+                  console.error("Error executing query:", sql, err);
+                  throw err;
+                }
+              },
+              async first() {
+                if (self2.isNativeD1) {
+                  return await self2.nativeD1.prepare(sql).bind(...boundParams).first();
+                }
+                const rows = await this.all();
+                return rows.length > 0 ? rows[0] : null;
+              },
+              async run() {
+                if (self2.isNativeD1) {
+                  const res = await self2.nativeD1.prepare(sql).bind(...boundParams).run();
+                  return { success: true, changes: res?.meta?.changes || 0, lastInsertRowid: res?.meta?.last_row_id || null };
+                }
+                if (self2.isCloudflareD1) {
+                  const res = await self2.queryRemote(sql, boundParams);
+                  return { success: true, result: res };
+                }
+                try {
+                  self2.localDb.run(sql, boundParams);
+                  self2.saveLocal();
+                  const lastIdRow = self2.localDb.exec("SELECT last_insert_rowid() AS id;");
+                  const lastInsertRowid = lastIdRow[0]?.values[0]?.[0] || null;
+                  const changesRow = self2.localDb.exec("SELECT changes() AS ch;");
+                  const changes = changesRow[0]?.values[0]?.[0] || 0;
+                  return { success: true, changes, lastInsertRowid };
+                } catch (err) {
+                  console.error("Error in run():", sql, err);
+                  throw err;
+                }
+              }
+            };
+          },
+          async all() {
+            return this.bind().all();
+          },
+          async first() {
+            return this.bind().first();
+          },
+          async run() {
+            return this.bind().run();
+          }
+        };
+      }
+      async exec(sql) {
+        if (this.getNativeD1()) {
+          return await this.nativeD1.exec(sql);
+        }
+        if (this.isCloudflareD1) {
+          return await this.queryRemote(sql);
+        }
+        const res = this.localDb.exec(sql);
+        this.saveLocal();
+        return res;
+      }
+    };
+    var d1 = new D1Client();
+    module.exports = d1;
   }
 });
 
