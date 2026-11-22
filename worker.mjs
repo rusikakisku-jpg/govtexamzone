@@ -8,8 +8,29 @@ if (env) {
   if (env.STORAGE_BUCKET) globalThis.STORAGE_BUCKET = env.STORAGE_BUCKET;
 }
 
-// Dynamically import Express server so global bindings are active
+// Dynamically import Express server so global bindings and port 3000 listener are active
 await import("./server.js");
 
-// Export Cloudflare Worker HTTP bridge on port 3000
-export default httpServerHandler({ port: 3000 });
+const handler = httpServerHandler({ port: 3000 });
+
+export default {
+  async fetch(request, env, ctx) {
+    try {
+      globalThis.__CF_ENV__ = env;
+      if (env) {
+        if (env.DB) globalThis.DB = env.DB;
+        if (env.STORAGE_BUCKET) globalThis.STORAGE_BUCKET = env.STORAGE_BUCKET;
+      }
+      return await handler.fetch(request, env, ctx);
+    } catch (err) {
+      console.error("Worker fetch exception:", err);
+      return new Response(
+        "Govt Exam Zone - Worker Exception:\n" + (err.stack || err.message || String(err)),
+        {
+          status: 500,
+          headers: { "content-type": "text/plain; charset=utf-8" }
+        }
+      );
+    }
+  }
+};

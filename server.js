@@ -33,6 +33,16 @@ app.use(express.static(path.resolve('public')));
 app.use('/uploads', express.static(path.resolve('uploads')));
 
 // Routes
+app.get('/api/seed-db', async (req, res) => {
+  try {
+    await d1.init();
+    await seedDatabase();
+    res.json({ success: true, message: 'Database initialized and seeded successfully!' });
+  } catch (err) {
+    console.error('Seed DB Error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 app.use('/admin', adminRoutes);
 app.use('/author-portal', authorRoutes);
 app.use('/editor-portal', authorRoutes);
@@ -52,35 +62,41 @@ app.use((req, res) => {
 // Error Handling Middleware
 app.use((err, req, res, next) => {
   console.error('Server Error:', err);
-  res.status(500).render('pages/error', {
-    title: '500 - Server Error | SarkariResult.com',
-    message: 'An internal error occurred. Please try again later.'
-  });
+  try {
+    res.status(500).render('pages/error', {
+      title: '500 - Server Error | Govt Exam Zone',
+      message: err.message || 'An internal error occurred. Please try again later.'
+    });
+  } catch (renderErr) {
+    res.status(500).type('text/plain').send('Server Error: ' + (err.message || 'Internal Server Error'));
+  }
 });
 
-// Server Initialization
-async function startServer() {
+// Synchronous Server Listen: Crucial for Cloudflare Workers httpServerHandler bridge
+const PORT = config.server.port || 3000;
+app.listen(PORT, () => {
+  console.log(`=======================================================`);
+  console.log(`✅ Sarkari Result Server running on http://localhost:${PORT}`);
+  console.log(`🔒 Admin Panel available at http://localhost:${PORT}/admin`);
+  console.log(`   Default credentials: user=${config.admin.username}, pass=${config.admin.password}`);
+  console.log(`💾 Cloudflare D1 Database: ${d1.isCloudflareD1 ? 'Connected (Remote)' : 'Active (Local SQLite emulation)'}`);
+  console.log(`☁️ Cloudflare R2 Storage: ${config.cloudflare.r2.isConfigured ? 'Active (Remote Bucket)' : 'Fallback (Local /uploads)'}`);
+  console.log(`=======================================================`);
+});
+
+// Run async database initialization in background without blocking port listener
+(async function initDatabase() {
   try {
-    console.log('🚀 Initializing Sarkari Result Portal...');
+    console.log('🚀 Initializing Sarkari Result Portal DB...');
     await d1.init();
-    await seedDatabase();
-
-    const PORT = config.server.port;
-    app.listen(PORT, () => {
-      console.log(`=======================================================`);
-      console.log(`✅ Sarkari Result Server running on http://localhost:${PORT}`);
-      console.log(`🔒 Admin Panel available at http://localhost:${PORT}/admin`);
-      console.log(`   Default credentials: user=${config.admin.username}, pass=${config.admin.password}`);
-      console.log(`💾 Cloudflare D1 Database: ${d1.isCloudflareD1 ? 'Connected (Remote)' : 'Active (Local SQLite emulation)'}`);
-      console.log(`☁️ Cloudflare R2 Storage: ${config.cloudflare.r2.isConfigured ? 'Active (Remote Bucket)' : 'Fallback (Local /uploads)'}`);
-      console.log(`=======================================================`);
-    });
+    console.log('✅ Database schema verified and active.');
+    // Only auto-seed local SQLite; native Cloudflare D1 will be seeded without blocking
+    if (!d1.isNativeD1) {
+      await seedDatabase();
+    }
   } catch (err) {
-    console.error('Failed to start server:', err);
-    process.exit(1);
+    console.warn('⚠️ Database init notice:', err.message);
   }
-}
-
-startServer();
+})();
 
 module.exports = app;

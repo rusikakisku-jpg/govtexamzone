@@ -5,6 +5,10 @@ const { CATEGORIES, safeJsonParse, formatDate, formatPrettyDate } = require('../
 
 // Middleware to inject common data
 router.use(async (req, res, next) => {
+  try {
+    await d1.init();
+  } catch (initErr) {}
+
   res.locals.categories = CATEGORIES;
   res.locals.formatDate = formatDate;
   res.locals.formatPrettyDate = formatPrettyDate;
