@@ -81129,6 +81129,12 @@ var require_server = __commonJS({
     app2.engine("ejs", templateEngine);
     app2.set("view engine", "ejs");
     app2.set("views", path.resolve("views"));
+    var View = app2.get("view");
+    if (View && View.prototype) {
+      View.prototype.lookup = function(name) {
+        return name.endsWith(".ejs") ? name : name + ".ejs";
+      };
+    }
     app2.use(cors());
     app2.use(express.json());
     app2.use(express.urlencoded({ extended: true }));
@@ -81153,21 +81159,29 @@ var require_server = __commonJS({
     app2.use("/api", apiRoutes);
     app2.use("/", webRoutes);
     app2.use((req, res) => {
-      res.status(404).render("pages/error", {
+      res.status(404);
+      res.render("pages/error", {
         title: "404 - Page Not Found | SarkariResult.com",
         message: "The page you are looking for does not exist on SarkariResult.com."
+      }, (renderErr, html) => {
+        if (renderErr) {
+          return res.type("text/html").send("<h1>404 - Page Not Found</h1>");
+        }
+        res.type("text/html").send(html);
       });
     });
     app2.use((err, req, res, next) => {
       console.error("Server Error:", err);
-      try {
-        res.status(500).render("pages/error", {
-          title: "500 - Server Error | Govt Exam Zone",
-          message: err.message || "An internal error occurred. Please try again later."
-        });
-      } catch (renderErr) {
-        res.status(500).type("text/plain").send("Server Error: " + (err.message || "Internal Server Error"));
-      }
+      res.status(500);
+      res.render("pages/error", {
+        title: "500 - Server Error | Govt Exam Zone",
+        message: err.message || "An internal error occurred. Please try again later."
+      }, (renderErr, html) => {
+        if (renderErr) {
+          return res.type("text/html").send(`<!DOCTYPE html><html><body><h1>Server Error</h1><p>${err.message || "Internal Server Error"}</p></body></html>`);
+        }
+        res.type("text/html").send(html);
+      });
     });
     var PORT = config.server.port || 3e3;
     if (typeof WebSocketPair === "undefined" && !globalThis.__CF_ENV__ && !globalThis.__CF_PAGES__) {

@@ -22,6 +22,14 @@ app.engine('ejs', templateEngine);
 app.set('view engine', 'ejs');
 app.set('views', path.resolve('views'));
 
+// Edge-compatible View lookup: bypass filesystem stat checks for precompiled in-memory templates
+const View = app.get('view');
+if (View && View.prototype) {
+  View.prototype.lookup = function(name) {
+    return name.endsWith('.ejs') ? name : name + '.ejs';
+  };
+}
+
 // Middlewares
 app.use(cors());
 app.use(express.json());
@@ -53,23 +61,31 @@ app.use('/', webRoutes);
 
 // 404 Not Found Handler
 app.use((req, res) => {
-  res.status(404).render('pages/error', {
+  res.status(404);
+  res.render('pages/error', {
     title: '404 - Page Not Found | SarkariResult.com',
     message: 'The page you are looking for does not exist on SarkariResult.com.'
+  }, (renderErr, html) => {
+    if (renderErr) {
+      return res.type('text/html').send('<h1>404 - Page Not Found</h1>');
+    }
+    res.type('text/html').send(html);
   });
 });
 
 // Error Handling Middleware
 app.use((err, req, res, next) => {
   console.error('Server Error:', err);
-  try {
-    res.status(500).render('pages/error', {
-      title: '500 - Server Error | Govt Exam Zone',
-      message: err.message || 'An internal error occurred. Please try again later.'
-    });
-  } catch (renderErr) {
-    res.status(500).type('text/plain').send('Server Error: ' + (err.message || 'Internal Server Error'));
-  }
+  res.status(500);
+  res.render('pages/error', {
+    title: '500 - Server Error | Govt Exam Zone',
+    message: err.message || 'An internal error occurred. Please try again later.'
+  }, (renderErr, html) => {
+    if (renderErr) {
+      return res.type('text/html').send(`<!DOCTYPE html><html><body><h1>Server Error</h1><p>${err.message || 'Internal Server Error'}</p></body></html>`);
+    }
+    res.type('text/html').send(html);
+  });
 });
 
 // Synchronous Server Listen: Only run when running directly under Node.js (e.g. npm start / pm2)
