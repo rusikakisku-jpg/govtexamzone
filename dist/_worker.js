@@ -16,23 +16,49 @@ import * as nodeUtil from 'node:util';
 import * as nodeZlib from 'node:zlib';
 import * as nodeAsyncHooks from 'node:async_hooks';
 
+const toCJS = (m) => {
+  if (!m || typeof m !== 'object') return m;
+  const obj = Object.assign({}, m);
+  if (m.default && typeof m.default === 'object') {
+    Object.assign(obj, m.default);
+  }
+  return obj;
+};
+
+const cjsBuffer = toCJS(nodeBuffer);
+const cjsCrypto = toCJS(nodeCrypto);
+const cjsEvents = toCJS(nodeEvents);
+const cjsFs = toCJS(nodeFs);
+const cjsHttp = toCJS(nodeHttp);
+const cjsHttps = toCJS(nodeHttps);
+const cjsNet = toCJS(nodeNet);
+const cjsOs = toCJS(nodeOs);
+const cjsPath = toCJS(nodePath);
+const cjsProcess = toCJS(nodeProcess);
+const cjsStream = toCJS(nodeStream);
+const cjsStringDecoder = toCJS(nodeStringDecoder);
+const cjsUrl = toCJS(nodeUrl);
+const cjsUtil = toCJS(nodeUtil);
+const cjsZlib = toCJS(nodeZlib);
+const cjsAsyncHooks = toCJS(nodeAsyncHooks);
+
 const nodeModules = {
-  'buffer': nodeBuffer, 'node:buffer': nodeBuffer,
-  'crypto': nodeCrypto, 'node:crypto': nodeCrypto,
-  'events': nodeEvents, 'node:events': nodeEvents,
-  'fs': nodeFs, 'node:fs': nodeFs,
-  'http': nodeHttp, 'node:http': nodeHttp,
-  'https': nodeHttps, 'node:https': nodeHttps,
-  'net': nodeNet, 'node:net': nodeNet,
-  'os': nodeOs, 'node:os': nodeOs,
-  'path': nodePath, 'node:path': nodePath,
-  'process': nodeProcess, 'node:process': nodeProcess,
-  'stream': nodeStream, 'node:stream': nodeStream,
-  'string_decoder': nodeStringDecoder, 'node:string_decoder': nodeStringDecoder,
-  'url': nodeUrl, 'node:url': nodeUrl,
-  'util': nodeUtil, 'node:util': nodeUtil,
-  'zlib': nodeZlib, 'node:zlib': nodeZlib,
-  'async_hooks': nodeAsyncHooks, 'node:async_hooks': nodeAsyncHooks,
+  'buffer': cjsBuffer, 'node:buffer': cjsBuffer,
+  'crypto': cjsCrypto, 'node:crypto': cjsCrypto,
+  'events': cjsEvents, 'node:events': cjsEvents,
+  'fs': cjsFs, 'node:fs': cjsFs,
+  'http': cjsHttp, 'node:http': cjsHttp,
+  'https': cjsHttps, 'node:https': cjsHttps,
+  'net': cjsNet, 'node:net': cjsNet,
+  'os': cjsOs, 'node:os': cjsOs,
+  'path': cjsPath, 'node:path': cjsPath,
+  'process': cjsProcess, 'node:process': cjsProcess,
+  'stream': cjsStream, 'node:stream': cjsStream,
+  'string_decoder': cjsStringDecoder, 'node:string_decoder': cjsStringDecoder,
+  'url': cjsUrl, 'node:url': cjsUrl,
+  'util': cjsUtil, 'node:util': cjsUtil,
+  'zlib': cjsZlib, 'node:zlib': cjsZlib,
+  'async_hooks': cjsAsyncHooks, 'node:async_hooks': cjsAsyncHooks,
   'tty': { isatty: () => false, ReadStream: class ReadStream {}, WriteStream: class WriteStream {} },
   'node:tty': { isatty: () => false, ReadStream: class ReadStream {}, WriteStream: class WriteStream {} },
   'supports-color': { stdout: false, stderr: false }
