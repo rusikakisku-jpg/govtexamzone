@@ -1,6 +1,6 @@
 {
   "name": "govtexamzone",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Govt Exam Zone - Full-Stack Recruitment Portal",
   "main": "worker.mjs",
   "scripts": {
