@@ -17,9 +17,8 @@ const app = express();
 app.set('trust proxy', 1);
 
 // View Engine Setup
-const rootDir = typeof __dirname !== 'undefined' ? __dirname : (typeof process !== 'undefined' && process.cwd ? process.cwd() : '.');
 app.set('view engine', 'ejs');
-app.set('views', path.join(rootDir, 'views'));
+app.set('views', path.resolve('views'));
 
 // Middlewares
 app.use(cors());
@@ -28,8 +27,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // Static Files
-app.use(express.static(path.join(rootDir, 'public')));
-app.use('/uploads', express.static(path.join(rootDir, 'uploads')));
+app.use(express.static(path.resolve('public')));
+app.use('/uploads', express.static(path.resolve('uploads')));
 
 // Routes
 app.use('/admin', adminRoutes);

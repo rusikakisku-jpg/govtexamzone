@@ -1,9 +1,8 @@
 const dotenv = require('dotenv');
 const path = require('path');
 
-const baseDir = typeof __dirname !== 'undefined' ? __dirname : (typeof process !== 'undefined' && process.cwd ? process.cwd() : '/');
 try {
-  dotenv.config({ path: path.join(baseDir, '../../.env') });
+  dotenv.config();
 } catch (e) {}
 
 const cfEnv = globalThis.__CF_ENV__ || {};
