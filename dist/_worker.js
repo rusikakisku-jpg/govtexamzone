@@ -1,4 +1,4 @@
-import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);
+import { createRequire } from 'node:module'; const require = createRequire('file:///worker.js');
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -5496,7 +5496,7 @@ var require_raw_body = __commonJS({
     }
     function tryRequireAsyncHooks() {
       try {
-        return __require("async_hooks");
+        return __require("node:async_hooks");
       } catch (e) {
         return {};
       }
@@ -5656,7 +5656,7 @@ var require_on_finished = __commonJS({
     }
     function tryRequireAsyncHooks() {
       try {
-        return __require("async_hooks");
+        return __require("node:async_hooks");
       } catch (e) {
         return {};
       }
@@ -24672,7 +24672,7 @@ var require_dist5 = __commonJS({
       x.exports = A;
     });
     var M = I((Te, W) => {
-      var _ = __require("child_process"), fe = __require("node:fs"), L = __require("node:path");
+      var _ = __require("node:child_process"), fe = __require("node:fs"), L = __require("node:path");
       function ue(e) {
         let o = ['"'], t = 0;
         for (let n of e) {
@@ -24721,7 +24721,7 @@ var require_dist5 = __commonJS({
       W.exports = pe;
     });
     var K = I(($e, F) => {
-      var he = __require("node:fs"), ge = __require("node:os"), Q = __require("node:path"), me = __require("child_process"), ve = M(), R = N(), { optionsFromEnv: Ce } = S();
+      var he = __require("node:fs"), ge = __require("node:os"), Q = __require("node:path"), me = __require("node:child_process"), ve = M(), R = N(), { optionsFromEnv: Ce } = S();
       function $() {
         console.log(["Usage: dotenv run [--help] [-q|--quiet] [--debug] [--override] [--fast] [-f|--file <paths>] [--] <command> [args...]", "", "Run a command with environment variables from a .env file.", "Place dotenv options before the command; all following arguments go to the command.", "", "Options:", "  -f, --file <paths>  .env paths, comma-separated or repeated (default: .env)", "  -q, --quiet suppress the injected env message", "  --debug     enable debug logging", "  --override  override existing environment variables", "  --fast      use the faster character-scanner parser", "", "Environment variables (DOTENV_CONFIG_* names remain as fallbacks):", "  DOTENV_PATH, DOTENV_ENCODING, DOTENV_QUIET,", "  DOTENV_DEBUG, DOTENV_OVERRIDE,", "  DOTENV_FAST"].join(`
 `));
@@ -41712,7 +41712,7 @@ var require_validate_limits = __commonJS({
 var require_make_middleware = __commonJS({
   "node_modules/multer/lib/make-middleware.js"(exports, module) {
     var is = require_type_is2();
-    var AsyncResource = __require("async_hooks").AsyncResource;
+    var AsyncResource = __require("node:async_hooks").AsyncResource;
     var Busboy = require_lib4();
     var appendField = require_append_field();
     var Counter = require_counter();
@@ -43966,8 +43966,8 @@ or increase socketAcquisitionWarningTimeout=(millis) in the NodeHttpHandler conf
     };
     __name(_NodeHttpHandler, "NodeHttpHandler");
     var NodeHttpHandler = _NodeHttpHandler;
-    var import_http22 = __require("http2");
-    var import_http2 = __toESM2(__require("http2"));
+    var import_http22 = __require("node:http2");
+    var import_http2 = __toESM2(__require("node:http2"));
     var _NodeHttp2ConnectionPool = class _NodeHttp2ConnectionPool {
       constructor(sessions) {
         this.sessions = [];
@@ -55947,7 +55947,7 @@ var require_dist_cjs45 = __commonJS({
     module.exports = __toCommonJS2(src_exports);
     var import_node_config_provider = require_dist_cjs37();
     var import_os = __require("node:os");
-    var import_process = __require("process");
+    var import_process = __require("node:process");
     var crtAvailability = {
       isCrtAvailable: false
     };
@@ -60616,7 +60616,7 @@ var require_dist_cjs55 = __commonJS({
     module.exports = __toCommonJS2(src_exports);
     var import_shared_ini_file_loader = require_dist_cjs36();
     var import_property_provider2 = require_dist_cjs34();
-    var import_child_process = __require("child_process");
+    var import_child_process = __require("node:child_process");
     var import_util = __require("node:util");
     var getValidatedProcessCredentials = /* @__PURE__ */ __name((profileName, data, profiles) => {
       var _a;

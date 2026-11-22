@@ -81,12 +81,13 @@ console.log('📦 Step 3: Bundling worker for Cloudflare Pages Advanced Mode (_w
         'cloudflare:workers'
       ],
       banner: {
-        js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);"
+        js: "import { createRequire } from 'node:module'; const require = createRequire('file:///worker.js');"
       },
       alias: {
         'tty': path.resolve('src/shims/tty.js'),
         'node:tty': path.resolve('src/shims/tty.js'),
         'supports-color': path.resolve('src/shims/supports-color.js'),
+        'async_hooks': 'node:async_hooks',
         'crypto': 'node:crypto',
         'path': 'node:path',
         'fs': 'node:fs',
@@ -101,7 +102,10 @@ console.log('📦 Step 3: Bundling worker for Cloudflare Pages Advanced Mode (_w
         'net': 'node:net',
         'zlib': 'node:zlib',
         'string_decoder': 'node:string_decoder',
-        'querystring': 'node:querystring'
+        'querystring': 'node:querystring',
+        'child_process': 'node:child_process',
+        'http2': 'node:http2',
+        'process': 'node:process'
       },
       legalComments: 'none'
     });
