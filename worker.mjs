@@ -21,6 +21,29 @@ export default {
         if (env.DB) globalThis.DB = env.DB;
         if (env.STORAGE_BUCKET) globalThis.STORAGE_BUCKET = env.STORAGE_BUCKET;
       }
+
+      // Check if this request can be served as a static asset via env.ASSETS (Pages / Workers Assets)
+      const url = new URL(request.url);
+      const isAsset = /\.[a-zA-Z0-9]+$/.test(url.pathname) ||
+                      url.pathname.startsWith('/css/') ||
+                      url.pathname.startsWith('/js/') ||
+                      url.pathname.startsWith('/images/') ||
+                      url.pathname === '/robots.txt' ||
+                      url.pathname === '/sitemap.xml' ||
+                      url.pathname === '/manifest.json' ||
+                      url.pathname === '/favicon.ico';
+
+      if (isAsset && env && env.ASSETS) {
+        try {
+          const assetRes = await env.ASSETS.fetch(request);
+          if (assetRes && assetRes.status !== 404) {
+            return assetRes;
+          }
+        } catch (assetErr) {
+          // Fall through to express handler
+        }
+      }
+
       return await handler.fetch(request, env, ctx);
     } catch (err) {
       console.error("Worker fetch exception:", err);
