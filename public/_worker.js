@@ -1,67 +1,109 @@
 
+import * as nodeAssert from 'node:assert';
+import * as nodeAsyncHooks from 'node:async_hooks';
 import * as nodeBuffer from 'node:buffer';
+import * as nodeChildProcess from 'node:child_process';
 import * as nodeCrypto from 'node:crypto';
+import * as nodeDns from 'node:dns';
 import * as nodeEvents from 'node:events';
 import * as nodeFs from 'node:fs';
+import * as nodeFsPromises from 'node:fs/promises';
 import * as nodeHttp from 'node:http';
+import * as nodeHttp2 from 'node:http2';
 import * as nodeHttps from 'node:https';
 import * as nodeNet from 'node:net';
 import * as nodeOs from 'node:os';
 import * as nodePath from 'node:path';
 import * as nodeProcess from 'node:process';
+import * as nodeQuerystring from 'node:querystring';
 import * as nodeStream from 'node:stream';
 import * as nodeStringDecoder from 'node:string_decoder';
+import * as nodeTls from 'node:tls';
 import * as nodeUrl from 'node:url';
 import * as nodeUtil from 'node:util';
 import * as nodeZlib from 'node:zlib';
-import * as nodeAsyncHooks from 'node:async_hooks';
 
-const toCJS = (m) => {
-  if (!m || typeof m !== 'object') return m;
-  const obj = Object.assign({}, m);
-  if (m.default && typeof m.default === 'object') {
-    Object.assign(obj, m.default);
+const copyProps = (target, src) => {
+  if (!src) return;
+  for (const key of Object.getOwnPropertyNames(src)) {
+    if (key === 'name' || key === 'length' || key === 'prototype' || key === 'caller' || key === 'arguments') continue;
+    try {
+      target[key] = src[key];
+    } catch (e) {}
   }
-  return obj;
 };
 
+const toCJS = (mod, preferredDefault) => {
+  if (!mod) return preferredDefault || {};
+  let target = preferredDefault;
+  if (!target) {
+    if (typeof mod === 'function') {
+      target = mod;
+    } else if (typeof mod.default === 'function') {
+      target = mod.default;
+    } else {
+      target = {};
+    }
+  }
+  copyProps(target, mod);
+  if (mod.default && typeof mod.default === 'object') {
+    copyProps(target, mod.default);
+  }
+  return target;
+};
+
+const cjsAssert = toCJS(nodeAssert, nodeAssert.default);
+const cjsAsyncHooks = toCJS(nodeAsyncHooks);
 const cjsBuffer = toCJS(nodeBuffer);
+const cjsChildProcess = toCJS(nodeChildProcess);
 const cjsCrypto = toCJS(nodeCrypto);
-const cjsEvents = toCJS(nodeEvents);
+const cjsDns = toCJS(nodeDns);
+const cjsEvents = toCJS(nodeEvents, nodeEvents.EventEmitter || nodeEvents.default);
 const cjsFs = toCJS(nodeFs);
+const cjsFsPromises = toCJS(nodeFsPromises);
 const cjsHttp = toCJS(nodeHttp);
+const cjsHttp2 = toCJS(nodeHttp2);
 const cjsHttps = toCJS(nodeHttps);
 const cjsNet = toCJS(nodeNet);
 const cjsOs = toCJS(nodeOs);
 const cjsPath = toCJS(nodePath);
 const cjsProcess = toCJS(nodeProcess);
-const cjsStream = toCJS(nodeStream);
+const cjsQuerystring = toCJS(nodeQuerystring);
+const cjsStream = toCJS(nodeStream, nodeStream.Stream || nodeStream.default);
 const cjsStringDecoder = toCJS(nodeStringDecoder);
+const cjsTls = toCJS(nodeTls);
 const cjsUrl = toCJS(nodeUrl);
 const cjsUtil = toCJS(nodeUtil);
 const cjsZlib = toCJS(nodeZlib);
-const cjsAsyncHooks = toCJS(nodeAsyncHooks);
 
 const nodeModules = {
+  'assert': cjsAssert, 'node:assert': cjsAssert,
+  'async_hooks': cjsAsyncHooks, 'node:async_hooks': cjsAsyncHooks,
   'buffer': cjsBuffer, 'node:buffer': cjsBuffer,
+  'child_process': cjsChildProcess, 'node:child_process': cjsChildProcess,
   'crypto': cjsCrypto, 'node:crypto': cjsCrypto,
+  'dns': cjsDns, 'node:dns': cjsDns,
   'events': cjsEvents, 'node:events': cjsEvents,
   'fs': cjsFs, 'node:fs': cjsFs,
+  'fs/promises': cjsFsPromises, 'node:fs/promises': cjsFsPromises,
   'http': cjsHttp, 'node:http': cjsHttp,
+  'http2': cjsHttp2, 'node:http2': cjsHttp2,
   'https': cjsHttps, 'node:https': cjsHttps,
   'net': cjsNet, 'node:net': cjsNet,
   'os': cjsOs, 'node:os': cjsOs,
   'path': cjsPath, 'node:path': cjsPath,
   'process': cjsProcess, 'node:process': cjsProcess,
+  'querystring': cjsQuerystring, 'node:querystring': cjsQuerystring,
   'stream': cjsStream, 'node:stream': cjsStream,
   'string_decoder': cjsStringDecoder, 'node:string_decoder': cjsStringDecoder,
+  'tls': cjsTls, 'node:tls': cjsTls,
   'url': cjsUrl, 'node:url': cjsUrl,
   'util': cjsUtil, 'node:util': cjsUtil,
   'zlib': cjsZlib, 'node:zlib': cjsZlib,
-  'async_hooks': cjsAsyncHooks, 'node:async_hooks': cjsAsyncHooks,
   'tty': { isatty: () => false, ReadStream: class ReadStream {}, WriteStream: class WriteStream {} },
   'node:tty': { isatty: () => false, ReadStream: class ReadStream {}, WriteStream: class WriteStream {} },
-  'supports-color': { stdout: false, stderr: false }
+  'supports-color': { stdout: false, stderr: false },
+  '@aws-sdk/signature-v4-crt': {}
 };
 
 const require = (mod) => nodeModules[mod] || {};
