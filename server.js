@@ -36,9 +36,12 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Static Files
-app.use(express.static(path.resolve('public')));
-app.use('/uploads', express.static(path.resolve('uploads')));
+// Static Files: Only mount physical filesystem middleware in local Node.js environment
+// On Cloudflare Pages/Workers, static assets are served natively via Cloudflare CDN / env.ASSETS
+if (typeof WebSocketPair === 'undefined' && !globalThis.__CF_ENV__ && !globalThis.__CF_PAGES__) {
+  app.use(express.static(path.resolve('public')));
+  app.use('/uploads', express.static(path.resolve('uploads')));
+}
 
 // Routes
 app.get('/api/seed-db', async (req, res) => {

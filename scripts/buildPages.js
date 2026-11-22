@@ -143,6 +143,32 @@ const cjsDns = toCJS(nodeDns);
 const cjsEvents = toCJS(nodeEvents, nodeEvents.EventEmitter || nodeEvents.default);
 const cjsFs = toCJS(nodeFs);
 const cjsFsPromises = toCJS(nodeFsPromises);
+
+// Safe filesystem shims for Serverless Edge environment:
+// When any module checks for file existence or stats, gracefully return ENOENT instead of throwing unenv not implemented errors
+cjsFs.stat = (p, opts, cb) => {
+  const callback = typeof opts === 'function' ? opts : cb;
+  const err = new Error("ENOENT: no such file or directory, stat '" + p + "'");
+  err.code = 'ENOENT';
+  if (typeof callback === 'function') setTimeout(() => callback(err), 0);
+};
+cjsFs.statSync = (p) => {
+  const err = new Error("ENOENT: no such file or directory, stat '" + p + "'");
+  err.code = 'ENOENT';
+  throw err;
+};
+cjsFs.lstat = cjsFs.stat;
+cjsFs.lstatSync = cjsFs.statSync;
+cjsFs.fstat = cjsFs.stat;
+cjsFs.fstatSync = cjsFs.statSync;
+cjsFs.access = (p, mode, cb) => {
+  const callback = typeof mode === 'function' ? mode : cb;
+  const err = new Error("ENOENT: no such file or directory, access '" + p + "'");
+  err.code = 'ENOENT';
+  if (typeof callback === 'function') setTimeout(() => callback(err), 0);
+};
+cjsFs.accessSync = cjsFs.statSync;
+cjsFs.existsSync = () => false;
 const cjsHttp = toCJS(nodeHttp);
 const cjsHttp2 = toCJS(nodeHttp2);
 const cjsHttps = toCJS(nodeHttps);
