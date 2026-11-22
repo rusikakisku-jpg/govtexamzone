@@ -271,10 +271,10 @@ class D1Client {
       // 1. Create each table independently so one failure never blocks the others
       for (const tableSql of CORE_TABLES) {
         try {
-          if (typeof nativeD1.exec === 'function') {
-            await nativeD1.exec(tableSql);
-          } else {
+          if (typeof nativeD1.prepare === 'function') {
             await nativeD1.prepare(tableSql).run();
+          } else if (typeof nativeD1.exec === 'function') {
+            await nativeD1.exec(tableSql);
           }
         } catch (tableErr) {
           console.warn('D1 create table notice:', tableErr.message);
@@ -284,10 +284,10 @@ class D1Client {
       // 2. Create indexes independently
       for (const indexSql of CORE_INDEXES) {
         try {
-          if (typeof nativeD1.exec === 'function') {
-            await nativeD1.exec(indexSql);
-          } else {
+          if (typeof nativeD1.prepare === 'function') {
             await nativeD1.prepare(indexSql).run();
+          } else if (typeof nativeD1.exec === 'function') {
+            await nativeD1.exec(indexSql);
           }
         } catch (idxErr) {}
       }

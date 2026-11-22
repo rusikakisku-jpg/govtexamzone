@@ -45,17 +45,23 @@ if (typeof WebSocketPair === 'undefined' && !globalThis.__CF_ENV__ && !globalThi
 
 // Routes
 app.get('/api/seed-db', async (req, res) => {
+  const tableResults = [];
   try {
-    const tableResults = [];
     const nativeD1 = d1.getNativeD1();
     if (d1.CORE_TABLES && Array.isArray(d1.CORE_TABLES)) {
       for (const sql of d1.CORE_TABLES) {
         try {
           if (nativeD1) {
-            if (typeof nativeD1.exec === 'function') await nativeD1.exec(sql);
-            else await nativeD1.prepare(sql).run();
+            let res;
+            if (typeof nativeD1.prepare === 'function') {
+              res = await nativeD1.prepare(sql).run();
+            } else if (typeof nativeD1.exec === 'function') {
+              res = await nativeD1.exec(sql);
+            }
+            tableResults.push({ ok: true, name: sql.split('(')[0].replace(/[\n\r\t]+/g, ' ').trim(), res });
+          } else {
+            tableResults.push({ ok: false, error: 'No nativeD1 found' });
           }
-          tableResults.push({ ok: true, name: sql.split('(')[0].replace(/[\n\r\t]+/g, ' ').trim() });
         } catch (tableErr) {
           tableResults.push({ ok: false, error: tableErr.message, name: sql.split('(')[0].replace(/[\n\r\t]+/g, ' ').trim() });
         }
@@ -66,7 +72,7 @@ app.get('/api/seed-db', async (req, res) => {
     res.json({ success: true, tableResults, message: 'Database initialized and seeded successfully!' });
   } catch (err) {
     console.error('Seed DB Error:', err);
-    res.status(500).json({ success: false, error: err.message, stack: err.stack });
+    res.status(500).json({ success: false, error: err.message, tableResults, stack: err.stack });
   }
 });
 app.use('/admin', adminRoutes);

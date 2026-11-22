@@ -27314,6 +27314,14 @@ var require_seed = __commonJS({
     async function seedDatabase() {
       await d1.init();
       console.log("\u{1F331} Seeding initial Govt Exam Zone database...");
+      if (d1.CORE_TABLES && Array.isArray(d1.CORE_TABLES)) {
+        for (const sql of d1.CORE_TABLES) {
+          try {
+            await d1.prepare(sql).run();
+          } catch (e) {
+          }
+        }
+      }
       try {
         await d1.prepare(`
       CREATE TABLE IF NOT EXISTS authors (
@@ -28438,10 +28446,10 @@ var require_d1Client = __commonJS({
           if (!nativeD1) return;
           for (const tableSql of CORE_TABLES) {
             try {
-              if (typeof nativeD1.exec === "function") {
-                await nativeD1.exec(tableSql);
-              } else {
+              if (typeof nativeD1.prepare === "function") {
                 await nativeD1.prepare(tableSql).run();
+              } else if (typeof nativeD1.exec === "function") {
+                await nativeD1.exec(tableSql);
               }
             } catch (tableErr) {
               console.warn("D1 create table notice:", tableErr.message);
@@ -28449,10 +28457,10 @@ var require_d1Client = __commonJS({
           }
           for (const indexSql of CORE_INDEXES) {
             try {
-              if (typeof nativeD1.exec === "function") {
-                await nativeD1.exec(indexSql);
-              } else {
+              if (typeof nativeD1.prepare === "function") {
                 await nativeD1.prepare(indexSql).run();
+              } else if (typeof nativeD1.exec === "function") {
+                await nativeD1.exec(indexSql);
               }
             } catch (idxErr) {
             }
@@ -81195,17 +81203,23 @@ var require_server = __commonJS({
       app2.use("/uploads", express.static(path.resolve("uploads")));
     }
     app2.get("/api/seed-db", async (req, res) => {
+      const tableResults = [];
       try {
-        const tableResults = [];
         const nativeD1 = d1.getNativeD1();
         if (d1.CORE_TABLES && Array.isArray(d1.CORE_TABLES)) {
           for (const sql of d1.CORE_TABLES) {
             try {
               if (nativeD1) {
-                if (typeof nativeD1.exec === "function") await nativeD1.exec(sql);
-                else await nativeD1.prepare(sql).run();
+                let res2;
+                if (typeof nativeD1.prepare === "function") {
+                  res2 = await nativeD1.prepare(sql).run();
+                } else if (typeof nativeD1.exec === "function") {
+                  res2 = await nativeD1.exec(sql);
+                }
+                tableResults.push({ ok: true, name: sql.split("(")[0].replace(/[\n\r\t]+/g, " ").trim(), res: res2 });
+              } else {
+                tableResults.push({ ok: false, error: "No nativeD1 found" });
               }
-              tableResults.push({ ok: true, name: sql.split("(")[0].replace(/[\n\r\t]+/g, " ").trim() });
             } catch (tableErr) {
               tableResults.push({ ok: false, error: tableErr.message, name: sql.split("(")[0].replace(/[\n\r\t]+/g, " ").trim() });
             }
@@ -81216,7 +81230,7 @@ var require_server = __commonJS({
         res.json({ success: true, tableResults, message: "Database initialized and seeded successfully!" });
       } catch (err) {
         console.error("Seed DB Error:", err);
-        res.status(500).json({ success: false, error: err.message, stack: err.stack });
+        res.status(500).json({ success: false, error: err.message, tableResults, stack: err.stack });
       }
     });
     app2.use("/admin", adminRoutes);

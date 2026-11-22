@@ -5,7 +5,16 @@ async function seedDatabase() {
 
   console.log('🌱 Seeding initial Govt Exam Zone database...');
 
-  // 0. Ensure Authors table and posts.author_id exist
+  // 0. Ensure all core tables exist before querying or inserting
+  if (d1.CORE_TABLES && Array.isArray(d1.CORE_TABLES)) {
+    for (const sql of d1.CORE_TABLES) {
+      try {
+        await d1.prepare(sql).run();
+      } catch (e) {}
+    }
+  }
+
+  // Ensure Authors table and posts.author_id exist
   try {
     await d1.prepare(`
       CREATE TABLE IF NOT EXISTS authors (
