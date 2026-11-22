@@ -24,6 +24,7 @@ class D1Client {
       this.nativeD1 = nativeD1;
       this.isNativeD1 = true;
       this.initialized = true;
+      await this.runNativeSchema();
       return;
     }
 
@@ -132,6 +133,28 @@ class D1Client {
       console.log('✅ Cloudflare D1 remote schema verified.');
     } catch (err) {
       console.warn('⚠️ Warning during remote D1 schema initialization:', err.message);
+    }
+  }
+
+  async runNativeSchema() {
+    try {
+      if (!this.nativeD1) return;
+      const schemaSql = fs.readFileSync(SCHEMA_FILE_PATH, 'utf-8');
+      const statements = schemaSql
+        .split(';')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+      for (const statement of statements) {
+        try {
+          await this.nativeD1.prepare(statement).run();
+        } catch (e) {
+          // Ignore if table/index already exists
+        }
+      }
+      console.log('✅ Native Cloudflare D1 schema verified.');
+    } catch (err) {
+      console.warn('⚠️ Warning during native D1 schema check:', err.message);
     }
   }
 
