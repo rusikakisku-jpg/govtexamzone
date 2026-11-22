@@ -28201,8 +28201,8 @@ var require_d1Client = __commonJS({
     var config = require_env();
     var DB_FILE_PATH = path.resolve("data/sarkariresult.db");
     var SCHEMA_FILE_PATH = path.resolve("schema.sql");
-    var EMBEDDED_SCHEMA_SQL = `
-CREATE TABLE IF NOT EXISTS posts (
+    var CORE_TABLES = [
+      `CREATE TABLE IF NOT EXISTS posts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
     slug TEXT UNIQUE NOT NULL,
@@ -28230,15 +28230,8 @@ CREATE TABLE IF NOT EXISTS posts (
     author_id INTEGER DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_posts_category ON posts(category);
-CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug);
-CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
-CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id);
-CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC);
-
-CREATE TABLE IF NOT EXISTS authors (
+  )`,
+      `CREATE TABLE IF NOT EXISTS authors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     slug TEXT UNIQUE NOT NULL,
@@ -28255,20 +28248,16 @@ CREATE TABLE IF NOT EXISTS authors (
     last_login DATETIME,
     is_active INTEGER DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_authors_slug ON authors(slug);
-
-CREATE TABLE IF NOT EXISTS marquees (
+  )`,
+      `CREATE TABLE IF NOT EXISTS marquees (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
     url TEXT NOT NULL,
     is_active INTEGER DEFAULT 1,
     display_order INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS badges (
+  )`,
+      `CREATE TABLE IF NOT EXISTS badges (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
     subtitle TEXT,
@@ -28276,9 +28265,8 @@ CREATE TABLE IF NOT EXISTS badges (
     bg_color TEXT NOT NULL,
     display_order INTEGER DEFAULT 0,
     is_active INTEGER DEFAULT 1
-);
-
-CREATE TABLE IF NOT EXISTS uploads (
+  )`,
+      `CREATE TABLE IF NOT EXISTS uploads (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     original_name TEXT NOT NULL,
     file_key TEXT NOT NULL,
@@ -28287,13 +28275,21 @@ CREATE TABLE IF NOT EXISTS uploads (
     mime_type TEXT,
     file_size INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS settings (
+  )`,
+      `CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
-);
-`;
+  )`
+    ];
+    var CORE_INDEXES = [
+      `CREATE INDEX IF NOT EXISTS idx_posts_category ON posts(category)`,
+      `CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug)`,
+      `CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_authors_slug ON authors(slug)`
+    ];
+    var EMBEDDED_SCHEMA_SQL = CORE_TABLES.concat(CORE_INDEXES).join(";\n\n") + ";";
     function getSchemaSql() {
       try {
         if (typeof fs.readFileSync === "function" && typeof fs.existsSync === "function" && fs.existsSync(SCHEMA_FILE_PATH)) {
@@ -28440,20 +28436,28 @@ CREATE TABLE IF NOT EXISTS settings (
         try {
           const nativeD1 = this.getNativeD1();
           if (!nativeD1) return;
-          const schemaSql = getSchemaSql();
-          if (typeof nativeD1.exec === "function") {
-            await nativeD1.exec(schemaSql);
-            console.log("\u2705 Native Cloudflare D1 schema verified via exec().");
-          } else {
-            const statements = schemaSql.split(";").map((s) => s.trim()).filter((s) => s.length > 0);
-            for (const statement of statements) {
-              try {
-                await nativeD1.prepare(statement).run();
-              } catch (e) {
+          for (const tableSql of CORE_TABLES) {
+            try {
+              if (typeof nativeD1.exec === "function") {
+                await nativeD1.exec(tableSql);
+              } else {
+                await nativeD1.prepare(tableSql).run();
               }
+            } catch (tableErr) {
+              console.warn("D1 create table notice:", tableErr.message);
             }
-            console.log("\u2705 Native Cloudflare D1 schema verified.");
           }
+          for (const indexSql of CORE_INDEXES) {
+            try {
+              if (typeof nativeD1.exec === "function") {
+                await nativeD1.exec(indexSql);
+              } else {
+                await nativeD1.prepare(indexSql).run();
+              }
+            } catch (idxErr) {
+            }
+          }
+          console.log("\u2705 Native Cloudflare D1 tables and indexes verified.");
           try {
             const countRow = await nativeD1.prepare("SELECT COUNT(*) as count FROM marquees").first();
             if (!countRow || countRow.count === 0) {
@@ -28554,6 +28558,8 @@ CREATE TABLE IF NOT EXISTS settings (
       }
     };
     var d1 = new D1Client();
+    d1.CORE_TABLES = CORE_TABLES;
+    d1.CORE_INDEXES = CORE_INDEXES;
     module.exports = d1;
   }
 });
@@ -81190,12 +81196,27 @@ var require_server = __commonJS({
     }
     app2.get("/api/seed-db", async (req, res) => {
       try {
+        const tableResults = [];
+        const nativeD1 = d1.getNativeD1();
+        if (d1.CORE_TABLES && Array.isArray(d1.CORE_TABLES)) {
+          for (const sql of d1.CORE_TABLES) {
+            try {
+              if (nativeD1) {
+                if (typeof nativeD1.exec === "function") await nativeD1.exec(sql);
+                else await nativeD1.prepare(sql).run();
+              }
+              tableResults.push({ ok: true, name: sql.split("(")[0].replace(/[\n\r\t]+/g, " ").trim() });
+            } catch (tableErr) {
+              tableResults.push({ ok: false, error: tableErr.message, name: sql.split("(")[0].replace(/[\n\r\t]+/g, " ").trim() });
+            }
+          }
+        }
         await d1.init();
         await seedDatabase();
-        res.json({ success: true, message: "Database initialized and seeded successfully!" });
+        res.json({ success: true, tableResults, message: "Database initialized and seeded successfully!" });
       } catch (err) {
         console.error("Seed DB Error:", err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: err.message, stack: err.stack });
       }
     });
     app2.use("/admin", adminRoutes);
