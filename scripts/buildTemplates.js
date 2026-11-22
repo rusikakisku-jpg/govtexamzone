@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const ejs = require('ejs');
 
 function getFiles(dir) {
   let results = [];
@@ -18,32 +19,76 @@ function getFiles(dir) {
 
 const viewsDir = path.resolve('views');
 const allEjs = getFiles(viewsDir);
-const templates = {};
+
+const templateSources = {};
 
 allEjs.forEach(absPath => {
   const relPath = path.relative(viewsDir, absPath).replace(/\\/g, '/');
   const content = fs.readFileSync(absPath, 'utf-8');
-  templates[relPath] = content;
-  templates['views/' + relPath] = content;
+  const t = new ejs.Template(content, { compileDebug: false, client: true });
+  t.compile();
+
+  templateSources[relPath] = t.source;
+  templateSources['views/' + relPath] = t.source;
 });
 
 const outPath = path.resolve('src/views/templateEngine.js');
-const fileContent = `// Auto-generated in-memory template bundle for Cloudflare Workers & Node.js
-const ejs = require('ejs');
+
+const fileContent = `// Pre-compiled template sources for Cloudflare Workers & Node.js
+// All functions compiled ONCE during startup via allow_eval_during_startup
+// ZERO eval() or new Function() during request handling!
 const path = require('path');
-const fs = require('fs');
 
-const templates = ${JSON.stringify(templates, null, 2)};
+function escapeFn(s) {
+  if (s === undefined || s === null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
-function resolveTemplate(includePath, fromFile) {
+const internalBypass = new Set([
+  '__append', '__output', '__line', '__lines', '__filename', 'escapeFn', 'include', 'rethrow'
+]);
+
+function createSafeLocals(data) {
+  if (!data || typeof data !== 'object') data = {};
+  return new Proxy(data, {
+    has(target, prop) {
+      if (internalBypass.has(prop) || (typeof prop === 'string' && prop in globalThis)) {
+        return prop in target;
+      }
+      return true;
+    },
+    get(target, prop) {
+      if (prop === Symbol.unscopables) return undefined;
+      return target[prop];
+    }
+  });
+}
+
+const templateSources = ${JSON.stringify(templateSources, null, 2)};
+const compiledTemplates = {};
+
+// Compile all templates once during startup
+for (const key in templateSources) {
+  try {
+    compiledTemplates[key] = new Function('locals', 'escapeFn', 'include', templateSources[key]);
+  } catch (err) {
+    console.warn('Startup compile warning for ' + key + ':', err.message);
+  }
+}
+
+function resolveTemplateKey(includePath, fromKey) {
   let rel = includePath;
   if (!rel.endsWith('.ejs')) rel += '.ejs';
-  const baseDir = fromFile ? path.dirname(fromFile) : 'views';
+  const baseDir = fromKey ? path.dirname(fromKey) : '';
   const target = path.normalize(path.join(baseDir, rel)).replace(/\\\\/g, '/');
-
-  for (const k in templates) {
+  for (const k in compiledTemplates) {
     if (k === target || k.endsWith(target) || target.endsWith(k)) {
-      return { filename: k, template: templates[k] };
+      return k;
     }
   }
   return null;
@@ -52,31 +97,30 @@ function resolveTemplate(includePath, fromFile) {
 function templateEngine(filePath, options, callback) {
   try {
     const norm = filePath.replace(/\\\\/g, '/');
-    let matchedKey = Object.keys(templates).find(k => norm.endsWith(k));
-    let tpl = matchedKey ? templates[matchedKey] : null;
-
-    if (!tpl) {
-      try {
-        if (typeof fs.readFileSync === 'function') {
-          tpl = fs.readFileSync(filePath, 'utf-8');
-          matchedKey = filePath;
-        }
-      } catch (e) {}
+    let matchedKey = resolveTemplateKey(norm, '');
+    if (!matchedKey || !compiledTemplates[matchedKey]) {
+      const tryRel = Object.keys(compiledTemplates).find(k => norm.endsWith(k));
+      if (tryRel) matchedKey = tryRel;
     }
 
-    if (!tpl) {
+    if (!matchedKey || !compiledTemplates[matchedKey]) {
       return callback(new Error('Template not found: ' + filePath));
     }
 
-    const renderOpts = Object.assign({}, options, {
-      filename: matchedKey || filePath,
-      includer: (incPath, currentFilename) => {
-        return resolveTemplate(incPath, currentFilename || matchedKey);
-      }
-    });
+    function makeInclude(currentKey, parentData) {
+      return function(incPath, incData) {
+        const targetKey = resolveTemplateKey(incPath, currentKey);
+        if (!targetKey || !compiledTemplates[targetKey]) {
+          throw new Error('Include not found: ' + incPath + ' from ' + currentKey);
+        }
+        const merged = Object.assign({}, parentData, incData);
+        return compiledTemplates[targetKey](createSafeLocals(merged), escapeFn, makeInclude(targetKey, merged));
+      };
+    }
 
-    const rendered = ejs.render(tpl, options, renderOpts);
-    callback(null, rendered);
+    const safeOptions = createSafeLocals(options);
+    const html = compiledTemplates[matchedKey](safeOptions, escapeFn, makeInclude(matchedKey, options));
+    callback(null, html);
   } catch (err) {
     callback(err);
   }
@@ -84,11 +128,11 @@ function templateEngine(filePath, options, callback) {
 
 module.exports = {
   templateEngine,
-  templates,
-  resolveTemplate
+  compiledTemplates,
+  resolveTemplateKey
 };
 `;
 
 fs.mkdirSync(path.dirname(outPath), { recursive: true });
 fs.writeFileSync(outPath, fileContent, 'utf-8');
-console.log('Successfully bundled', Object.keys(templates).length / 2, 'templates into', outPath);
+console.log('Successfully generated template sources for', Object.keys(templateSources).length / 2, 'templates into', outPath);

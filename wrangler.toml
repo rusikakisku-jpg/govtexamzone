@@ -1,7 +1,7 @@
 name = "govtexamzone"
 main = "worker.mjs"
 compatibility_date = "2024-09-23"
-compatibility_flags = ["nodejs_compat"]
+compatibility_flags = ["nodejs_compat", "allow_eval_during_startup"]
 
 [assets]
 directory = "./public"
