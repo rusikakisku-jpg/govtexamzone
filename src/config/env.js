@@ -1,17 +1,22 @@
 const dotenv = require('dotenv');
 const path = require('path');
 
-dotenv.config({ path: path.join(__dirname, '../../.env') });
+const baseDir = typeof __dirname !== 'undefined' ? __dirname : (typeof process !== 'undefined' && process.cwd ? process.cwd() : '/');
+try {
+  dotenv.config({ path: path.join(baseDir, '../../.env') });
+} catch (e) {}
+
+const cfEnv = globalThis.__CF_ENV__ || {};
 
 const config = {
   server: {
-    port: parseInt(process.env.PORT || '3000', 10),
-    nodeEnv: process.env.NODE_ENV || 'development',
-    sessionSecret: process.env.SESSION_SECRET || 'govtexamzone_secret_key_cloudflare_d1_r2'
+    port: parseInt(process.env.PORT || cfEnv.PORT || '3000', 10),
+    nodeEnv: process.env.NODE_ENV || cfEnv.NODE_ENV || 'development',
+    sessionSecret: process.env.SESSION_SECRET || cfEnv.SESSION_SECRET || 'govtexamzone_secret_key_cloudflare_d1_r2'
   },
   admin: {
-    username: process.env.ADMIN_USERNAME || 'admin',
-    password: process.env.ADMIN_PASSWORD || 'govtexamzone@2026'
+    username: process.env.ADMIN_USERNAME || cfEnv.ADMIN_USERNAME || 'admin',
+    password: process.env.ADMIN_PASSWORD || cfEnv.ADMIN_PASSWORD || 'govtexamzone@2026'
   },
   cloudflare: {
     d1: {

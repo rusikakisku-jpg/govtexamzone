@@ -1,6 +1,15 @@
 import { httpServerHandler } from "cloudflare:node";
 import { env } from "cloudflare:workers";
 
+// Polyfill global __dirname and __filename for Cloudflare Workers ES Module environment
+const cwd = typeof process !== 'undefined' && process.cwd ? process.cwd() : '/';
+if (typeof globalThis.__dirname === 'undefined') {
+  globalThis.__dirname = cwd;
+}
+if (typeof globalThis.__filename === 'undefined') {
+  globalThis.__filename = `${cwd}/worker.mjs`;
+}
+
 // Expose Cloudflare environment bindings to global scope for D1 and R2
 globalThis.__CF_ENV__ = env;
 if (env && env.DB) {

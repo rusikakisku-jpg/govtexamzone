@@ -3,7 +3,8 @@ const path = require('path');
 const { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const config = require('../config/env');
 
-const LOCAL_UPLOADS_DIR = path.join(__dirname, '../../uploads');
+const baseDir = typeof __dirname !== 'undefined' ? __dirname : (typeof process !== 'undefined' && process.cwd ? process.cwd() : '/');
+const LOCAL_UPLOADS_DIR = path.join(baseDir, '../../uploads');
 
 class R2Client {
   constructor() {

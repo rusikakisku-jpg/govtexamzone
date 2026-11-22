@@ -3,8 +3,9 @@ const path = require('path');
 const initSqlJs = require('sql.js');
 const config = require('../config/env');
 
-const DB_FILE_PATH = path.join(__dirname, '../../data/sarkariresult.db');
-const SCHEMA_FILE_PATH = path.join(__dirname, '../../schema.sql');
+const baseDir = typeof __dirname !== 'undefined' ? __dirname : (typeof process !== 'undefined' && process.cwd ? process.cwd() : '/');
+const DB_FILE_PATH = path.join(baseDir, '../../data/sarkariresult.db');
+const SCHEMA_FILE_PATH = path.join(baseDir, '../../schema.sql');
 
 class D1Client {
   constructor() {
