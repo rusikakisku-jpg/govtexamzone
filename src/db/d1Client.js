@@ -17,6 +17,16 @@ class D1Client {
   async init() {
     if (this.initialized) return;
 
+    // 1. Native Cloudflare D1 Binding check (when running on Cloudflare Workers)
+    const nativeD1 = globalThis.DB || (globalThis.__CF_ENV__ && globalThis.__CF_ENV__.DB);
+    if (nativeD1 && typeof nativeD1.prepare === 'function') {
+      console.log('⚡ Connected to Native Cloudflare D1 Database Binding');
+      this.nativeD1 = nativeD1;
+      this.isNativeD1 = true;
+      this.initialized = true;
+      return;
+    }
+
     if (this.isCloudflareD1) {
       console.log('⚡ Connected to remote Cloudflare D1 Database:', config.cloudflare.d1.databaseId);
       // Run schema on Cloudflare D1
@@ -134,6 +144,11 @@ class D1Client {
 
         return {
           async all() {
+            if (self.isNativeD1) {
+              const res = await self.nativeD1.prepare(sql).bind(...boundParams).all();
+              return (res && res.results) ? res.results : [];
+            }
+
             if (self.isCloudflareD1) {
               return await self.queryRemote(sql, boundParams);
             }
@@ -155,11 +170,19 @@ class D1Client {
           },
 
           async first() {
+            if (self.isNativeD1) {
+              return await self.nativeD1.prepare(sql).bind(...boundParams).first();
+            }
             const rows = await this.all();
             return rows.length > 0 ? rows[0] : null;
           },
 
           async run() {
+            if (self.isNativeD1) {
+              const res = await self.nativeD1.prepare(sql).bind(...boundParams).run();
+              return { success: true, changes: res?.meta?.changes || 0, lastInsertRowid: res?.meta?.last_row_id || null };
+            }
+
             if (self.isCloudflareD1) {
               const res = await self.queryRemote(sql, boundParams);
               return { success: true, result: res };
@@ -199,6 +222,9 @@ class D1Client {
   }
 
   async exec(sql) {
+    if (this.isNativeD1) {
+      return await this.nativeD1.exec(sql);
+    }
     if (this.isCloudflareD1) {
       return await this.queryRemote(sql);
     }

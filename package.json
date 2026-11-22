@@ -1,8 +1,8 @@
 {
-  "name": "workspace",
+  "name": "govtexamzone",
   "version": "1.0.0",
-  "description": "This is an isolated workspace for Antigravity Node 5. - Container Name: agy-node-5 - CLI Data & History: Isolated in node-5/data - Files & Projects: Stored in node-5/workspace",
-  "main": "index.js",
+  "description": "Govt Exam Zone - Full-Stack Recruitment Portal",
+  "main": "worker.mjs",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
