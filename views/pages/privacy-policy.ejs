@@ -1,0 +1,70 @@
+<%- include('../partials/header') %>
+<%- include('../partials/subheader') %>
+
+<main class="container">
+  <!-- Breadcrumb -->
+  <div style="font-size: 13px; margin: 10px 0 14px 2px; color: #666;">
+    <a href="/" style="color: var(--primary-red); font-weight: bold; text-decoration: none;">🏠 Home</a>
+    <span style="margin: 0 6px; color: #999;">»</span>
+    <span style="color: #333; font-weight: 600;">Privacy Policy</span>
+  </div>
+
+  <div class="sarkari-box" style="margin-bottom: 30px; background: #ffffff;">
+    <h1 class="sarkari-box-header" style="margin: 0; font-size: 16px; line-height: 1.3; text-align: left; padding: 14px 20px;">
+      Privacy Policy - Govt Exam Zone
+    </h1>
+
+    <div class="static-page-content">
+      <p style="font-size: 13px; color: #64748b;">
+        <b>Effective Date:</b> October 2026 | <b>Last Updated:</b> <%= new Date().getFullYear() %>
+      </p>
+
+      <p>
+        At <b>Govt Exam Zone (govtexamzone.com)</b>, accessible from <a href="https://govtexamzone.com">https://govtexamzone.com</a>, one of our main priorities is the privacy of our visitors. This Privacy Policy document outlines the types of information that is collected and recorded by Govt Exam Zone and how we use it.
+      </p>
+
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 20px;">1. Information We Collect</h2>
+      <p>
+        Govt Exam Zone is an open public educational portal. We do not require mandatory candidate user registration or collect sensitive personal identification data to browse examination alerts. Like most standard web servers, we automatically collect basic non-personally identifiable log information:
+      </p>
+      <ul style="padding-left: 20px;">
+        <li>Internet Protocol (IP) addresses</li>
+        <li>Browser type and version</li>
+        <li>Internet Service Provider (ISP)</li>
+        <li>Date and time stamp</li>
+        <li>Referring/exit pages and page clicks</li>
+      </ul>
+
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 20px;">2. Cookies and Web Beacons</h2>
+      <p>
+        Govt Exam Zone uses standard cookies to store information about visitors' preferences, to optimize user experience, and customize web page content based on visitors' browser type or other technical information.
+      </p>
+
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 20px;">3. Google DoubleClick DART Cookie &amp; AdSense</h2>
+      <p>
+        Google is one of our third-party vendors. It also uses cookies, known as DART cookies, to serve ads to our site visitors based upon their visit to govtexamzone.com and other sites on the internet. Visitors may choose to decline the use of DART cookies by visiting the Google ad and content network Privacy Policy at the following URL: <a href="https://policies.google.com/technologies/ads" target="_blank" rel="noopener noreferrer">https://policies.google.com/technologies/ads</a>.
+      </p>
+
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 20px;">4. Third Party Privacy Policies</h2>
+      <p>
+        Govt Exam Zone's Privacy Policy does not apply to other advertisers or websites. When you click on third-party links or official government portal buttons (e.g. ssc.gov.in, upsc.gov.in), you are directed to external servers governed by their respective privacy statements.
+      </p>
+
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 20px;">5. Children's Information</h2>
+      <p>
+        We believe in protecting children while using the internet. Govt Exam Zone does not knowingly collect any Personal Identifiable Information from children under the age of 13.
+      </p>
+
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 20px;">6. Consent</h2>
+      <p>
+        By using our website, you hereby consent to our Privacy Policy and agree to its Terms and Conditions.
+      </p>
+
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px; margin-top: 24px;">
+        <b>Contact Privacy Officer:</b> If you have additional questions or require more information about our Privacy Policy, do not hesitate to contact us at <a href="mailto:<%= (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'support@govtexamzone.com' %>"><%= (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'support@govtexamzone.com' %></a>.
+      </div>
+    </div>
+  </div>
+</main>
+
+<%- include('../partials/footer') %>

@@ -1,0 +1,363 @@
+<%- include('../partials/header') %>
+<%- include('../partials/subheader') %>
+
+<!-- Schema.org JSON-LD Structured Data for Google Job Indexing -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "JobPosting",
+  "title": "<%= post.title.replace(/"/g, '\\"') %>",
+  "description": "<%= (post.short_desc || post.title).replace(/"/g, '\\"') %>",
+  "datePosted": "<%= post.created_at ? new Date(post.created_at).toISOString() : new Date().toISOString() %>",
+  <% 
+    let validDate = new Date(new Date().getFullYear() + 1, 11, 31, 23, 59, 59).toISOString();
+    if (post.last_date) {
+      try {
+        const parsed = new Date(post.last_date);
+        if (!isNaN(parsed.getTime())) {
+          validDate = parsed.toISOString();
+        }
+      } catch(e) {}
+    }
+  %>
+  "validThrough": "<%= validDate %>",
+  "hiringOrganization": {
+    "@type": "Organization",
+    "name": "<%= (post.department || 'Government Recruitment Board').replace(/"/g, '\\"') %>",
+    "sameAs": "<%= post.official_website_url || ((typeof settings !== 'undefined' && settings.site_domain) ? (settings.site_domain.startsWith('http') ? settings.site_domain : 'https://' + settings.site_domain) : 'https://govtexamzone.com') %>"
+  },
+  "author": {
+    "@type": "Organization",
+    "name": <%- JSON.stringify((typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone') %>,
+    "url": <%- JSON.stringify(((typeof settings !== 'undefined' && settings.site_domain) ? (settings.site_domain.startsWith('http') ? settings.site_domain : 'https://' + settings.site_domain) : 'https://govtexamzone.com')) %>
+  },
+  "jobLocation": {
+    "@type": "Place",
+    "address": {
+      "@type": "PostalAddress",
+      "addressCountry": "IN"
+    }
+  },
+  "employmentType": "FULL_TIME"
+}
+</script>
+
+<!-- Schema.org JSON-LD BreadcrumbList -->
+<script type="application/ld+json">
+<%
+  const detailDomain = (typeof settings !== 'undefined' && settings.site_domain) 
+    ? (settings.site_domain.startsWith('http') ? settings.site_domain.replace(/\/$/, '') : 'https://' + settings.site_domain.replace(/\/$/, ''))
+    : 'https://govtexamzone.com';
+%>
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "<%= detailDomain %>"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "<%= (catInfo.name || post.category).replace(/"/g, '\\"') %>",
+      "item": "<%= detailDomain %>/category/<%= post.category %>"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "<%= post.title.replace(/"/g, '\\"') %>"
+    }
+  ]
+}
+</script>
+
+<main class="container detail-page-container">
+  <article class="post-detail-wrapper">
+    <!-- Breadcrumb -->
+    <div class="detail-breadcrumb">
+      <a href="/">Home</a> » 
+      <a href="/category/<%= post.category %>"><%= catInfo.name %></a> » 
+      <span><%= post.title %></span>
+    </div>
+
+    <!-- Title and Dept -->
+    <h1 class="detail-post-title"><%= post.title %></h1>
+    <% if (post.department) { %>
+      <div class="detail-dept-name"><%= post.department %></div>
+    <% } %>
+
+    <div class="detail-dates-strip">
+      <span class="info-label">Post Date / Update : </span><b class="important-val-postdate"><%= post.post_date || formatDate(post.created_at) %></b>
+    </div>
+
+    <!-- Social Connect Strip (Only Telegram & WhatsApp on Post Details) -->
+    <div class="social-bar" style="margin: 12px 0 14px 0;">
+      <a href="<%= (typeof settings !== 'undefined' && settings.telegram_url) ? settings.telegram_url : 'https://t.me/govtexamzoneofficial' %>" target="_blank" rel="noopener noreferrer" class="social-btn telegram">Join Telegram Channel</a>
+      <a href="<%= (typeof settings !== 'undefined' && settings.whatsapp_url) ? settings.whatsapp_url : 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10' %>" target="_blank" rel="noopener noreferrer" class="social-btn whatsapp">WhatsApp Channel</a>
+    </div>
+
+    <!-- Short Information -->
+    <% if (post.short_desc) { %>
+      <div class="detail-short-info">
+        <%= post.short_desc %>
+      </div>
+    <% } %>
+
+    <!-- 2-Column Info Grid: Important Dates & Application Fee -->
+    <div class="detail-info-grid">
+      <!-- Important Dates -->
+      <div class="info-card" id="dates">
+        <div class="info-card-header"><%= post.category === 'syllabus' ? 'Important Exam & Syllabus Dates' : (post.category === 'admit-card' ? 'Important Dates & Exam Schedule' : (post.category === 'result' ? 'Important Dates & Result Schedule' : 'Important Dates')) %></div>
+        <div class="info-card-body">
+          <% if (importantDates && importantDates.length > 0) { %>
+            <ul>
+              <% importantDates.forEach(item => { %>
+                <li>
+                  <span class="info-label"><%= item.event %> : </span>
+                  <b class="important-val-date"><%= item.date %></b>
+                </li>
+              <% }) %>
+            </ul>
+          <% } else { %>
+            <p style="color:#666;">No date schedule available.</p>
+          <% } %>
+        </div>
+      </div>
+
+      <!-- Application Fee -->
+      <div class="info-card" id="fees">
+        <div class="info-card-header red"><%= post.category === 'syllabus' ? 'Application / Download Fee' : (post.category === 'admit-card' ? 'Admit Card / Download Fee' : (post.category === 'result' ? 'Result Checking Fee' : 'Application Fee')) %></div>
+        <div class="info-card-body">
+          <% if (applicationFee && applicationFee.length > 0) { %>
+            <ul>
+              <% applicationFee.forEach(item => { %>
+                <li>
+                  <span class="info-label"><%= item.category %> : </span>
+                  <b class="important-val-fee"><%= item.fee %></b>
+                </li>
+              <% }) %>
+            </ul>
+          <% } else { %>
+            <p style="color:#666;">No fee details available.</p>
+          <% } %>
+        </div>
+      </div>
+    </div>
+
+    <!-- Age Limit Details -->
+    <% if (ageLimit && (ageLimit.min_age || ageLimit.max_age || ageLimit.relaxation)) { %>
+      <div class="info-card" style="margin-bottom: 20px;" id="agelimit">
+        <div class="info-card-header" style="background: #006400;">
+          <%= post.category === 'syllabus' ? 'Age Limit & Eligibility Overview ' : (post.category === 'admit-card' ? 'Age Limit & Eligibility Criteria ' : 'Age Limit Details ') %><%= ageLimit.as_on ? `(as on ${ageLimit.as_on})` : '' %>
+        </div>
+        <div class="info-card-body">
+          <ul>
+            <% if (ageLimit.min_age) { %>
+              <li><span class="info-label">Minimum Age : </span><b class="important-val-text"><%= ageLimit.min_age %></b></li>
+            <% } %>
+            <% if (ageLimit.max_age) { %>
+              <li><span class="info-label">Maximum Age : </span><b class="important-val-text"><%= ageLimit.max_age %></b></li>
+            <% } %>
+            <% if (ageLimit.relaxation) { %>
+              <li><span class="info-label">Age Relaxation : </span><b class="important-val-text"><%= ageLimit.relaxation %></b></li>
+            <% } %>
+            <li style="margin-top: 5px;">
+              <a href="/tools/age-calculator" target="_blank" style="color: #0000a0; font-weight: bold;">
+                👉 Calculate Your Exact Age Using Online Age Calculator
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    <% } %>
+
+    <!-- Vacancy Details Table -->
+    <div id="vacancies">
+    <% if (vacancyDetails && vacancyDetails.length > 0) { %>
+      <div style="text-align: center; margin: 15px 0 5px 0;">
+        <h2 style="color: var(--primary-red); font-size: 20px;">
+          <%= post.category === 'syllabus' ? 'Selection Process & Exam Pattern Details' : (post.category === 'admit-card' ? 'Exam Scheme & Selection Details' : (post.category === 'result' ? 'Result & Post Overview' : ('Vacancy Details : ' + (post.total_vacancy ? post.total_vacancy : '')))) %>
+        </h2>
+      </div>
+
+      <div class="table-responsive">
+        <table class="detail-table">
+          <thead>
+            <tr>
+              <th style="width: 30%;"><%= post.category === 'syllabus' ? 'Exam Stage / Paper' : (post.category === 'admit-card' ? 'Post / Exam Stage' : 'Post Name') %></th>
+              <th style="width: 20%;"><%= post.category === 'syllabus' ? 'Pattern & Duration' : (post.category === 'admit-card' ? 'Exam Pattern' : 'Total Post') %></th>
+              <th style="width: 50%;"><%= post.category === 'syllabus' ? 'Syllabus & Subject Scheme' : (post.category === 'admit-card' ? 'Eligibility & Selection Criteria' : 'Eligibility Criteria') %></th>
+            </tr>
+          </thead>
+          <tbody>
+            <% vacancyDetails.forEach(v => { %>
+              <tr>
+                <td><b class="important-val-text"><%= v.post_name %></b></td>
+                <td style="text-align: center; font-weight: 800; font-size: 16.5px; color: #0000a0;"><%= v.total_post %></td>
+                <td><%= v.eligibility %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+    </div>
+
+    <!-- Category-wise Vacancy Distribution Table -->
+    <% if (categoryDetails && categoryDetails.length > 0) { %>
+      <div style="text-align: center; margin: 15px 0 5px 0;">
+        <h3 style="color: #2b547e; font-size: 18px;">
+          <%= post.category === 'syllabus' ? 'Category-Wise Minimum Qualifying Marks Standards' : 'Category Wise Vacancy Details' %>
+        </h3>
+      </div>
+      <div class="table-responsive">
+        <table class="detail-table table-wide">
+          <thead>
+            <tr style="background: #2b547e;">
+              <th><%= post.category === 'syllabus' ? 'Stage / Paper' : 'Post Name' %></th>
+              <th>UR / Gen</th>
+              <th>EWS</th>
+              <th>OBC</th>
+              <th>SC</th>
+              <th>ST</th>
+              <th><%= post.category === 'syllabus' ? 'Standard' : 'Total' %></th>
+            </tr>
+          </thead>
+          <tbody>
+            <% categoryDetails.forEach(c => { %>
+              <tr style="text-align: center;">
+                <td style="text-align: left; font-weight: bold;"><%= c.post_name %></td>
+                <td><%= c.ur || '-' %></td>
+                <td><%= c.ews || '-' %></td>
+                <td><%= c.obc || '-' %></td>
+                <td><%= c.sc || '-' %></td>
+                <td><%= c.st || '-' %></td>
+                <td style="font-weight: bold; color: var(--primary-red);"><%= c.total || '-' %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+
+    <!-- How to Apply Instructions -->
+    <div id="howto">
+    <% if (post.how_to_apply) { %>
+      <div style="margin: 20px 0;">
+        <h3 style="color: var(--primary-red); font-size: 18px; margin-bottom: 8px;">
+          <%= post.category === 'syllabus' ? 'How to Check & Download ' + post.title + ' :' : (post.category === 'admit-card' ? 'How to Download ' + post.title + ' :' : (post.category === 'result' ? 'How to Check ' + post.title + ' :' : 'How to Fill ' + post.title + ' Online Form:')) %>
+        </h3>
+        <div class="how-to-apply-box">
+          <%= post.how_to_apply %>
+        </div>
+      </div>
+    <% } %>
+    </div>
+
+    <div style="text-align: center; margin: 16px 0; color: #c62828; font-weight: bold; font-size: 16px;">
+      <%= post.category === 'syllabus' ? 'Candidates Can Download the Complete Syllabus & Exam Pattern PDF Below' : (post.category === 'admit-card' ? 'Candidates Can Download Admit Card / Hall Ticket from the Links Below' : (post.category === 'result' ? 'Candidates Can Check Result / Scorecard from the Links Below' : 'Interested Candidates Can Read the Full Notification Before Apply Online')) %>
+    </div>
+
+    <!-- Useful Important Links Table -->
+    <div id="links" style="text-align: center; margin: 25px 0 10px 0;">
+      <h2 class="useful-links-heading">Some Useful Important Links</h2>
+    </div>
+
+    <div class="table-responsive links-table-responsive">
+      <table class="detail-table links-table">
+        <tbody>
+          <!-- Apply Online -->
+          <% if (post.apply_online_url) { %>
+            <tr>
+              <td style="font-weight: bold; color: #006400;">Apply Online</td>
+              <td style="text-align: center;">
+                <a href="<%= post.apply_online_url %>" target="_blank" class="useful-link-text">Click Here</a>
+              </td>
+            </tr>
+          <% } %>
+
+          <!-- Download Notification from Cloudflare R2 / Local -->
+          <% if (post.notification_pdf) { %>
+            <tr>
+              <td style="font-weight: bold; color: #b71c1c;">Download Notification (PDF)</td>
+              <td style="text-align: center;">
+                <a href="<%= post.notification_pdf %>" target="_blank" class="useful-link-text">Click Here</a>
+              </td>
+            </tr>
+          <% } %>
+
+          <!-- Admit Card Link -->
+          <% if (post.admit_card_url) { %>
+            <tr>
+              <td style="font-weight: bold; color: #0000a0;">Download Admit Card</td>
+              <td style="text-align: center;">
+                <a href="<%= post.admit_card_url %>" target="_blank" class="useful-link-text">Click Here</a>
+              </td>
+            </tr>
+          <% } %>
+
+          <!-- Result Link -->
+          <% if (post.result_url) { %>
+            <tr>
+              <td style="font-weight: bold; color: #0000a0;">Download Result</td>
+              <td style="text-align: center;">
+                <a href="<%= post.result_url %>" target="_blank" class="useful-link-text">Click Here</a>
+              </td>
+            </tr>
+          <% } %>
+
+          <!-- Custom Additional Links -->
+          <% if (links && links.length > 0) { %>
+            <% links.forEach(link => { %>
+              <tr>
+                <td style="font-weight: bold;"><%= link.label %></td>
+                <td style="text-align: center;">
+                  <a href="<%= link.url %>" target="_blank" class="useful-link-text"><%= link.btn_text || 'Click Here' %></a>
+                </td>
+              </tr>
+            <% }) %>
+          <% } %>
+
+          <!-- Photo Resizer Specs Tool Link -->
+          <tr>
+            <td style="font-weight: bold;">Check Photo &amp; Signature Upload Specs</td>
+            <td style="text-align: center;">
+              <a href="/tools/photo-resizer" target="_blank" class="useful-link-text">View Guide</a>
+            </td>
+          </tr>
+
+          <!-- Official Website -->
+          <% if (post.official_website_url) { %>
+            <tr>
+              <td style="font-weight: bold;">Official Website</td>
+              <td style="text-align: center;">
+                <a href="<%= post.official_website_url %>" target="_blank" class="useful-link-text">Click Here</a>
+              </td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+
+    <!-- Related Posts -->
+    <% if (relatedPosts && relatedPosts.length > 0) { %>
+      <div style="margin-top: 30px; border-top: 2px solid #ddd; padding-top: 15px;">
+        <h3 style="color: var(--primary-red); margin-bottom: 10px;">More <%= catInfo.name %> Updates:</h3>
+        <ul style="list-style: square; padding-left: 25px; line-height: 1.8;">
+          <% relatedPosts.forEach(rel => { %>
+            <li>
+              <a href="/post/<%= rel.slug %>" style="font-weight: 600;"><%= rel.title %></a>
+              <% if (rel.post_date) { %>
+                <span style="font-size: 12px; color: #777;"> - <%= rel.post_date %></span>
+              <% } %>
+            </li>
+          <% }) %>
+        </ul>
+      </div>
+    <% } %>
+  </article>
+</main>
+
+<%- include('../partials/footer') %>

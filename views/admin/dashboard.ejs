@@ -1,0 +1,202 @@
+<%- include('../partials/admin-nav', { currentPath: '/admin' }) %>
+
+<!-- Welcome Banner -->
+<div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius: 12px; padding: 22px 26px; margin-bottom: 24px; color: #ffffff; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+  <div>
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+      <span style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 12px; border: 1px solid rgba(16, 185, 129, 0.3);">
+        ● System Operational
+      </span>
+      <span style="color: #94a3b8; font-size: 12px;">Cloudflare D1 &amp; R2 Architecture</span>
+    </div>
+    <h1 style="font-size: 22px; font-weight: 800; margin: 0 0 6px 0; letter-spacing: -0.5px;">
+      Govt Exam Zone Administrative Suite
+    </h1>
+    <p style="color: #94a3b8; font-size: 13.5px; margin: 0;">
+      Real-time management for Govt Exam Zone recruitments, results, admit cards, Cloudflare D1 SQL database and R2 storage.
+    </p>
+  </div>
+  <div style="display: flex; gap: 10px;">
+    <a href="/admin/posts/new" class="btn btn-primary" style="padding: 10px 18px; font-size: 13.5px;">
+      ➕ Create New Post
+    </a>
+    <a href="/" target="_blank" class="btn btn-secondary" style="background: rgba(255,255,255,0.1); color: #ffffff; border-color: rgba(255,255,255,0.2);">
+      🌐 View Live Portal
+    </a>
+  </div>
+</div>
+
+<!-- 4 Modern Stat Cards -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+      <div>
+        <h3>Total Notifications</h3>
+        <div class="stat-val"><%= totalPosts %></div>
+        <div class="stat-sub" style="color: #0284c7; font-weight: 600;">
+          Across 8 Active Categories
+        </div>
+      </div>
+      <div style="width: 44px; height: 44px; border-radius: 10px; background: #e0f2fe; color: #0284c7; display: flex; align-items: center; justify-content: center; font-size: 20px;">
+        📝
+      </div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+      <div>
+        <h3>Cloudflare D1 SQL</h3>
+        <div class="stat-val" style="font-size: 20px; color: #0284c7; padding-top: 4px;">
+          <%= d1Mode %>
+        </div>
+        <div class="stat-sub" style="color: #10b981; font-weight: 600;">
+          ● Serverless SQL Active
+        </div>
+      </div>
+      <div style="width: 44px; height: 44px; border-radius: 10px; background: #f0fdf4; color: #16a34a; display: flex; align-items: center; justify-content: center; font-size: 20px;">
+        💾
+      </div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+      <div>
+        <h3>Cloudflare R2 Storage</h3>
+        <div class="stat-val" style="font-size: 20px; color: #10b981; padding-top: 4px;">
+          <%= r2Mode %>
+        </div>
+        <div class="stat-sub" style="color: #64748b; font-weight: 600;">
+          <%= uploadsCount %> Files / PDFs Uploaded
+        </div>
+      </div>
+      <div style="width: 44px; height: 44px; border-radius: 10px; background: #ecfdf5; color: #059669; display: flex; align-items: center; justify-content: center; font-size: 20px;">
+        ☁️
+      </div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+      <div>
+        <h3>Process Manager</h3>
+        <div class="stat-val" style="font-size: 20px; color: #8b5cf6; padding-top: 4px;">
+          PM2 Online
+        </div>
+        <div class="stat-sub" style="color: #8b5cf6; font-weight: 600;">
+          ● High Availability Daemon
+        </div>
+      </div>
+      <div style="width: 44px; height: 44px; border-radius: 10px; background: #f5f3ff; color: #7c3aed; display: flex; align-items: center; justify-content: center; font-size: 20px;">
+        🚀
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Quick Action Shortcuts Bar -->
+<div class="admin-card" style="padding: 16px 20px; margin-bottom: 24px; background: #ffffff;">
+  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+    <div style="font-weight: 700; font-size: 13.5px; color: #334155; display: flex; align-items: center; gap: 6px;">
+      ⚡ Quick Management Actions:
+    </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+      <a href="/admin/posts/new" class="btn btn-primary btn-sm">➕ New Post</a>
+      <a href="/admin/badges" class="btn btn-secondary btn-sm">🎨 8 Color Badges</a>
+      <a href="/admin/marquees" class="btn btn-secondary btn-sm">📢 Live Tickers</a>
+      <a href="/admin/r2" class="btn btn-secondary btn-sm">☁️ R2 Uploads</a>
+      <a href="/admin/d1" class="btn btn-secondary btn-sm">💾 D1 SQL Console</a>
+    </div>
+  </div>
+</div>
+
+<!-- Category Distribution -->
+<div class="admin-card">
+  <div class="admin-card-header">
+    <h2>Post Distribution Across Categories</h2>
+    <span style="font-size: 12.5px; color: #64748b;">Live Counts</span>
+  </div>
+  <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px;">
+    <% categoriesCount.forEach(cat => { %>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 14px; border-radius: 8px; text-align: center; transition: all 0.15s ease;">
+        <div style="font-weight: 800; color: var(--admin-primary); font-size: 22px; line-height: 1.1;"><%= cat.count %></div>
+        <div style="font-size: 12px; font-weight: 600; color: #475569; text-transform: capitalize; margin-top: 4px;"><%= cat.category %></div>
+      </div>
+    <% }) %>
+  </div>
+</div>
+
+<!-- Recent Posts Table -->
+<div class="admin-card">
+  <div class="admin-card-header">
+    <div>
+      <h2>Recent Job &amp; Result Notifications</h2>
+      <div style="font-size: 12.5px; color: #64748b; margin-top: 2px;">Latest published recruitments and examination updates</div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <a href="/admin/posts" class="btn btn-secondary btn-sm">View All (<%= totalPosts %>)</a>
+      <a href="/admin/posts/new" class="btn btn-primary btn-sm">+ Add Post</a>
+    </div>
+  </div>
+
+  <div style="overflow-x: auto;">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th style="width: 50px;">ID</th>
+          <th>Notification Title</th>
+          <th style="width: 140px;">Category</th>
+          <th style="width: 180px;">Post Date</th>
+          <th style="width: 70px;">Views</th>
+          <th style="width: 90px;">Status</th>
+          <th style="width: 160px; text-align: right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (recentPosts && recentPosts.length > 0) { %>
+          <% recentPosts.forEach(post => { %>
+            <tr>
+              <td style="font-weight: 600; color: #64748b;">#<%= post.id %></td>
+              <td>
+                <a href="/post/<%= post.slug %>" target="_blank" style="font-weight: 600; color: #0f172a; text-decoration: none; display: flex; align-items: center; gap: 6px;">
+                  <span><%= post.title %></span>
+                  <span style="font-size: 11px; color: #94a3b8;">↗</span>
+                </a>
+                <% if (post.department) { %>
+                  <div style="font-size: 11.5px; color: #64748b; margin-top: 2px;"><%= post.department %></div>
+                <% } %>
+              </td>
+              <td>
+                <span style="background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 12px; font-size: 11.5px; font-weight: 700; text-transform: capitalize; display: inline-block;">
+                  <%= post.category %>
+                </span>
+              </td>
+              <td style="font-size: 12.5px; color: #64748b;"><%= post.post_date || post.created_at %></td>
+              <td style="font-weight: 600;"><%= post.views %></td>
+              <td>
+                <span style="background: <%= post.status === 'active' ? '#ecfdf5' : '#fffbeb' %>; color: <%= post.status === 'active' ? '#059669' : '#d97706' %>; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700;">
+                  ● <%= post.status %>
+                </span>
+              </td>
+              <td style="text-align: right; white-space: nowrap;">
+                <a href="/admin/posts/edit/<%= post.id %>" class="btn btn-secondary btn-sm" style="margin-right: 4px;">Edit</a>
+                <form action="/admin/posts/delete/<%= post.id %>" method="POST" style="display: inline-block;" onsubmit="return confirm('Permanently delete this notification?');">
+                  <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        <% } else { %>
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 30px; color: #64748b;">
+              No notifications found in the database. Click "+ Create New Post" to add one.
+            </td>
+          </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<%- include('../partials/admin-footer') %>

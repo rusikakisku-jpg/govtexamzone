@@ -1,0 +1,54 @@
+<%- include('../partials/header') %>
+<%- include('../partials/subheader') %>
+
+<main class="container">
+  <!-- Breadcrumb -->
+  <div style="font-size: 13px; margin: 10px 0 14px 2px; color: #666;">
+    <a href="/" style="color: var(--primary-red); font-weight: bold; text-decoration: none;">🏠 Home</a>
+    <span style="margin: 0 6px; color: #999;">»</span>
+    <span style="color: #333; font-weight: 600;">Disclaimer Policy</span>
+  </div>
+
+  <div class="sarkari-box" style="margin-bottom: 30px; background: #ffffff;">
+    <h1 class="sarkari-box-header" style="margin: 0; font-size: 16px; line-height: 1.3; text-align: left; padding: 14px 20px;">
+      Legal &amp; Non-Affiliation Disclaimer - Govt Exam Zone
+    </h1>
+
+    <div class="static-page-content">
+      <div style="background: #fef2f2; border: 1px solid #fecaca; padding: 16px 20px; border-radius: 6px; margin-bottom: 20px;">
+        <h3 style="margin-top: 0; color: #991b1b; font-size: 16px;">
+          ⚠️ Important Public Notice to Candidates
+        </h3>
+        <p style="margin: 0; font-size: 13.5px; color: #7f1d1d;">
+          <b>Govt Exam Zone (govtexamzone.com)</b> is an independent, non-governmental informational portal. We are NOT associated, affiliated, endorsed by, or in any way connected with the Union Public Service Commission (UPSC), Staff Selection Commission (SSC), Railway Recruitment Boards (RRB), National Testing Agency (NTA), or any other Central or State Government recruiting agency.
+        </p>
+      </div>
+
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 20px;">1. Information Sourcing &amp; Accuracy</h2>
+      <p>
+        The content provided on this website is for general informational and educational purposes only. All job notifications, exam dates, syllabus PDFs, answer keys, and cutoff details are compiled from publicly available official gazette notifications published on government domains (.gov.in / .nic.in).
+      </p>
+
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 20px;">2. Advisory to Candidates</h2>
+      <p>
+        Candidates are strictly advised to double-check and verify all information directly from the official website of the concerned department/organization before filling online application forms or paying fees. In case of any conflict between information on this website and official notifications, the official notification published by the conducting board shall always prevail.
+      </p>
+
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 20px;">3. No Fee Charging &amp; Anti-Fraud Warning</h2>
+      <p>
+        Govt Exam Zone does not collect application fees, sell application forms, or solicit money from job seekers. If you receive any email or phone call demanding payment claiming to represent Govt Exam Zone, please treat it as fraudulent and report it immediately.
+      </p>
+
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 20px;">4. DMCA Copyright &amp; Trademark Notice</h2>
+      <p>
+        All trademarks, logos, emblems, and service marks displayed on this portal are the property of their respective government departments. If any copyright owner believes their material is reproduced inappropriately, please send an official notice to our grievance desk for prompt review and correction.
+      </p>
+
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px; margin-top: 24px;">
+        <b>Report Correction or Discrepancy:</b> If you notice an error in any examination date or detail, please notify us immediately at <a href="mailto:<%= (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'support@govtexamzone.com' %>"><%= (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'support@govtexamzone.com' %></a>.
+      </div>
+    </div>
+  </div>
+</main>
+
+<%- include('../partials/footer') %>

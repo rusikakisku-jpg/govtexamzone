@@ -1,0 +1,207 @@
+<%- include('../partials/header') %>
+<%- include('../partials/subheader') %>
+
+<main class="container">
+  <!-- PRIMARY 3-COLUMN BOXES: Latest Jobs, Admit Card, Answer Key -->
+  <section class="content-grid-3">
+    <!-- Box 1: Latest Jobs -->
+    <div class="sarkari-box">
+      <div class="sarkari-box-header">
+        <a href="/category/latest-jobs">Latest Jobs</a>
+      </div>
+      <ul class="sarkari-box-list">
+        <% if (latestJobs && latestJobs.length > 0) { %>
+          <% latestJobs.forEach((post, i) => { %>
+            <li>
+              <span class="list-chevron">›</span>
+              <div>
+                <a href="/post/<%= post.slug %>"><%= post.title %></a>
+              </div>
+            </li>
+          <% }) %>
+        <% } else { %>
+          <li>No jobs posted yet.</li>
+        <% } %>
+      </ul>
+      <div class="sarkari-box-footer">
+        <a href="/category/latest-jobs">View More Latest Jobs →</a>
+      </div>
+    </div>
+
+    <!-- Box 2: Admit Card -->
+    <div class="sarkari-box">
+      <div class="sarkari-box-header">
+        <a href="/category/admit-card">Admit Card</a>
+      </div>
+      <ul class="sarkari-box-list">
+        <% if (admitCards && admitCards.length > 0) { %>
+          <% admitCards.forEach((post, i) => { %>
+            <li>
+              <span class="list-chevron">›</span>
+              <div>
+                <a href="/post/<%= post.slug %>"><%= post.title %></a>
+              </div>
+            </li>
+          <% }) %>
+        <% } else { %>
+          <li>No admit cards available yet.</li>
+        <% } %>
+      </ul>
+      <div class="sarkari-box-footer">
+        <a href="/category/admit-card">View More Admit Card →</a>
+      </div>
+    </div>
+
+    <!-- Box 3: Answer Key -->
+    <div class="sarkari-box">
+      <div class="sarkari-box-header">
+        <a href="/category/answer-key">Answer Key</a>
+      </div>
+      <ul class="sarkari-box-list">
+        <% if (answerKeys && answerKeys.length > 0) { %>
+          <% answerKeys.forEach(post => { %>
+            <li>
+              <span class="list-chevron">›</span>
+              <div>
+                <a href="/post/<%= post.slug %>"><%= post.title %></a>
+              </div>
+            </li>
+          <% }) %>
+        <% } else { %>
+          <li>No answer keys available yet.</li>
+        <% } %>
+      </ul>
+      <div class="sarkari-box-footer">
+        <a href="/category/answer-key">View More Answer Key →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECONDARY 3-COLUMN BOXES: Result, Syllabus, Certificate Verification -->
+  <section class="content-grid-3">
+    <!-- Box 4: Result -->
+    <div class="sarkari-box">
+      <div class="sarkari-box-header">
+        <a href="/category/result">Result</a>
+      </div>
+      <ul class="sarkari-box-list">
+        <% if (results && results.length > 0) { %>
+          <% results.forEach((post, i) => { %>
+            <li>
+              <span class="list-chevron">›</span>
+              <div>
+                <a href="/post/<%= post.slug %>"><%= post.title %></a>
+              </div>
+            </li>
+          <% }) %>
+        <% } else { %>
+          <li>No results available yet.</li>
+        <% } %>
+      </ul>
+      <div class="sarkari-box-footer">
+        <a href="/category/result">View More Result →</a>
+      </div>
+    </div>
+
+    <!-- Box 5: Syllabus -->
+    <div class="sarkari-box">
+      <div class="sarkari-box-header">
+        <a href="/category/syllabus">Syllabus</a>
+      </div>
+      <ul class="sarkari-box-list">
+        <% if (syllabi && syllabi.length > 0) { %>
+          <% syllabi.forEach(post => { %>
+            <li>
+              <span class="list-chevron">›</span>
+              <div>
+                <a href="/post/<%= post.slug %>"><%= post.title %></a>
+              </div>
+            </li>
+          <% }) %>
+        <% } else { %>
+          <li>No syllabi posted yet.</li>
+        <% } %>
+      </ul>
+      <div class="sarkari-box-footer">
+        <a href="/category/syllabus">View More Syllabus →</a>
+      </div>
+    </div>
+
+    <!-- Box 6: Certificate Verification -->
+    <div class="sarkari-box">
+      <div class="sarkari-box-header">
+        <a href="/category/certificate-verification">Certificate Verification</a>
+      </div>
+      <ul class="sarkari-box-list">
+        <% if (verifications && verifications.length > 0) { %>
+          <% verifications.forEach(post => { %>
+            <li>
+              <span class="list-chevron">›</span>
+              <div>
+                <a href="/post/<%= post.slug %>"><%= post.title %></a>
+              </div>
+            </li>
+          <% }) %>
+        <% } else { %>
+          <li>No verification services listed.</li>
+        <% } %>
+      </ul>
+      <div class="sarkari-box-footer">
+        <a href="/category/certificate-verification">View More Verification →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- TERTIARY 2-COLUMN BOXES: Admission, Important -->
+  <section class="content-grid-3 content-grid-2">
+    <!-- Box 7: Admission -->
+    <div class="sarkari-box">
+      <div class="sarkari-box-header">
+        <a href="/category/admission">Admission</a>
+      </div>
+      <ul class="sarkari-box-list">
+        <% if (admissions && admissions.length > 0) { %>
+          <% admissions.forEach(post => { %>
+            <li>
+              <span class="list-chevron">›</span>
+              <div>
+                <a href="/post/<%= post.slug %>"><%= post.title %></a>
+              </div>
+            </li>
+          <% }) %>
+        <% } else { %>
+          <li>No admission forms available yet.</li>
+        <% } %>
+      </ul>
+      <div class="sarkari-box-footer">
+        <a href="/category/admission">View More Admission →</a>
+      </div>
+    </div>
+
+    <!-- Box 8: Important -->
+    <div class="sarkari-box">
+      <div class="sarkari-box-header">
+        <a href="/category/important">Important</a>
+      </div>
+      <ul class="sarkari-box-list">
+        <% if (importants && importants.length > 0) { %>
+          <% importants.forEach(post => { %>
+            <li>
+              <span class="list-chevron">›</span>
+              <div>
+                <a href="/post/<%= post.slug %>"><%= post.title %></a>
+              </div>
+            </li>
+          <% }) %>
+        <% } else { %>
+          <li>No updates listed.</li>
+        <% } %>
+      </ul>
+      <div class="sarkari-box-footer">
+        <a href="/category/important">View More Important →</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<%- include('../partials/footer') %>

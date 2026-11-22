@@ -1,0 +1,54 @@
+<%- include('../partials/header') %>
+<%- include('../partials/subheader') %>
+
+<main class="container">
+  <div class="sarkari-box" style="margin-bottom: 30px;">
+    <div class="sarkari-box-header">
+      <%= pageTitle || 'Information' %> - Govt Exam Zone
+    </div>
+
+    <div class="static-page-content">
+      <h2 style="color: var(--primary-red); margin-bottom: 15px;">Contact Govt Exam Zone Helpdesk</h2>
+      <p>
+        If you have any feedback, suggestions, query regarding any examination notification or wish to report a correction, please feel free to contact us via the following official channels:
+      </p>
+
+      <div style="background: #fdfae7; border: 1px solid #ffd480; padding: 15px; border-radius: 4px; margin: 15px 0;">
+        <p><b>📧 Official Email:</b> <a href="mailto:<%= (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'support@govtexamzone.com' %>"><%= (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'support@govtexamzone.com' %></a></p>
+        <% if (typeof settings !== 'undefined' && settings.contact_phone) { %>
+        <p><b>📞 Candidate Helpline Phone:</b> <a href="tel:<%= settings.contact_phone %>"><%= settings.contact_phone %></a></p>
+        <% } %>
+        <% if (typeof settings !== 'undefined' && settings.office_address) { %>
+        <p><b>📍 Communication Address:</b> <%= settings.office_address %></p>
+        <% } %>
+        <p><b>📱 Official Telegram:</b> <a href="<%= (typeof settings !== 'undefined' && settings.telegram_url) ? settings.telegram_url : 'https://t.me/govtexamzoneofficial' %>" target="_blank"><%= (typeof settings !== 'undefined' && settings.telegram_url) ? settings.telegram_url : 'https://t.me/govtexamzoneofficial' %></a></p>
+        <p><b>💬 Official WhatsApp Channel:</b> <a href="<%= (typeof settings !== 'undefined' && settings.whatsapp_url) ? settings.whatsapp_url : 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10' %>" target="_blank">Join Govt Exam Zone WhatsApp Channel</a></p>
+        <% if (typeof settings !== 'undefined' && settings.youtube_url) { %>
+        <p><b>▶️ Official YouTube:</b> <a href="<%= settings.youtube_url %>" target="_blank"><%= settings.youtube_url %></a></p>
+        <% } %>
+        <% if (typeof settings !== 'undefined' && settings.twitter_url) { %>
+        <p><b>🐦 Official Twitter / X:</b> <a href="<%= settings.twitter_url %>" target="_blank"><%= settings.twitter_url %></a></p>
+        <% } %>
+        <% if (typeof settings !== 'undefined' && settings.instagram_url) { %>
+        <p><b>📸 Official Instagram:</b> <a href="<%= settings.instagram_url %>" target="_blank"><%= settings.instagram_url %></a></p>
+        <% } %>
+        <% if (typeof settings !== 'undefined' && settings.facebook_url) { %>
+        <p><b>📘 Official Facebook:</b> <a href="<%= settings.facebook_url %>" target="_blank"><%= settings.facebook_url %></a></p>
+        <% } %>
+        <p><b>🌐 Official Website:</b> <a href="<%= (typeof settings !== 'undefined' && settings.site_domain) ? (settings.site_domain.startsWith('http') ? settings.site_domain : 'https://' + settings.site_domain) : 'https://govtexamzone.com' %>"><%= (typeof settings !== 'undefined' && settings.site_domain) ? settings.site_domain : 'https://govtexamzone.com' %></a></p>
+      </div>
+
+      <h3 style="color: var(--primary-red); margin-top: 25px;">Disclaimer Policy</h3>
+      <p>
+        govtexamzone.com is an informational portal created solely for public educational convenience to provide timely alerts regarding central and state government recruitment exams, results, admit cards, answer keys, and syllabus. We do not provide government jobs directly, nor do we charge fees from candidates. All candidates are advised to verify details with the respective official government recruiting agencies before applying.
+      </p>
+
+      <h3 style="color: var(--primary-red); margin-top: 25px;">DMCA Copyright Notice</h3>
+      <p>
+        All logos, trademarks, and registered names belong to their respective government bodies and organizations (such as SSC, UPSC, NTA, RRB, CBSE, State Police Boards). govtexamzone.com respects intellectual property rights. If you believe your copyrighted material is displayed on this site without permission, please write to our DMCA agent with proof of ownership for immediate review.
+      </p>
+    </div>
+  </div>
+</main>
+
+<%- include('../partials/footer') %>

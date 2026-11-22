@@ -1,0 +1,26 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "description": "This is an isolated workspace for Antigravity Node 5. - Container Name: agy-node-5 - CLI Data & History: Isolated in node-5/data - Files & Projects: Stored in node-5/workspace",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "seed": "node src/db/seed.js",
+    "tunnel": "cloudflared tunnel --url http://localhost:3000 --no-autoupdate",
+    "start:public": "node server.js & cloudflared tunnel --url http://localhost:3000 --no-autoupdate"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.650.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.5",
+    "ejs": "^6.0.1",
+    "express": "^5.2.1",
+    "multer": "^2.4.0",
+    "sql.js": "^1.14.2"
+  }
+}

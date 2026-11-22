@@ -1,0 +1,63 @@
+<%- include('../partials/header') %>
+<%- include('../partials/subheader') %>
+
+<main class="container">
+  <!-- Breadcrumb -->
+  <div style="font-size: 13px; margin: 10px 0 14px 2px; color: #666;">
+    <a href="/" style="color: var(--primary-red); font-weight: bold; text-decoration: none;">🏠 Home</a>
+    <span style="margin: 0 6px; color: #999;">»</span>
+    <span style="color: #333; font-weight: 600;">Terms &amp; Conditions</span>
+  </div>
+
+  <div class="sarkari-box" style="margin-bottom: 30px; background: #ffffff;">
+    <h1 class="sarkari-box-header" style="margin: 0; font-size: 16px; line-height: 1.3; text-align: left; padding: 14px 20px;">
+      Terms and Conditions of Use - Govt Exam Zone
+    </h1>
+
+    <div class="static-page-content">
+      <p style="font-size: 13px; color: #64748b;">
+        <b>Effective Date:</b> October 2026 | <b>Last Updated:</b> <%= new Date().getFullYear() %>
+      </p>
+
+      <p>
+        Welcome to <b>Govt Exam Zone (govtexamzone.com)</b>. By accessing or using this website, you agree to be bound by these terms and conditions. If you disagree with any part of these terms, please do not use our website.
+      </p>
+
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 20px;">1. Informational &amp; Educational Purpose Only</h2>
+      <p>
+        Govt Exam Zone is an independent informational and educational platform designed solely to alert candidates regarding public government employment notifications, examination syllabi, answer keys, and results. We are not a government body, recruiting agency, or examination conducting body.
+      </p>
+
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 20px;">2. Accuracy of Information &amp; Official Verification</h2>
+      <p>
+        While our research team makes every effort to ensure the accuracy and timeliness of all published notifications, candidates are strictly required to verify dates, vacancies, fees, and eligibility from the respective official gazette bulletins released by the government department before submitting any online application or paying fees.
+      </p>
+
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 20px;">3. Intellectual Property Rights &amp; Trademarks</h2>
+      <p>
+        All government emblems, department names (e.g., UPSC, SSC, RRB, NTA, CBSE, State Police Boards), and trademarks belong to their respective statutory authorities. They are used here strictly for informational identification and reporting purposes under fair use doctrine.
+      </p>
+
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 20px;">4. Candidate Utilities (Calculators &amp; Resizers)</h2>
+      <p>
+        Our online tools (such as Age Calculator and Photo/Signature Resizer) are provided as free candidate conveniences. Processing takes place locally in your web browser. Candidates are advised to confirm that resized dimensions meet the exact parameters specified in the official exam notification.
+      </p>
+
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 20px;">5. Limitation of Liability</h2>
+      <p>
+        Govt Exam Zone and its authors shall not be held liable for any loss, damage, missed deadline, or discrepancy arising from the use of the information published on this website.
+      </p>
+
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 20px;">6. Modifications to Terms</h2>
+      <p>
+        Govt Exam Zone reserves the right to revise these Terms and Conditions at any time. By using this website, you are expected to review these terms on a regular basis.
+      </p>
+
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px; margin-top: 24px;">
+        For legal inquiries regarding our terms, reach us at <a href="mailto:<%= (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'legal@govtexamzone.com' %>"><%= (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'legal@govtexamzone.com' %></a>.
+      </div>
+    </div>
+  </div>
+</main>
+
+<%- include('../partials/footer') %>
