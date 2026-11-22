@@ -80,6 +80,23 @@ console.log('📦 Step 3: Bundling worker for Cloudflare Pages Advanced Mode (_w
         'cloudflare:node',
         'cloudflare:workers'
       ],
+      alias: {
+        'crypto': 'node:crypto',
+        'path': 'node:path',
+        'fs': 'node:fs',
+        'buffer': 'node:buffer',
+        'stream': 'node:stream',
+        'util': 'node:util',
+        'events': 'node:events',
+        'os': 'node:os',
+        'url': 'node:url',
+        'http': 'node:http',
+        'https': 'node:https',
+        'net': 'node:net',
+        'zlib': 'node:zlib',
+        'string_decoder': 'node:string_decoder',
+        'querystring': 'node:querystring'
+      },
       legalComments: 'none'
     });
 

@@ -1,23 +1,17 @@
 name = "govtexamzone"
-main = "worker.mjs"
+pages_build_output_dir = "./dist"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat", "allow_eval_during_startup"]
-workers_dev = true
 
-[assets]
-directory = "./public"
+[vars]
+NODE_ENV = "production"
+ADMIN_USERNAME = "admin"
 
-# Cloudflare D1 Database Binding
 [[d1_databases]]
 binding = "DB"
 database_name = "govtexamzone-db"
 database_id = "ce83a546-323f-467b-8748-4fe6be6a3e12"
 
-# Cloudflare R2 Object Storage Binding
 [[r2_buckets]]
 binding = "STORAGE_BUCKET"
 bucket_name = "govtexamzone-files"
-
-[vars]
-NODE_ENV = "production"
-ADMIN_USERNAME = "admin"

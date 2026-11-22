@@ -514,7 +514,7 @@ var require_browser = __commonJS({
 var require_node = __commonJS({
   "node_modules/debug/src/node.js"(exports, module) {
     var tty = __require("tty");
-    var util = __require("util");
+    var util = __require("node:util");
     exports.init = init;
     exports.log = log;
     exports.formatArgs = formatArgs;
@@ -698,7 +698,7 @@ var require_src = __commonJS({
 // node_modules/depd/index.js
 var require_depd = __commonJS({
   "node_modules/depd/index.js"(exports, module) {
-    var relative = __require("path").relative;
+    var relative = __require("node:path").relative;
     module.exports = depd;
     var basePath = process.cwd();
     function containsNamespace(str, namespace) {
@@ -1199,7 +1199,7 @@ var require_inherits_browser = __commonJS({
 var require_inherits = __commonJS({
   "node_modules/inherits/inherits.js"(exports, module) {
     try {
-      util = __require("util");
+      util = __require("node:util");
       if (typeof util.inherits !== "function") throw "";
       module.exports = util.inherits;
     } catch (e) {
@@ -1479,7 +1479,7 @@ var require_bytes = __commonJS({
 var require_safer = __commonJS({
   "node_modules/safer-buffer/safer.js"(exports, module) {
     "use strict";
-    var buffer = __require("buffer");
+    var buffer = __require("node:buffer");
     var Buffer2 = buffer.Buffer;
     var safer = {};
     var key;
@@ -1641,7 +1641,7 @@ var require_internal = __commonJS({
     }
     InternalCodec.prototype.encoder = InternalEncoder;
     InternalCodec.prototype.decoder = InternalDecoder;
-    var StringDecoder = __require("string_decoder").StringDecoder;
+    var StringDecoder = __require("node:string_decoder").StringDecoder;
     function InternalDecoder(options, codec) {
       this.decoder = new StringDecoder(codec.enc);
     }
@@ -5247,7 +5247,7 @@ var require_lib = __commonJS({
     };
     var streamModule;
     try {
-      streamModule = __require("stream");
+      streamModule = __require("node:stream");
     } catch (e) {
     }
     if (streamModule && streamModule.Transform) {
@@ -15193,7 +15193,7 @@ var require_mime_types = __commonJS({
   "node_modules/mime-types/index.js"(exports) {
     "use strict";
     var db = require_mime_db();
-    var extname = __require("path").extname;
+    var extname = __require("node:path").extname;
     var mimeScore = require_mimeScore();
     var EXTRACT_TYPE_REGEXP = /^\s*([^;\s]*)(?:;|\s|$)/;
     var TEXT_TYPE_REGEXP = /^text\//i;
@@ -15947,7 +15947,7 @@ var require_type = __commonJS({
 // node_modules/object-inspect/util.inspect.js
 var require_util_inspect = __commonJS({
   "node_modules/object-inspect/util.inspect.js"(exports, module) {
-    module.exports = __require("util").inspect;
+    module.exports = __require("node:util").inspect;
   }
 });
 
@@ -18724,7 +18724,7 @@ var require_escape_html = __commonJS({
 var require_parseurl = __commonJS({
   "node_modules/parseurl/index.js"(exports, module) {
     "use strict";
-    var url = __require("url");
+    var url = __require("node:url");
     var parse2 = url.parse;
     var Url = url.Url;
     module.exports = parseurl;
@@ -19134,8 +19134,8 @@ var require_etag = __commonJS({
   "node_modules/etag/index.js"(exports, module) {
     "use strict";
     module.exports = etag;
-    var crypto6 = __require("crypto");
-    var Stats = __require("fs").Stats;
+    var crypto6 = __require("node:crypto");
+    var Stats = __require("node:fs").Stats;
     var toString = Object.prototype.toString;
     function entitytag(entity) {
       if (entity.length === 0) {
@@ -22707,7 +22707,7 @@ var require_content_disposition = __commonJS({
 // node_modules/express/node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS({
   "node_modules/express/node_modules/cookie-signature/index.js"(exports) {
-    var crypto6 = __require("crypto");
+    var crypto6 = __require("node:crypto");
     exports.sign = function(val2, secret) {
       if ("string" != typeof val2) throw new TypeError("Cookie value must be provided as a string.");
       if (null == secret) throw new TypeError("Secret key must be provided.");
@@ -22898,15 +22898,15 @@ var require_send = __commonJS({
     var escapeHtml = require_escape_html();
     var etag = require_etag();
     var fresh = require_fresh();
-    var fs = __require("fs");
+    var fs = __require("node:fs");
     var mime = require_mime_types();
     var ms = require_ms();
     var onFinished = require_on_finished();
     var parseRange = require_range_parser();
-    var path = __require("path");
+    var path = __require("node:path");
     var statuses = require_statuses();
-    var Stream = __require("stream");
-    var util = __require("util");
+    var Stream = __require("node:stream");
+    var util = __require("node:util");
     var extname = path.extname;
     var join = path.join;
     var normalize = path.normalize;
@@ -23921,9 +23921,9 @@ var require_serve_static = __commonJS({
     var encodeUrl = require_encodeurl();
     var escapeHtml = require_escape_html();
     var parseUrl = require_parseurl();
-    var resolve = __require("path").resolve;
+    var resolve = __require("node:path").resolve;
     var send = require_send();
-    var url = __require("url");
+    var url = __require("node:url");
     module.exports = serveStatic;
     function serveStatic(root, options) {
       if (!root) {
@@ -24069,7 +24069,7 @@ var require_express2 = __commonJS({
 // node_modules/cookie-signature/index.js
 var require_cookie_signature2 = __commonJS({
   "node_modules/cookie-signature/index.js"(exports) {
-    var crypto6 = __require("crypto");
+    var crypto6 = __require("node:crypto");
     exports.sign = function(val2, secret) {
       if ("string" != typeof val2) throw new TypeError("Cookie value must be provided as a string.");
       if ("string" != typeof secret) throw new TypeError("Secret string must be provided.");
@@ -24482,7 +24482,7 @@ var require_dist5 = __commonJS({
       U.exports = { parseBoolean: G, optionsFromEnv: X };
     });
     var N = I((ye, x) => {
-      var Y = __require("fs"), j = __require("path"), z = __require("os"), { URL: Z, fileURLToPath: ee } = __require("url"), { parseBoolean: k, optionsFromEnv: B } = S(), te = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg, b = new Uint8Array(256);
+      var Y = __require("node:fs"), j = __require("node:path"), z = __require("node:os"), { URL: Z, fileURLToPath: ee } = __require("node:url"), { parseBoolean: k, optionsFromEnv: B } = S(), te = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg, b = new Uint8Array(256);
       for (let e = 48; e <= 57; e++) b[e] = 1;
       for (let e = 65; e <= 90; e++) b[e] = 1;
       for (let e = 97; e <= 122; e++) b[e] = 1;
@@ -24648,7 +24648,7 @@ var require_dist5 = __commonJS({
       x.exports = A;
     });
     var M = I((Te, W) => {
-      var _ = __require("child_process"), fe = __require("fs"), L = __require("path");
+      var _ = __require("child_process"), fe = __require("node:fs"), L = __require("node:path");
       function ue(e) {
         let o = ['"'], t = 0;
         for (let n of e) {
@@ -24697,7 +24697,7 @@ var require_dist5 = __commonJS({
       W.exports = pe;
     });
     var K = I(($e, F) => {
-      var he = __require("fs"), ge = __require("os"), Q = __require("path"), me = __require("child_process"), ve = M(), R = N(), { optionsFromEnv: Ce } = S();
+      var he = __require("node:fs"), ge = __require("node:os"), Q = __require("node:path"), me = __require("child_process"), ve = M(), R = N(), { optionsFromEnv: Ce } = S();
       function $() {
         console.log(["Usage: dotenv run [--help] [-q|--quiet] [--debug] [--override] [--fast] [-f|--file <paths>] [--] <command> [args...]", "", "Run a command with environment variables from a .env file.", "Place dotenv options before the command; all following arguments go to the command.", "", "Options:", "  -f, --file <paths>  .env paths, comma-separated or repeated (default: .env)", "  -q, --quiet suppress the injected env message", "  --debug     enable debug logging", "  --override  override existing environment variables", "  --fast      use the faster character-scanner parser", "", "Environment variables (DOTENV_CONFIG_* names remain as fallbacks):", "  DOTENV_PATH, DOTENV_ENCODING, DOTENV_QUIET,", "  DOTENV_DEBUG, DOTENV_OVERRIDE,", "  DOTENV_FAST"].join(`
 `));
@@ -24851,7 +24851,7 @@ var require_dist5 = __commonJS({
 var require_env = __commonJS({
   "src/config/env.js"(exports, module) {
     var dotenv = require_dist5();
-    var path = __require("path");
+    var path = __require("node:path");
     try {
       dotenv.config();
     } catch (e) {
@@ -27036,8 +27036,8 @@ var require_sql_wasm = __commonJS({
 // src/db/d1Client.js
 var require_d1Client = __commonJS({
   "src/db/d1Client.js"(exports, module) {
-    var fs = __require("fs");
-    var path = __require("path");
+    var fs = __require("node:fs");
+    var path = __require("node:path");
     var initSqlJs = require_sql_wasm();
     var config = require_env();
     var DB_FILE_PATH = path.resolve("data/sarkariresult.db");
@@ -27383,7 +27383,7 @@ CREATE TABLE IF NOT EXISTS settings (
 // src/middleware/authorAuth.js
 var require_authorAuth = __commonJS({
   "src/middleware/authorAuth.js"(exports, module) {
-    var crypto6 = __require("crypto");
+    var crypto6 = __require("node:crypto");
     var config = require_env();
     var d1 = require_d1Client();
     var PASSWORD_SALT = "gez_author_salt_2026";
@@ -37458,7 +37458,7 @@ var require_mime_types2 = __commonJS({
   "node_modules/multer/node_modules/mime-types/index.js"(exports) {
     "use strict";
     var db = require_mime_db2();
-    var extname = __require("path").extname;
+    var extname = __require("node:path").extname;
     var EXTRACT_TYPE_REGEXP = /^\s*([^;\s]*)(?:;|\s|$)/;
     var TEXT_TYPE_REGEXP = /^text\//i;
     exports.charset = charset;
@@ -39736,7 +39736,7 @@ var require_sbmh = __commonJS({
 var require_multipart = __commonJS({
   "node_modules/busboy/lib/types/multipart.js"(exports, module) {
     "use strict";
-    var { Readable, Writable } = __require("stream");
+    var { Readable, Writable } = __require("node:stream");
     var StreamSearch = require_sbmh();
     var {
       basename,
@@ -40783,7 +40783,7 @@ var require_multipart = __commonJS({
 var require_urlencoded2 = __commonJS({
   "node_modules/busboy/lib/types/urlencoded.js"(exports, module) {
     "use strict";
-    var { Writable } = __require("stream");
+    var { Writable } = __require("node:stream");
     var { getDecoder } = require_utils4();
     var URLEncoded = class extends Writable {
       constructor(cfg) {
@@ -41508,7 +41508,7 @@ var require_append_field = __commonJS({
 // node_modules/multer/lib/counter.js
 var require_counter = __commonJS({
   "node_modules/multer/lib/counter.js"(exports, module) {
-    var EventEmitter = __require("events").EventEmitter;
+    var EventEmitter = __require("node:events").EventEmitter;
     function Counter() {
       EventEmitter.call(this);
       this.value = 0;
@@ -41534,7 +41534,7 @@ var require_counter = __commonJS({
 // node_modules/multer/lib/multer-error.js
 var require_multer_error = __commonJS({
   "node_modules/multer/lib/multer-error.js"(exports, module) {
-    var util = __require("util");
+    var util = __require("node:util");
     var errorMessages = {
       LIMIT_PART_COUNT: "Too many parts",
       LIMIT_FILE_SIZE: "File too large",
@@ -42012,11 +42012,11 @@ var require_make_middleware = __commonJS({
 // node_modules/multer/storage/disk.js
 var require_disk = __commonJS({
   "node_modules/multer/storage/disk.js"(exports, module) {
-    var fs = __require("fs");
-    var os = __require("os");
-    var path = __require("path");
-    var crypto6 = __require("crypto");
-    var pipeline = __require("stream").pipeline;
+    var fs = __require("node:fs");
+    var os = __require("node:os");
+    var path = __require("node:path");
+    var crypto6 = __require("node:crypto");
+    var pipeline = __require("node:stream").pipeline;
     var MulterError = require_multer_error();
     var openStreams = /* @__PURE__ */ new WeakMap();
     var flushingFiles = /* @__PURE__ */ new WeakMap();
@@ -43268,7 +43268,7 @@ var require_dist_cjs9 = __commonJS({
     });
     module.exports = __toCommonJS2(src_exports);
     var import_is_array_buffer = require_dist_cjs8();
-    var import_buffer = __require("buffer");
+    var import_buffer = __require("node:buffer");
     var fromArrayBuffer = /* @__PURE__ */ __name((input, offset = 0, length = input.byteLength - offset) => {
       if (!(0, import_is_array_buffer.isArrayBuffer)(input)) {
         throw new TypeError(`The "input" argument must be ArrayBuffer. Received type ${typeof input} (${input})`);
@@ -43414,7 +43414,7 @@ var require_getAwsChunkedEncodingStream = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.getAwsChunkedEncodingStream = void 0;
-    var stream_1 = __require("stream");
+    var stream_1 = __require("node:stream");
     var getAwsChunkedEncodingStream2 = (readableStream, options) => {
       const { base64Encoder, bodyLengthChecker, checksumAlgorithmFn, checksumLocationName, streamHasher } = options;
       const checksumRequired = base64Encoder !== void 0 && checksumAlgorithmFn !== void 0 && checksumLocationName !== void 0 && streamHasher !== void 0;
@@ -43573,8 +43573,8 @@ var require_dist_cjs14 = __commonJS({
     module.exports = __toCommonJS2(src_exports);
     var import_protocol_http8 = require_dist_cjs2();
     var import_querystring_builder = require_dist_cjs13();
-    var import_http = __require("http");
-    var import_https = __require("https");
+    var import_http = __require("node:http");
+    var import_https = __require("node:https");
     var NODEJS_TIMEOUT_ERROR_CODES = ["ECONNRESET", "EPIPE", "ETIMEDOUT"];
     var getTransformedHeaders = /* @__PURE__ */ __name((headers) => {
       const transformedHeaders = {};
@@ -43666,7 +43666,7 @@ var require_dist_cjs14 = __commonJS({
         DEFER_EVENT_LISTENER_TIME3
       );
     }, "setSocketTimeout");
-    var import_stream = __require("stream");
+    var import_stream = __require("node:stream");
     var MIN_WAIT_TIME = 1e3;
     async function writeRequestBody(httpRequest, request, maxContinueTimeoutMs = MIN_WAIT_TIME) {
       const headers = request.headers ?? {};
@@ -44705,7 +44705,7 @@ var require_sdk_stream_mixin = __commonJS({
     exports.sdkStreamMixin = void 0;
     var node_http_handler_1 = require_dist_cjs14();
     var util_buffer_from_1 = require_dist_cjs9();
-    var stream_1 = __require("stream");
+    var stream_1 = __require("node:stream");
     var sdk_stream_mixin_browser_1 = require_sdk_stream_mixin_browser();
     var ERR_MSG_STREAM_HAS_BEEN_TRANSFORMED = "The stream has already been transformed.";
     var sdkStreamMixin2 = (stream) => {
@@ -44779,7 +44779,7 @@ var require_splitStream = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.splitStream = void 0;
-    var stream_1 = __require("stream");
+    var stream_1 = __require("node:stream");
     var splitStream_browser_1 = require_splitStream_browser();
     var stream_type_check_1 = require_stream_type_check();
     async function splitStream2(stream) {
@@ -44843,7 +44843,7 @@ var require_headStream = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.headStream = void 0;
-    var stream_1 = __require("stream");
+    var stream_1 = __require("node:stream");
     var headStream_browser_1 = require_headStream_browser();
     var stream_type_check_1 = require_stream_type_check();
     var headStream2 = (stream, bytes) => {
@@ -44896,7 +44896,7 @@ var require_ChecksumStream = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.ChecksumStream = void 0;
     var util_base64_1 = require_dist_cjs11();
-    var stream_1 = __require("stream");
+    var stream_1 = __require("node:stream");
     var ChecksumStream2 = class extends stream_1.Duplex {
       constructor({ expectedChecksum, checksum, source, checksumSourceLocation, base64Encoder }) {
         var _a, _b;
@@ -49532,7 +49532,7 @@ var require_dist_cjs30 = __commonJS({
 });
 
 // node_modules/uuid/dist/esm-node/rng.js
-import crypto2 from "crypto";
+import crypto2 from "node:crypto";
 function rng() {
   if (poolPtr > rnds8Pool.length - 16) {
     crypto2.randomFillSync(rnds8Pool);
@@ -49739,7 +49739,7 @@ var init_v35 = __esm({
 });
 
 // node_modules/uuid/dist/esm-node/md5.js
-import crypto3 from "crypto";
+import crypto3 from "node:crypto";
 function md5(bytes) {
   if (Array.isArray(bytes)) {
     bytes = Buffer.from(bytes);
@@ -49767,7 +49767,7 @@ var init_v3 = __esm({
 });
 
 // node_modules/uuid/dist/esm-node/native.js
-import crypto4 from "crypto";
+import crypto4 from "node:crypto";
 var native_default;
 var init_native = __esm({
   "node_modules/uuid/dist/esm-node/native.js"() {
@@ -49806,7 +49806,7 @@ var init_v4 = __esm({
 });
 
 // node_modules/uuid/dist/esm-node/sha1.js
-import crypto5 from "crypto";
+import crypto5 from "node:crypto";
 function sha1(bytes) {
   if (Array.isArray(bytes)) {
     bytes = Buffer.from(bytes);
@@ -50291,7 +50291,7 @@ var require_isStreamingPayload = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.isStreamingPayload = void 0;
-    var stream_1 = __require("stream");
+    var stream_1 = __require("node:stream");
     var isStreamingPayload = (request) => (request === null || request === void 0 ? void 0 : request.body) instanceof stream_1.Readable || typeof ReadableStream !== "undefined" && (request === null || request === void 0 ? void 0 : request.body) instanceof ReadableStream;
     exports.isStreamingPayload = isStreamingPayload;
   }
@@ -53139,8 +53139,8 @@ var require_getHomeDir = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.getHomeDir = void 0;
-    var os_1 = __require("os");
-    var path_1 = __require("path");
+    var os_1 = __require("node:os");
+    var path_1 = __require("node:path");
     var homeDirCache = {};
     var getHomeDirCacheKey = () => {
       if (process && process.geteuid) {
@@ -53171,8 +53171,8 @@ var require_getSSOTokenFilepath = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.getSSOTokenFilepath = void 0;
-    var crypto_1 = __require("crypto");
-    var path_1 = __require("path");
+    var crypto_1 = __require("node:crypto");
+    var path_1 = __require("node:path");
     var getHomeDir_1 = require_getHomeDir();
     var getSSOTokenFilepath2 = (id) => {
       const hasher = (0, crypto_1.createHash)("sha1");
@@ -53189,7 +53189,7 @@ var require_getSSOTokenFromFile = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.getSSOTokenFromFile = void 0;
-    var fs_1 = __require("fs");
+    var fs_1 = __require("node:fs");
     var getSSOTokenFilepath_1 = require_getSSOTokenFilepath();
     var { readFile } = fs_1.promises;
     var getSSOTokenFromFile2 = async (id) => {
@@ -53207,7 +53207,7 @@ var require_slurpFile = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.slurpFile = void 0;
-    var fs_1 = __require("fs");
+    var fs_1 = __require("node:fs");
     var { readFile } = fs_1.promises;
     var filePromisesHash = {};
     var slurpFile = (path, options) => {
@@ -53278,7 +53278,7 @@ var require_dist_cjs36 = __commonJS({
         ...data.default && { default: data.default }
       }
     ), "getConfigData");
-    var import_path = __require("path");
+    var import_path = __require("node:path");
     var import_getHomeDir = require_getHomeDir();
     var ENV_CONFIG_PATH = "AWS_CONFIG_FILE";
     var getConfigFilepath = /* @__PURE__ */ __name(() => process.env[ENV_CONFIG_PATH] || (0, import_path.join)((0, import_getHomeDir.getHomeDir)(), ".aws", "config"), "getConfigFilepath");
@@ -55152,10 +55152,10 @@ var require_dist_cjs43 = __commonJS({
       providerConfigFromInit: () => providerConfigFromInit
     });
     module.exports = __toCommonJS2(src_exports);
-    var import_url = __require("url");
+    var import_url = __require("node:url");
     var import_property_provider2 = require_dist_cjs34();
-    var import_buffer = __require("buffer");
-    var import_http = __require("http");
+    var import_buffer = __require("node:buffer");
+    var import_http = __require("node:http");
     function httpRequest(options) {
       return new Promise((resolve, reject) => {
         var _a;
@@ -55643,7 +55643,7 @@ var require_fromHttp = __commonJS({
     var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
     var node_http_handler_1 = require_dist_cjs14();
     var property_provider_1 = require_dist_cjs34();
-    var promises_1 = tslib_1.__importDefault(__require("fs/promises"));
+    var promises_1 = tslib_1.__importDefault(__require("node:fs/promises"));
     var checkUrl_1 = require_checkUrl();
     var requestHelpers_1 = require_requestHelpers();
     var retry_wrapper_1 = require_retry_wrapper();
@@ -55922,7 +55922,7 @@ var require_dist_cjs45 = __commonJS({
     });
     module.exports = __toCommonJS2(src_exports);
     var import_node_config_provider = require_dist_cjs37();
-    var import_os = __require("os");
+    var import_os = __require("node:os");
     var import_process = __require("process");
     var crtAvailability = {
       isCrtAvailable: false
@@ -56003,8 +56003,8 @@ var require_dist_cjs46 = __commonJS({
     module.exports = __toCommonJS2(src_exports);
     var import_util_buffer_from = require_dist_cjs9();
     var import_util_utf8 = require_dist_cjs10();
-    var import_buffer = __require("buffer");
-    var import_crypto5 = __require("crypto");
+    var import_buffer = __require("node:buffer");
+    var import_crypto5 = __require("node:crypto");
     var _Hash = class _Hash {
       constructor(algorithmIdentifier, secret) {
         this.algorithmIdentifier = algorithmIdentifier;
@@ -56065,7 +56065,7 @@ var require_dist_cjs47 = __commonJS({
       calculateBodyLength: () => calculateBodyLength
     });
     module.exports = __toCommonJS2(src_exports);
-    var import_fs = __require("fs");
+    var import_fs = __require("node:fs");
     var calculateBodyLength = /* @__PURE__ */ __name((body) => {
       if (!body) {
         return 0;
@@ -58364,7 +58364,7 @@ var require_dist_cjs52 = __commonJS({
       }
     }, "validateTokenKey");
     var import_shared_ini_file_loader = require_dist_cjs36();
-    var import_fs = __require("fs");
+    var import_fs = __require("node:fs");
     var { writeFile } = import_fs.promises;
     var writeSSOTokenToFile = /* @__PURE__ */ __name((id, ssoToken) => {
       const tokenFilepath = (0, import_shared_ini_file_loader.getSSOTokenFilepath)(id);
@@ -60593,7 +60593,7 @@ var require_dist_cjs55 = __commonJS({
     var import_shared_ini_file_loader = require_dist_cjs36();
     var import_property_provider2 = require_dist_cjs34();
     var import_child_process = __require("child_process");
-    var import_util = __require("util");
+    var import_util = __require("node:util");
     var getValidatedProcessCredentials = /* @__PURE__ */ __name((profileName, data, profiles) => {
       var _a;
       if (data.Version !== 1) {
@@ -60724,7 +60724,7 @@ var require_fromTokenFile = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.fromTokenFile = void 0;
     var property_provider_1 = require_dist_cjs34();
-    var fs_1 = __require("fs");
+    var fs_1 = __require("node:fs");
     var fromWebToken_1 = require_fromWebToken();
     var ENV_TOKEN_FILE = "AWS_WEB_IDENTITY_TOKEN_FILE";
     var ENV_ROLE_ARN = "AWS_ROLE_ARN";
@@ -61662,7 +61662,7 @@ var require_dist_cjs61 = __commonJS({
     });
     module.exports = __toCommonJS2(src_exports);
     var import_is_array_buffer = require_dist_cjs60();
-    var import_buffer = __require("buffer");
+    var import_buffer = __require("node:buffer");
     var fromArrayBuffer = /* @__PURE__ */ __name((input, offset = 0, length = input.byteLength - offset) => {
       if (!(0, import_is_array_buffer.isArrayBuffer)(input)) {
         throw new TypeError(`The "input" argument must be ArrayBuffer. Received type ${typeof input} (${input})`);
@@ -62839,7 +62839,7 @@ var require_dist_cjs65 = __commonJS({
     });
     module.exports = __toCommonJS2(src_exports);
     var import_eventstream_serde_universal = require_dist_cjs64();
-    var import_stream = __require("stream");
+    var import_stream = __require("node:stream");
     async function* readabletoIterable(readStream) {
       let streamEnded = false;
       let generationEnded = false;
@@ -62915,9 +62915,9 @@ var require_dist_cjs66 = __commonJS({
       readableStreamHasher: () => readableStreamHasher
     });
     module.exports = __toCommonJS2(src_exports);
-    var import_fs = __require("fs");
+    var import_fs = __require("node:fs");
     var import_util_utf8 = require_dist_cjs10();
-    var import_stream = __require("stream");
+    var import_stream = __require("node:stream");
     var _HashCalculator = class _HashCalculator extends import_stream.Writable {
       constructor(hash, options) {
         super(options);
@@ -63601,7 +63601,7 @@ var require_create_read_stream_on_buffer = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.createReadStreamOnBuffer = void 0;
-    var stream_1 = __require("stream");
+    var stream_1 = __require("node:stream");
     function createReadStreamOnBuffer(buffer) {
       const stream = new stream_1.Transform();
       stream.push(buffer);
@@ -74228,8 +74228,8 @@ var require_dist_cjs71 = __commonJS({
 // src/storage/r2Client.js
 var require_r2Client = __commonJS({
   "src/storage/r2Client.js"(exports, module) {
-    var fs = __require("fs");
-    var path = __require("path");
+    var fs = __require("node:fs");
+    var path = __require("node:path");
     var { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command } = require_dist_cjs71();
     var config = require_env();
     var LOCAL_UPLOADS_DIR = path.resolve("uploads");
@@ -74457,7 +74457,7 @@ var require_r2Client = __commonJS({
 // src/middleware/auth.js
 var require_auth = __commonJS({
   "src/middleware/auth.js"(exports, module) {
-    var crypto6 = __require("crypto");
+    var crypto6 = __require("node:crypto");
     var config = require_env();
     function getAllValidTokens() {
       const secret = config.server.sessionSecret;
@@ -76075,7 +76075,7 @@ var require_apiRoutes = __commonJS({
 // src/views/templateEngine.js
 var require_templateEngine = __commonJS({
   "src/views/templateEngine.js"(exports, module) {
-    var path = __require("path");
+    var path = __require("node:path");
     function escapeFn(s) {
       if (s === void 0 || s === null) return "";
       return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -80950,7 +80950,7 @@ var require_templateEngine = __commonJS({
 var require_server = __commonJS({
   "server.js"(exports, module) {
     var express = require_express2();
-    var path = __require("path");
+    var path = __require("node:path");
     var cookieParser = require_cookie_parser();
     var cors = require_lib3();
     var config = require_env();
