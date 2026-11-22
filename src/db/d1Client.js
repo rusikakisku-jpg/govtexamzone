@@ -6,6 +6,110 @@ const config = require('../config/env');
 const DB_FILE_PATH = path.resolve('data/sarkariresult.db');
 const SCHEMA_FILE_PATH = path.resolve('schema.sql');
 
+const EMBEDDED_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    slug TEXT UNIQUE NOT NULL,
+    category TEXT NOT NULL,
+    department TEXT,
+    post_date TEXT,
+    last_date TEXT,
+    short_desc TEXT,
+    total_vacancy TEXT,
+    important_dates TEXT,
+    application_fee TEXT,
+    age_limit TEXT,
+    vacancy_details TEXT,
+    category_details TEXT,
+    how_to_apply TEXT,
+    links TEXT,
+    notification_pdf TEXT,
+    admit_card_url TEXT,
+    result_url TEXT,
+    apply_online_url TEXT,
+    official_website_url TEXT,
+    views INTEGER DEFAULT 0,
+    is_featured INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'active',
+    author_id INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_posts_category ON posts(category);
+CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug);
+CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
+CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id);
+CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS authors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    slug TEXT UNIQUE NOT NULL,
+    role TEXT DEFAULT 'Senior Recruitment Analyst & Fact-Checker',
+    email TEXT,
+    password_hash TEXT,
+    bio TEXT,
+    avatar_url TEXT DEFAULT '/images/default-avatar.svg',
+    qualification TEXT,
+    experience TEXT,
+    twitter_url TEXT,
+    linkedin_url TEXT,
+    telegram_url TEXT,
+    last_login DATETIME,
+    is_active INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_authors_slug ON authors(slug);
+
+CREATE TABLE IF NOT EXISTS marquees (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    url TEXT NOT NULL,
+    is_active INTEGER DEFAULT 1,
+    display_order INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS badges (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    subtitle TEXT,
+    url TEXT NOT NULL,
+    bg_color TEXT NOT NULL,
+    display_order INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS uploads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    original_name TEXT NOT NULL,
+    file_key TEXT NOT NULL,
+    file_url TEXT NOT NULL,
+    storage_type TEXT NOT NULL,
+    mime_type TEXT,
+    file_size INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+`;
+
+function getSchemaSql() {
+  try {
+    if (typeof fs.readFileSync === 'function' && typeof fs.existsSync === 'function' && fs.existsSync(SCHEMA_FILE_PATH)) {
+      const content = fs.readFileSync(SCHEMA_FILE_PATH, 'utf-8');
+      if (content && content.trim()) return content;
+    }
+  } catch (err) {}
+  return EMBEDDED_SCHEMA_SQL;
+}
+
 class D1Client {
   constructor() {
     this.isCloudflareD1 = config.cloudflare.d1.isConfigured;
@@ -14,15 +118,24 @@ class D1Client {
     this.initialized = false;
   }
 
+  getNativeD1() {
+    if (this.nativeD1) return this.nativeD1;
+    const db = globalThis.DB || (globalThis.__CF_ENV__ && globalThis.__CF_ENV__.DB);
+    if (db && typeof db.prepare === 'function') {
+      this.nativeD1 = db;
+      this.isNativeD1 = true;
+      return db;
+    }
+    return null;
+  }
+
   async init() {
     if (this.initialized) return;
 
     // 1. Native Cloudflare D1 Binding check (when running on Cloudflare Workers)
-    const nativeD1 = globalThis.DB || (globalThis.__CF_ENV__ && globalThis.__CF_ENV__.DB);
-    if (nativeD1 && typeof nativeD1.prepare === 'function') {
+    const nativeD1 = this.getNativeD1();
+    if (nativeD1) {
       console.log('⚡ Connected to Native Cloudflare D1 Database Binding');
-      this.nativeD1 = nativeD1;
-      this.isNativeD1 = true;
       this.initialized = true;
       await this.runNativeSchema();
       return;
@@ -39,49 +152,59 @@ class D1Client {
     console.log('📂 Initializing Local SQLite Engine (Cloudflare D1 compatible emulation)...');
     this.SQL = await initSqlJs();
 
-    const dbDir = path.dirname(DB_FILE_PATH);
-    if (!fs.existsSync(dbDir)) {
-      fs.mkdirSync(dbDir, { recursive: true });
-    }
-
-    if (fs.existsSync(DB_FILE_PATH)) {
-      const fileBuffer = fs.readFileSync(DB_FILE_PATH);
-      this.localDb = new this.SQL.Database(fileBuffer);
-      console.log('✅ Loaded existing SQLite database from:', DB_FILE_PATH);
-
-      // Auto-migrate missing columns on existing tables
-      try {
-        const resPosts = this.localDb.exec('PRAGMA table_info(posts)');
-        if (resPosts && resPosts[0] && resPosts[0].values) {
-          const colNames = resPosts[0].values.map(v => v[1]);
-          if (!colNames.includes('author_id')) {
-            this.localDb.run('ALTER TABLE posts ADD COLUMN author_id INTEGER DEFAULT 1');
-            console.log('✅ Migrated: added author_id column to posts table.');
-          }
+    try {
+      const dbDir = path.dirname(DB_FILE_PATH);
+      if (typeof fs.existsSync === 'function' && !fs.existsSync(dbDir)) {
+        if (typeof fs.mkdirSync === 'function') {
+          fs.mkdirSync(dbDir, { recursive: true });
         }
-
-        const resAuthors = this.localDb.exec('PRAGMA table_info(authors)');
-        if (resAuthors && resAuthors[0] && resAuthors[0].values) {
-          const authorCols = resAuthors[0].values.map(v => v[1]);
-          if (!authorCols.includes('password_hash')) {
-            this.localDb.run('ALTER TABLE authors ADD COLUMN password_hash TEXT');
-            console.log('✅ Migrated: added password_hash column to authors table.');
-          }
-          if (!authorCols.includes('last_login')) {
-            this.localDb.run('ALTER TABLE authors ADD COLUMN last_login DATETIME');
-            console.log('✅ Migrated: added last_login column to authors table.');
-          }
-        }
-      } catch (migErr) {
-        console.warn('Migration note:', migErr.message);
       }
-    } else {
+    } catch (e) {}
+
+    let loadedFromFile = false;
+    try {
+      if (typeof fs.existsSync === 'function' && fs.existsSync(DB_FILE_PATH)) {
+        const fileBuffer = fs.readFileSync(DB_FILE_PATH);
+        this.localDb = new this.SQL.Database(fileBuffer);
+        loadedFromFile = true;
+        console.log('✅ Loaded existing SQLite database from:', DB_FILE_PATH);
+      }
+    } catch (e) {}
+
+    if (!loadedFromFile) {
       this.localDb = new this.SQL.Database();
       console.log('🆕 Created new SQLite database in memory, initializing schema...');
     }
 
+    // Auto-migrate missing columns on existing tables
+    try {
+      const resPosts = this.localDb.exec('PRAGMA table_info(posts)');
+      if (resPosts && resPosts[0] && resPosts[0].values) {
+        const colNames = resPosts[0].values.map(v => v[1]);
+        if (!colNames.includes('author_id')) {
+          this.localDb.run('ALTER TABLE posts ADD COLUMN author_id INTEGER DEFAULT 1');
+          console.log('✅ Migrated: added author_id column to posts table.');
+        }
+      }
+
+      const resAuthors = this.localDb.exec('PRAGMA table_info(authors)');
+      if (resAuthors && resAuthors[0] && resAuthors[0].values) {
+        const authorCols = resAuthors[0].values.map(v => v[1]);
+        if (!authorCols.includes('password_hash')) {
+          this.localDb.run('ALTER TABLE authors ADD COLUMN password_hash TEXT');
+          console.log('✅ Migrated: added password_hash column to authors table.');
+        }
+        if (!authorCols.includes('last_login')) {
+          this.localDb.run('ALTER TABLE authors ADD COLUMN last_login DATETIME');
+          console.log('✅ Migrated: added last_login column to authors table.');
+        }
+      }
+    } catch (migErr) {
+      console.warn('Migration note:', migErr.message);
+    }
+
     // Apply schema
-    const schemaSql = fs.readFileSync(SCHEMA_FILE_PATH, 'utf-8');
+    const schemaSql = getSchemaSql();
     this.localDb.run(schemaSql);
     this.saveLocal();
     this.initialized = true;
@@ -89,11 +212,14 @@ class D1Client {
   }
 
   saveLocal() {
-    if (this.localDb && !this.isCloudflareD1) {
-      const data = this.localDb.export();
-      const buffer = Buffer.from(data);
-      fs.writeFileSync(DB_FILE_PATH, buffer);
-    }
+    if (this.isNativeD1 || this.isCloudflareD1) return;
+    try {
+      if (this.localDb && typeof fs.writeFileSync === 'function') {
+        const data = this.localDb.export();
+        const buffer = Buffer.from(data);
+        fs.writeFileSync(DB_FILE_PATH, buffer);
+      }
+    } catch (err) {}
   }
 
   // Cloudflare D1 REST API query
@@ -121,7 +247,7 @@ class D1Client {
 
   async runRemoteSchema() {
     try {
-      const schemaSql = fs.readFileSync(SCHEMA_FILE_PATH, 'utf-8');
+      const schemaSql = getSchemaSql();
       const statements = schemaSql
         .split(';')
         .map(s => s.trim())
@@ -138,8 +264,9 @@ class D1Client {
 
   async runNativeSchema() {
     try {
-      if (!this.nativeD1) return;
-      const schemaSql = fs.readFileSync(SCHEMA_FILE_PATH, 'utf-8');
+      const nativeD1 = this.getNativeD1();
+      if (!nativeD1) return;
+      const schemaSql = getSchemaSql();
       const statements = schemaSql
         .split(';')
         .map(s => s.trim())
@@ -147,7 +274,7 @@ class D1Client {
 
       for (const statement of statements) {
         try {
-          await this.nativeD1.prepare(statement).run();
+          await nativeD1.prepare(statement).run();
         } catch (e) {
           // Ignore if table/index already exists
         }
@@ -160,6 +287,7 @@ class D1Client {
 
   prepare(sql) {
     const self = this;
+    self.getNativeD1();
     return {
       bind(...params) {
         const rawParams = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
@@ -245,7 +373,7 @@ class D1Client {
   }
 
   async exec(sql) {
-    if (this.isNativeD1) {
+    if (this.getNativeD1()) {
       return await this.nativeD1.exec(sql);
     }
     if (this.isCloudflareD1) {

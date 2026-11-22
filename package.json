@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "build": "echo 'Build completed'",
+    "build": "node scripts/buildTemplates.js",
     "deploy": "wrangler deploy",
     "seed": "node src/db/seed.js",
     "tunnel": "cloudflared tunnel --url http://localhost:3000 --no-autoupdate",

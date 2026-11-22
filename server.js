@@ -10,6 +10,7 @@ const webRoutes = require('./src/routes/webRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 const authorRoutes = require('./src/routes/authorRoutes');
 const apiRoutes = require('./src/routes/apiRoutes');
+const { templateEngine } = require('./src/views/templateEngine');
 
 const app = express();
 
@@ -17,6 +18,7 @@ const app = express();
 app.set('trust proxy', 1);
 
 // View Engine Setup
+app.engine('ejs', templateEngine);
 app.set('view engine', 'ejs');
 app.set('views', path.resolve('views'));
 
