@@ -1,4 +1,45 @@
-import { createRequire } from 'node:module'; const require = createRequire('file:///worker.js');
+
+import * as nodeBuffer from 'node:buffer';
+import * as nodeCrypto from 'node:crypto';
+import * as nodeEvents from 'node:events';
+import * as nodeFs from 'node:fs';
+import * as nodeHttp from 'node:http';
+import * as nodeHttps from 'node:https';
+import * as nodeNet from 'node:net';
+import * as nodeOs from 'node:os';
+import * as nodePath from 'node:path';
+import * as nodeProcess from 'node:process';
+import * as nodeStream from 'node:stream';
+import * as nodeStringDecoder from 'node:string_decoder';
+import * as nodeUrl from 'node:url';
+import * as nodeUtil from 'node:util';
+import * as nodeZlib from 'node:zlib';
+import * as nodeAsyncHooks from 'node:async_hooks';
+
+const nodeModules = {
+  'buffer': nodeBuffer, 'node:buffer': nodeBuffer,
+  'crypto': nodeCrypto, 'node:crypto': nodeCrypto,
+  'events': nodeEvents, 'node:events': nodeEvents,
+  'fs': nodeFs, 'node:fs': nodeFs,
+  'http': nodeHttp, 'node:http': nodeHttp,
+  'https': nodeHttps, 'node:https': nodeHttps,
+  'net': nodeNet, 'node:net': nodeNet,
+  'os': nodeOs, 'node:os': nodeOs,
+  'path': nodePath, 'node:path': nodePath,
+  'process': nodeProcess, 'node:process': nodeProcess,
+  'stream': nodeStream, 'node:stream': nodeStream,
+  'string_decoder': nodeStringDecoder, 'node:string_decoder': nodeStringDecoder,
+  'url': nodeUrl, 'node:url': nodeUrl,
+  'util': nodeUtil, 'node:util': nodeUtil,
+  'zlib': nodeZlib, 'node:zlib': nodeZlib,
+  'async_hooks': nodeAsyncHooks, 'node:async_hooks': nodeAsyncHooks,
+  'tty': { isatty: () => false, ReadStream: class ReadStream {}, WriteStream: class WriteStream {} },
+  'node:tty': { isatty: () => false, ReadStream: class ReadStream {}, WriteStream: class WriteStream {} },
+  'supports-color': { stdout: false, stderr: false }
+};
+
+const require = (mod) => nodeModules[mod] || {};
+
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
