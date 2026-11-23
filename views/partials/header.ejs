@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><%= typeof title !== 'undefined' ? title : 'Govt Exam Zone : Latest Govt Jobs, Admit Card, Results 2026 | WWW.GOVTEXAMZONE.COM' %></title>
   
   <%
@@ -31,6 +31,10 @@
   <% if (typeof settings !== 'undefined' && settings.google_site_verification) { %>
   <meta name="google-site-verification" content="<%= settings.google_site_verification %>">
   <% } %>
+  <% if (typeof settings !== 'undefined' && settings.adsense_client_id) { %>
+  <!-- Google AdSense Account Verification for Instant Approval -->
+  <meta name="google-adsense-account" content="<%= settings.adsense_client_id %>">
+  <% } %>
 
   <!-- Open Graph / Facebook Meta Tags -->
   <meta property="og:type" content="<%= typeof post !== 'undefined' ? 'article' : 'website' %>">
@@ -55,8 +59,11 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="<%= (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' %>">
   <link rel="manifest" href="/manifest.json">
-  <link rel="icon" href="<%= (typeof settings !== 'undefined' && settings.site_favicon) ? settings.site_favicon : '/images/gez-logo.svg' %>">
-  <link rel="apple-touch-icon" href="<%= (typeof settings !== 'undefined' && settings.site_favicon) ? settings.site_favicon : '/images/gez-logo.svg' %>">
+  <% const activeFavicon = (typeof settings !== 'undefined' && settings.site_favicon && settings.site_favicon.trim()) ? settings.site_favicon.trim() : '/images/gez-logo.svg'; %>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" href="<%= activeFavicon %>">
+  <link rel="shortcut icon" href="<%= activeFavicon %>">
+  <link rel="apple-touch-icon" href="<%= activeFavicon %>">
 
   <!-- Stylesheet -->
   <link rel="stylesheet" href="/css/style.css">
@@ -119,8 +126,8 @@
   </script>
   <% } %>
 
-  <% if (typeof settings !== 'undefined' && settings.ads_active === '1' && settings.adsense_client_id) { %>
-  <!-- Google AdSense -->
+  <% if (typeof settings !== 'undefined' && settings.adsense_client_id) { %>
+  <!-- Google AdSense Script -->
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=<%= settings.adsense_client_id %>" crossorigin="anonymous"></script>
   <% } %>
 
@@ -207,7 +214,7 @@
           <span class="menu-chevron">›</span>
         </a>
       </li>
-      <!-- "More" Dropdown Menu with Candidate Utilities & Tools -->
+      <% if (false) { /* Hidden for now as requested: Candidate Utilities & Tools */ %>
       <li class="nav-dropdown-item <%= cur.includes('/tools/') ? 'active' : '' %>" id="moreDropdownItem">
         <a href="javascript:void(0)" class="nav-dropdown-toggle <%= cur.includes('/tools/') ? 'active' : '' %>" id="moreDropdownToggle" aria-haspopup="true" aria-expanded="false" role="button">
           <span class="menu-icon">⚡</span>
@@ -236,6 +243,7 @@
           </li>
         </ul>
       </li>
+      <% } %>
       <!-- Header Menu Search Function with Search Icon -->
       <li class="nav-search-item">
         <div class="header-search-wrap">

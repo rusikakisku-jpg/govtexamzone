@@ -43,6 +43,16 @@ if (typeof WebSocketPair === 'undefined' && !globalThis.__CF_ENV__ && !globalThi
   app.use('/uploads', express.static(path.resolve('uploads')));
 }
 
+// Favicon handler
+app.get('/favicon.ico', (req, res) => {
+  const icoPath = path.resolve('public/favicon.ico');
+  const svgPath = path.resolve('public/images/gez-logo.svg');
+  const fs = require('fs');
+  if (fs.existsSync(icoPath)) return res.sendFile(icoPath);
+  if (fs.existsSync(svgPath)) return res.sendFile(svgPath);
+  res.status(204).end();
+});
+
 // Routes
 app.get('/api/seed-db', async (req, res) => {
   const tableResults = [];

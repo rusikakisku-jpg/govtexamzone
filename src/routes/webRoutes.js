@@ -284,10 +284,10 @@ router.get('/sitemap.xml', async (req, res) => {
       xml += `  <url><loc>${host}/category/${cat}</loc><lastmod>${todayStr}</lastmod><changefreq>hourly</changefreq><priority>0.9</priority></url>\n`;
     });
 
-    // Candidate Tools (High-Value Utilities for AdSense & Candidates)
-    xml += `  <url><loc>${host}/tools/age-calculator</loc><lastmod>${todayStr}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>\n`;
-    xml += `  <url><loc>${host}/tools/photo-resizer</loc><lastmod>${todayStr}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>\n`;
-    xml += `  <url><loc>${host}/tools/image-resizer</loc><lastmod>${todayStr}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>\n`;
+    // Candidate Tools (temporarily hidden as requested)
+    // xml += `  <url><loc>${host}/tools/age-calculator</loc><lastmod>${todayStr}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>\n`;
+    // xml += `  <url><loc>${host}/tools/photo-resizer</loc><lastmod>${todayStr}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>\n`;
+    // xml += `  <url><loc>${host}/tools/image-resizer</loc><lastmod>${todayStr}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>\n`;
 
     // Static Informational Pages (Essential for Google E-E-A-T & AdSense)
     xml += `  <url><loc>${host}/about-us</loc><lastmod>${todayStr}</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>\n`;

@@ -28876,12 +28876,6 @@ var require_webRoutes = __commonJS({
           xml += `  <url><loc>${host}/category/${cat}</loc><lastmod>${todayStr}</lastmod><changefreq>hourly</changefreq><priority>0.9</priority></url>
 `;
         });
-        xml += `  <url><loc>${host}/tools/age-calculator</loc><lastmod>${todayStr}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
-`;
-        xml += `  <url><loc>${host}/tools/photo-resizer</loc><lastmod>${todayStr}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
-`;
-        xml += `  <url><loc>${host}/tools/image-resizer</loc><lastmod>${todayStr}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
-`;
         xml += `  <url><loc>${host}/about-us</loc><lastmod>${todayStr}</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
 `;
         xml += `  <url><loc>${host}/contact-us</loc><lastmod>${todayStr}</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
@@ -79395,7 +79389,11 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( ageLimit.relaxation ))
     ; __append("</b></li>\\n            ")
     ;  } 
-    ; __append("\\n            <li style=\\"margin-top: 5px;\\">\\n              <a href=\\"/tools/age-calculator\\" target=\\"_blank\\" style=\\"color: #0000a0; font-weight: bold;\\">\\n                \u{1F449} Calculate Your Exact Age Using Online Age Calculator\\n              </a>\\n            </li>\\n          </ul>\\n        </div>\\n      </div>\\n    ")
+    ; __append("\\n            ")
+    ;  if (false) { /* Hidden for now as requested */ 
+    ; __append("\\n            <li style=\\"margin-top: 5px;\\">\\n              <a href=\\"/tools/age-calculator\\" target=\\"_blank\\" style=\\"color: #0000a0; font-weight: bold;\\">\\n                \u{1F449} Calculate Your Exact Age Using Online Age Calculator\\n              </a>\\n            </li>\\n            ")
+    ;  } 
+    ; __append("\\n          </ul>\\n        </div>\\n      </div>\\n    ")
     ;  } 
     ; __append("\\n\\n    <!-- Vacancy Details Table -->\\n    <div id=\\"vacancies\\">\\n    ")
     ;  if (vacancyDetails && vacancyDetails.length > 0) { 
@@ -79662,7 +79660,11 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( ageLimit.relaxation ))
     ; __append("</b></li>\\n            ")
     ;  } 
-    ; __append("\\n            <li style=\\"margin-top: 5px;\\">\\n              <a href=\\"/tools/age-calculator\\" target=\\"_blank\\" style=\\"color: #0000a0; font-weight: bold;\\">\\n                \u{1F449} Calculate Your Exact Age Using Online Age Calculator\\n              </a>\\n            </li>\\n          </ul>\\n        </div>\\n      </div>\\n    ")
+    ; __append("\\n            ")
+    ;  if (false) { /* Hidden for now as requested */ 
+    ; __append("\\n            <li style=\\"margin-top: 5px;\\">\\n              <a href=\\"/tools/age-calculator\\" target=\\"_blank\\" style=\\"color: #0000a0; font-weight: bold;\\">\\n                \u{1F449} Calculate Your Exact Age Using Online Age Calculator\\n              </a>\\n            </li>\\n            ")
+    ;  } 
+    ; __append("\\n          </ul>\\n        </div>\\n      </div>\\n    ")
     ;  } 
     ; __append("\\n\\n    <!-- Vacancy Details Table -->\\n    <div id=\\"vacancies\\">\\n    ")
     ;  if (vacancyDetails && vacancyDetails.length > 0) { 
@@ -80638,7 +80640,11 @@ var require_templateEngine = __commonJS({
     ; __append( settings.ad_bottom_code )
     ; __append("\\n  </div>\\n")
     ;  } 
-    ; __append("\\n\\n<!-- Footer Section -->\\n<footer class=\\"site-footer\\">\\n  <div class=\\"container\\">\\n    <div class=\\"footer-seo-content\\">\\n      <h3>Govt Exam Zone : Government Jobs 2026 Latest Online Form, Results, Admit Card</h3>\\n      <p>\\n        India has witnessed a high demand for Government jobs for many decades. People prefer Government jobs as their primary career option considering the wide variety of benefits, job stability, pension prospects, and public service authority associated with these jobs. Government service is a dream for millions of aspirants across the nation. GovtExamZone.com (govtexamzone.com) provides verified, prompt notifications for all central and state government recruitment exams.\\n      </p>\\n\\n      <h3>Exams for Government Jobs in India</h3>\\n      <p>\\n        Government examinations are conducted for various positions across state and central departments including <b>UPSC, SSC, Railway Recruitment Boards (RRB), State PSCs, Police Recruitment, Banking (IBPS, SBI, RBI), Defense (Army, Navy, Air Force), Teaching (CTET, UPTET, Super TET), NTA, and Board Examinations</b>. Candidates can apply based on their educational qualifications ranging from 10th Pass, 12th Intermediate, ITI, Polytechnic Diploma, to Graduate and Post Graduate degrees.\\n      </p>\\n\\n      <h3>Useful Candidate Utilities &amp; Tools</h3>\\n      <p>\\n        <a href=\\"/tools/age-calculator\\" style=\\"font-weight: bold; color: #ab183d;\\">Government Exam Age Calculator</a> | \\n        <a href=\\"/tools/photo-resizer\\" style=\\"font-weight: bold; color: #ab183d;\\">Photo &amp; Signature Resizer Guide</a> | \\n        <a href=\\"/tools/image-resizer\\" style=\\"font-weight: bold; color: #ab183d;\\">Interactive Photo Resizer &amp; Name Maker</a> |\\n        <a href=\\"/category/certificate-verification\\" style=\\"font-weight: bold; color: #ab183d;\\">Online Certificate Verification</a>\\n      </p>\\n    </div>\\n\\n    <div class=\\"footer-bottom\\">\\n      <div class=\\"footer-links\\">\\n        <a href=\\"/\\">Home</a> |\\n        <a href=\\"/about-us\\">About Us</a> |\\n        <a href=\\"/category/latest-jobs\\">Latest Jobs</a> |\\n        <a href=\\"/category/result\\">Results</a> |\\n        <a href=\\"/category/admit-card\\">Admit Card</a> |\\n        <a href=\\"/category/answer-key\\">Answer Key</a> |\\n        <a href=\\"/category/syllabus\\">Syllabus</a> |\\n        <a href=\\"/contact-us\\">Contact Us</a> |\\n        <a href=\\"/terms-conditions\\">Terms of Use</a> |\\n        <a href=\\"/disclaimer\\">Disclaimer</a> |\\n        <a href=\\"/privacy-policy\\">Privacy Policy</a>\\n      </div>\\n\\n      ")
+    ; __append("\\n\\n<!-- Footer Section -->\\n<footer class=\\"site-footer\\">\\n  <div class=\\"container\\">\\n    <div class=\\"footer-seo-content\\">\\n      <h3>Govt Exam Zone : Government Jobs 2026 Latest Online Form, Results, Admit Card</h3>\\n      <p>\\n        India has witnessed a high demand for Government jobs for many decades. People prefer Government jobs as their primary career option considering the wide variety of benefits, job stability, pension prospects, and public service authority associated with these jobs. Government service is a dream for millions of aspirants across the nation. GovtExamZone.com (govtexamzone.com) provides verified, prompt notifications for all central and state government recruitment exams.\\n      </p>\\n\\n      <h3>Exams for Government Jobs in India</h3>\\n      <p>\\n        Government examinations are conducted for various positions across state and central departments including <b>UPSC, SSC, Railway Recruitment Boards (RRB), State PSCs, Police Recruitment, Banking (IBPS, SBI, RBI), Defense (Army, Navy, Air Force), Teaching (CTET, UPTET, Super TET), NTA, and Board Examinations</b>. Candidates can apply based on their educational qualifications ranging from 10th Pass, 12th Intermediate, ITI, Polytechnic Diploma, to Graduate and Post Graduate degrees.\\n      </p>\\n\\n      ")
+    ;  if (false) { /* Hidden for now as requested: Useful Candidate Utilities & Tools */ 
+    ; __append("\\n      <h3>Useful Candidate Utilities &amp; Tools</h3>\\n      <p>\\n        <a href=\\"/tools/age-calculator\\" style=\\"font-weight: bold; color: #ab183d;\\">Government Exam Age Calculator</a> | \\n        <a href=\\"/tools/photo-resizer\\" style=\\"font-weight: bold; color: #ab183d;\\">Photo &amp; Signature Resizer Guide</a> | \\n        <a href=\\"/tools/image-resizer\\" style=\\"font-weight: bold; color: #ab183d;\\">Interactive Photo Resizer &amp; Name Maker</a> |\\n        <a href=\\"/category/certificate-verification\\" style=\\"font-weight: bold; color: #ab183d;\\">Online Certificate Verification</a>\\n      </p>\\n      ")
+    ;  } 
+    ; __append("\\n    </div>\\n\\n    <div class=\\"footer-bottom\\">\\n      <div class=\\"footer-links\\">\\n        <a href=\\"/\\">Home</a> |\\n        <a href=\\"/about-us\\">About Us</a> |\\n        <a href=\\"/category/latest-jobs\\">Latest Jobs</a> |\\n        <a href=\\"/category/result\\">Results</a> |\\n        <a href=\\"/category/admit-card\\">Admit Card</a> |\\n        <a href=\\"/category/answer-key\\">Answer Key</a> |\\n        <a href=\\"/category/syllabus\\">Syllabus</a> |\\n        <a href=\\"/contact-us\\">Contact Us</a> |\\n        <a href=\\"/terms-conditions\\">Terms of Use</a> |\\n        <a href=\\"/disclaimer\\">Disclaimer</a> |\\n        <a href=\\"/privacy-policy\\">Privacy Policy</a>\\n      </div>\\n\\n      ")
     ;  
         const currentYear = new Date().getFullYear();
         let copyText = (typeof settings !== 'undefined' && settings.copyright_text) 
@@ -80666,7 +80672,11 @@ var require_templateEngine = __commonJS({
     ; __append( settings.ad_bottom_code )
     ; __append("\\n  </div>\\n")
     ;  } 
-    ; __append("\\n\\n<!-- Footer Section -->\\n<footer class=\\"site-footer\\">\\n  <div class=\\"container\\">\\n    <div class=\\"footer-seo-content\\">\\n      <h3>Govt Exam Zone : Government Jobs 2026 Latest Online Form, Results, Admit Card</h3>\\n      <p>\\n        India has witnessed a high demand for Government jobs for many decades. People prefer Government jobs as their primary career option considering the wide variety of benefits, job stability, pension prospects, and public service authority associated with these jobs. Government service is a dream for millions of aspirants across the nation. GovtExamZone.com (govtexamzone.com) provides verified, prompt notifications for all central and state government recruitment exams.\\n      </p>\\n\\n      <h3>Exams for Government Jobs in India</h3>\\n      <p>\\n        Government examinations are conducted for various positions across state and central departments including <b>UPSC, SSC, Railway Recruitment Boards (RRB), State PSCs, Police Recruitment, Banking (IBPS, SBI, RBI), Defense (Army, Navy, Air Force), Teaching (CTET, UPTET, Super TET), NTA, and Board Examinations</b>. Candidates can apply based on their educational qualifications ranging from 10th Pass, 12th Intermediate, ITI, Polytechnic Diploma, to Graduate and Post Graduate degrees.\\n      </p>\\n\\n      <h3>Useful Candidate Utilities &amp; Tools</h3>\\n      <p>\\n        <a href=\\"/tools/age-calculator\\" style=\\"font-weight: bold; color: #ab183d;\\">Government Exam Age Calculator</a> | \\n        <a href=\\"/tools/photo-resizer\\" style=\\"font-weight: bold; color: #ab183d;\\">Photo &amp; Signature Resizer Guide</a> | \\n        <a href=\\"/tools/image-resizer\\" style=\\"font-weight: bold; color: #ab183d;\\">Interactive Photo Resizer &amp; Name Maker</a> |\\n        <a href=\\"/category/certificate-verification\\" style=\\"font-weight: bold; color: #ab183d;\\">Online Certificate Verification</a>\\n      </p>\\n    </div>\\n\\n    <div class=\\"footer-bottom\\">\\n      <div class=\\"footer-links\\">\\n        <a href=\\"/\\">Home</a> |\\n        <a href=\\"/about-us\\">About Us</a> |\\n        <a href=\\"/category/latest-jobs\\">Latest Jobs</a> |\\n        <a href=\\"/category/result\\">Results</a> |\\n        <a href=\\"/category/admit-card\\">Admit Card</a> |\\n        <a href=\\"/category/answer-key\\">Answer Key</a> |\\n        <a href=\\"/category/syllabus\\">Syllabus</a> |\\n        <a href=\\"/contact-us\\">Contact Us</a> |\\n        <a href=\\"/terms-conditions\\">Terms of Use</a> |\\n        <a href=\\"/disclaimer\\">Disclaimer</a> |\\n        <a href=\\"/privacy-policy\\">Privacy Policy</a>\\n      </div>\\n\\n      ")
+    ; __append("\\n\\n<!-- Footer Section -->\\n<footer class=\\"site-footer\\">\\n  <div class=\\"container\\">\\n    <div class=\\"footer-seo-content\\">\\n      <h3>Govt Exam Zone : Government Jobs 2026 Latest Online Form, Results, Admit Card</h3>\\n      <p>\\n        India has witnessed a high demand for Government jobs for many decades. People prefer Government jobs as their primary career option considering the wide variety of benefits, job stability, pension prospects, and public service authority associated with these jobs. Government service is a dream for millions of aspirants across the nation. GovtExamZone.com (govtexamzone.com) provides verified, prompt notifications for all central and state government recruitment exams.\\n      </p>\\n\\n      <h3>Exams for Government Jobs in India</h3>\\n      <p>\\n        Government examinations are conducted for various positions across state and central departments including <b>UPSC, SSC, Railway Recruitment Boards (RRB), State PSCs, Police Recruitment, Banking (IBPS, SBI, RBI), Defense (Army, Navy, Air Force), Teaching (CTET, UPTET, Super TET), NTA, and Board Examinations</b>. Candidates can apply based on their educational qualifications ranging from 10th Pass, 12th Intermediate, ITI, Polytechnic Diploma, to Graduate and Post Graduate degrees.\\n      </p>\\n\\n      ")
+    ;  if (false) { /* Hidden for now as requested: Useful Candidate Utilities & Tools */ 
+    ; __append("\\n      <h3>Useful Candidate Utilities &amp; Tools</h3>\\n      <p>\\n        <a href=\\"/tools/age-calculator\\" style=\\"font-weight: bold; color: #ab183d;\\">Government Exam Age Calculator</a> | \\n        <a href=\\"/tools/photo-resizer\\" style=\\"font-weight: bold; color: #ab183d;\\">Photo &amp; Signature Resizer Guide</a> | \\n        <a href=\\"/tools/image-resizer\\" style=\\"font-weight: bold; color: #ab183d;\\">Interactive Photo Resizer &amp; Name Maker</a> |\\n        <a href=\\"/category/certificate-verification\\" style=\\"font-weight: bold; color: #ab183d;\\">Online Certificate Verification</a>\\n      </p>\\n      ")
+    ;  } 
+    ; __append("\\n    </div>\\n\\n    <div class=\\"footer-bottom\\">\\n      <div class=\\"footer-links\\">\\n        <a href=\\"/\\">Home</a> |\\n        <a href=\\"/about-us\\">About Us</a> |\\n        <a href=\\"/category/latest-jobs\\">Latest Jobs</a> |\\n        <a href=\\"/category/result\\">Results</a> |\\n        <a href=\\"/category/admit-card\\">Admit Card</a> |\\n        <a href=\\"/category/answer-key\\">Answer Key</a> |\\n        <a href=\\"/category/syllabus\\">Syllabus</a> |\\n        <a href=\\"/contact-us\\">Contact Us</a> |\\n        <a href=\\"/terms-conditions\\">Terms of Use</a> |\\n        <a href=\\"/disclaimer\\">Disclaimer</a> |\\n        <a href=\\"/privacy-policy\\">Privacy Policy</a>\\n      </div>\\n\\n      ")
     ;  
         const currentYear = new Date().getFullYear();
         let copyText = (typeof settings !== 'undefined' && settings.copyright_text) 
@@ -80689,7 +80699,7 @@ var require_templateEngine = __commonJS({
       "partials/header.ejs": `  var __output = "";
   function __append(s) { if (s !== undefined && s !== null) __output += s }
   with (locals || {}) {
-    ; __append("<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0, maximum-scale=5.0\\">\\n  <title>")
+    ; __append("<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0\\">\\n  <title>")
     ; __append(escapeFn( typeof title !== 'undefined' ? title : 'Govt Exam Zone : Latest Govt Jobs, Admit Card, Results 2026 | WWW.GOVTEXAMZONE.COM' ))
     ; __append("</title>\\n  \\n  ")
     ; 
@@ -80725,6 +80735,12 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( settings.google_site_verification ))
     ; __append("\\">\\n  ")
     ;  } 
+    ; __append("\\n  ")
+    ;  if (typeof settings !== 'undefined' && settings.adsense_client_id) { 
+    ; __append("\\n  <!-- Google AdSense Account Verification for Instant Approval -->\\n  <meta name=\\"google-adsense-account\\" content=\\"")
+    ; __append(escapeFn( settings.adsense_client_id ))
+    ; __append("\\">\\n  ")
+    ;  } 
     ; __append("\\n\\n  <!-- Open Graph / Facebook Meta Tags -->\\n  <meta property=\\"og:type\\" content=\\"")
     ; __append(escapeFn( typeof post !== 'undefined' ? 'article' : 'website' ))
     ; __append("\\">\\n  <meta property=\\"og:url\\" content=\\"")
@@ -80747,10 +80763,14 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( logoAbsolute ))
     ; __append("\\">\\n\\n  <!-- Mobile & PWA Theme -->\\n  <meta name=\\"theme-color\\" content=\\"#ab183d\\">\\n  <meta name=\\"apple-mobile-web-app-capable\\" content=\\"yes\\">\\n  <meta name=\\"apple-mobile-web-app-status-bar-style\\" content=\\"black-translucent\\">\\n  <meta name=\\"apple-mobile-web-app-title\\" content=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' ))
-    ; __append("\\">\\n  <link rel=\\"manifest\\" href=\\"/manifest.json\\">\\n  <link rel=\\"icon\\" href=\\"")
-    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_favicon) ? settings.site_favicon : '/images/gez-logo.svg' ))
+    ; __append("\\">\\n  <link rel=\\"manifest\\" href=\\"/manifest.json\\">\\n  ")
+    ;  const activeFavicon = (typeof settings !== 'undefined' && settings.site_favicon && settings.site_favicon.trim()) ? settings.site_favicon.trim() : '/images/gez-logo.svg'; 
+    ; __append("\\n  <link rel=\\"icon\\" type=\\"image/x-icon\\" href=\\"/favicon.ico\\">\\n  <link rel=\\"icon\\" href=\\"")
+    ; __append(escapeFn( activeFavicon ))
+    ; __append("\\">\\n  <link rel=\\"shortcut icon\\" href=\\"")
+    ; __append(escapeFn( activeFavicon ))
     ; __append("\\">\\n  <link rel=\\"apple-touch-icon\\" href=\\"")
-    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_favicon) ? settings.site_favicon : '/images/gez-logo.svg' ))
+    ; __append(escapeFn( activeFavicon ))
     ; __append("\\">\\n\\n  <!-- Stylesheet -->\\n  <link rel=\\"stylesheet\\" href=\\"/css/style.css\\">\\n\\n  <!-- JSON-LD Schema.org Structured Data: WebSite -->\\n  <script type=\\"application/ld+json\\">\\n  {\\n    \\"@context\\": \\"https://schema.org\\",\\n    \\"@type\\": \\"WebSite\\",\\n    \\"name\\": \\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' ))
     ; __append("\\",\\n    \\"alternateName\\": [\\"GovtExamZone\\", \\"Govt Exam Zone Official\\", \\"GEZ Official\\"],\\n    \\"url\\": \\"")
@@ -80792,8 +80812,8 @@ var require_templateEngine = __commonJS({
     ; __append("');\\n  </script>\\n  ")
     ;  } 
     ; __append("\\n\\n  ")
-    ;  if (typeof settings !== 'undefined' && settings.ads_active === '1' && settings.adsense_client_id) { 
-    ; __append("\\n  <!-- Google AdSense -->\\n  <script async src=\\"https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=")
+    ;  if (typeof settings !== 'undefined' && settings.adsense_client_id) { 
+    ; __append("\\n  <!-- Google AdSense Script -->\\n  <script async src=\\"https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=")
     ; __append(escapeFn( settings.adsense_client_id ))
     ; __append("\\" crossorigin=\\"anonymous\\"></script>\\n  ")
     ;  } 
@@ -80827,7 +80847,9 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( cur.includes('answer-key') ? 'active' : '' ))
     ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F511}</span>\\n          <span class=\\"menu-label\\">Answer Key</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      <li>\\n        <a href=\\"/category/syllabus\\" class=\\"")
     ; __append(escapeFn( cur.includes('syllabus') ? 'active' : '' ))
-    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F4DA}</span>\\n          <span class=\\"menu-label\\">Syllabus</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      <!-- \\"More\\" Dropdown Menu with Candidate Utilities & Tools -->\\n      <li class=\\"nav-dropdown-item ")
+    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F4DA}</span>\\n          <span class=\\"menu-label\\">Syllabus</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      ")
+    ;  if (false) { /* Hidden for now as requested: Candidate Utilities & Tools */ 
+    ; __append("\\n      <li class=\\"nav-dropdown-item ")
     ; __append(escapeFn( cur.includes('/tools/') ? 'active' : '' ))
     ; __append("\\" id=\\"moreDropdownItem\\">\\n        <a href=\\"javascript:void(0)\\" class=\\"nav-dropdown-toggle ")
     ; __append(escapeFn( cur.includes('/tools/') ? 'active' : '' ))
@@ -80837,7 +80859,9 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( cur.includes('photo-resizer') ? 'active' : '' ))
     ; __append("\\" role=\\"menuitem\\">\\n              <span class=\\"dropdown-item-icon\\">\u{1F4D0}</span>\\n              <span class=\\"dropdown-item-text\\">Photo &amp; Signature Resizer Guide</span>\\n            </a>\\n          </li>\\n          <li>\\n            <a href=\\"/tools/image-resizer\\" class=\\"")
     ; __append(escapeFn( cur.includes('image-resizer') ? 'active' : '' ))
-    ; __append("\\" role=\\"menuitem\\">\\n              <span class=\\"dropdown-item-icon\\">\u{1F5BC}\uFE0F</span>\\n              <span class=\\"dropdown-item-text\\">Interactive Photo Resizer &amp; Name Maker</span>\\n            </a>\\n          </li>\\n        </ul>\\n      </li>\\n      <!-- Header Menu Search Function with Search Icon -->\\n      <li class=\\"nav-search-item\\">\\n        <div class=\\"header-search-wrap\\">\\n          <form action=\\"/search\\" method=\\"GET\\" class=\\"header-search-form\\" id=\\"headerNavSearchForm\\">\\n            <span class=\\"header-search-icon\\" aria-hidden=\\"true\\">\u{1F50D}</span>\\n            <input \\n              type=\\"text\\" \\n              name=\\"q\\" \\n              id=\\"live-search-input\\" \\n              placeholder=\\"Search Exams, Jobs...\\" \\n              autocomplete=\\"off\\"\\n              value=\\"")
+    ; __append("\\" role=\\"menuitem\\">\\n              <span class=\\"dropdown-item-icon\\">\u{1F5BC}\uFE0F</span>\\n              <span class=\\"dropdown-item-text\\">Interactive Photo Resizer &amp; Name Maker</span>\\n            </a>\\n          </li>\\n        </ul>\\n      </li>\\n      ")
+    ;  } 
+    ; __append("\\n      <!-- Header Menu Search Function with Search Icon -->\\n      <li class=\\"nav-search-item\\">\\n        <div class=\\"header-search-wrap\\">\\n          <form action=\\"/search\\" method=\\"GET\\" class=\\"header-search-form\\" id=\\"headerNavSearchForm\\">\\n            <span class=\\"header-search-icon\\" aria-hidden=\\"true\\">\u{1F50D}</span>\\n            <input \\n              type=\\"text\\" \\n              name=\\"q\\" \\n              id=\\"live-search-input\\" \\n              placeholder=\\"Search Exams, Jobs...\\" \\n              autocomplete=\\"off\\"\\n              value=\\"")
     ; __append(escapeFn( typeof query !== 'undefined' ? query : '' ))
     ; __append("\\"\\n              aria-label=\\"Search Govt Exam Zone\\"\\n            >\\n            <button type=\\"submit\\" class=\\"header-search-btn\\">Search</button>\\n          </form>\\n          <div id=\\"search-results-dropdown\\" class=\\"header-search-results\\" style=\\"display: none;\\"></div>\\n        </div>\\n      </li>\\n    </ul>\\n  </div>\\n</nav>\\n</div>\\n<!-- Spacer to offset fixed header height so page content starts cleanly below -->\\n<div class=\\"site-header-spacer\\" id=\\"siteHeaderSpacer\\"></div>\\n<script>\\n(function() {\\n  function syncHeaderSpacer() {\\n    var wrapper = document.getElementById('siteHeaderStickyWrapper');\\n    var spacer = document.getElementById('siteHeaderSpacer');\\n    if (wrapper && spacer) {\\n      spacer.style.height = wrapper.offsetHeight + 'px';\\n    }\\n  }\\n  syncHeaderSpacer();\\n  window.addEventListener('resize', syncHeaderSpacer, { passive: true });\\n  window.addEventListener('load', syncHeaderSpacer, { passive: true });\\n})();\\n</script>\\n\\n<!-- Main Page Content Wrapper (Swappable for instant fluctuation-free transitions) -->\\n<div id=\\"pageContentWrapper\\">\\n")
   }
@@ -80846,7 +80870,7 @@ var require_templateEngine = __commonJS({
       "views/partials/header.ejs": `  var __output = "";
   function __append(s) { if (s !== undefined && s !== null) __output += s }
   with (locals || {}) {
-    ; __append("<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0, maximum-scale=5.0\\">\\n  <title>")
+    ; __append("<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0\\">\\n  <title>")
     ; __append(escapeFn( typeof title !== 'undefined' ? title : 'Govt Exam Zone : Latest Govt Jobs, Admit Card, Results 2026 | WWW.GOVTEXAMZONE.COM' ))
     ; __append("</title>\\n  \\n  ")
     ; 
@@ -80882,6 +80906,12 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( settings.google_site_verification ))
     ; __append("\\">\\n  ")
     ;  } 
+    ; __append("\\n  ")
+    ;  if (typeof settings !== 'undefined' && settings.adsense_client_id) { 
+    ; __append("\\n  <!-- Google AdSense Account Verification for Instant Approval -->\\n  <meta name=\\"google-adsense-account\\" content=\\"")
+    ; __append(escapeFn( settings.adsense_client_id ))
+    ; __append("\\">\\n  ")
+    ;  } 
     ; __append("\\n\\n  <!-- Open Graph / Facebook Meta Tags -->\\n  <meta property=\\"og:type\\" content=\\"")
     ; __append(escapeFn( typeof post !== 'undefined' ? 'article' : 'website' ))
     ; __append("\\">\\n  <meta property=\\"og:url\\" content=\\"")
@@ -80904,10 +80934,14 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( logoAbsolute ))
     ; __append("\\">\\n\\n  <!-- Mobile & PWA Theme -->\\n  <meta name=\\"theme-color\\" content=\\"#ab183d\\">\\n  <meta name=\\"apple-mobile-web-app-capable\\" content=\\"yes\\">\\n  <meta name=\\"apple-mobile-web-app-status-bar-style\\" content=\\"black-translucent\\">\\n  <meta name=\\"apple-mobile-web-app-title\\" content=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' ))
-    ; __append("\\">\\n  <link rel=\\"manifest\\" href=\\"/manifest.json\\">\\n  <link rel=\\"icon\\" href=\\"")
-    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_favicon) ? settings.site_favicon : '/images/gez-logo.svg' ))
+    ; __append("\\">\\n  <link rel=\\"manifest\\" href=\\"/manifest.json\\">\\n  ")
+    ;  const activeFavicon = (typeof settings !== 'undefined' && settings.site_favicon && settings.site_favicon.trim()) ? settings.site_favicon.trim() : '/images/gez-logo.svg'; 
+    ; __append("\\n  <link rel=\\"icon\\" type=\\"image/x-icon\\" href=\\"/favicon.ico\\">\\n  <link rel=\\"icon\\" href=\\"")
+    ; __append(escapeFn( activeFavicon ))
+    ; __append("\\">\\n  <link rel=\\"shortcut icon\\" href=\\"")
+    ; __append(escapeFn( activeFavicon ))
     ; __append("\\">\\n  <link rel=\\"apple-touch-icon\\" href=\\"")
-    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_favicon) ? settings.site_favicon : '/images/gez-logo.svg' ))
+    ; __append(escapeFn( activeFavicon ))
     ; __append("\\">\\n\\n  <!-- Stylesheet -->\\n  <link rel=\\"stylesheet\\" href=\\"/css/style.css\\">\\n\\n  <!-- JSON-LD Schema.org Structured Data: WebSite -->\\n  <script type=\\"application/ld+json\\">\\n  {\\n    \\"@context\\": \\"https://schema.org\\",\\n    \\"@type\\": \\"WebSite\\",\\n    \\"name\\": \\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' ))
     ; __append("\\",\\n    \\"alternateName\\": [\\"GovtExamZone\\", \\"Govt Exam Zone Official\\", \\"GEZ Official\\"],\\n    \\"url\\": \\"")
@@ -80949,8 +80983,8 @@ var require_templateEngine = __commonJS({
     ; __append("');\\n  </script>\\n  ")
     ;  } 
     ; __append("\\n\\n  ")
-    ;  if (typeof settings !== 'undefined' && settings.ads_active === '1' && settings.adsense_client_id) { 
-    ; __append("\\n  <!-- Google AdSense -->\\n  <script async src=\\"https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=")
+    ;  if (typeof settings !== 'undefined' && settings.adsense_client_id) { 
+    ; __append("\\n  <!-- Google AdSense Script -->\\n  <script async src=\\"https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=")
     ; __append(escapeFn( settings.adsense_client_id ))
     ; __append("\\" crossorigin=\\"anonymous\\"></script>\\n  ")
     ;  } 
@@ -80984,7 +81018,9 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( cur.includes('answer-key') ? 'active' : '' ))
     ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F511}</span>\\n          <span class=\\"menu-label\\">Answer Key</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      <li>\\n        <a href=\\"/category/syllabus\\" class=\\"")
     ; __append(escapeFn( cur.includes('syllabus') ? 'active' : '' ))
-    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F4DA}</span>\\n          <span class=\\"menu-label\\">Syllabus</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      <!-- \\"More\\" Dropdown Menu with Candidate Utilities & Tools -->\\n      <li class=\\"nav-dropdown-item ")
+    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F4DA}</span>\\n          <span class=\\"menu-label\\">Syllabus</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      ")
+    ;  if (false) { /* Hidden for now as requested: Candidate Utilities & Tools */ 
+    ; __append("\\n      <li class=\\"nav-dropdown-item ")
     ; __append(escapeFn( cur.includes('/tools/') ? 'active' : '' ))
     ; __append("\\" id=\\"moreDropdownItem\\">\\n        <a href=\\"javascript:void(0)\\" class=\\"nav-dropdown-toggle ")
     ; __append(escapeFn( cur.includes('/tools/') ? 'active' : '' ))
@@ -80994,7 +81030,9 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( cur.includes('photo-resizer') ? 'active' : '' ))
     ; __append("\\" role=\\"menuitem\\">\\n              <span class=\\"dropdown-item-icon\\">\u{1F4D0}</span>\\n              <span class=\\"dropdown-item-text\\">Photo &amp; Signature Resizer Guide</span>\\n            </a>\\n          </li>\\n          <li>\\n            <a href=\\"/tools/image-resizer\\" class=\\"")
     ; __append(escapeFn( cur.includes('image-resizer') ? 'active' : '' ))
-    ; __append("\\" role=\\"menuitem\\">\\n              <span class=\\"dropdown-item-icon\\">\u{1F5BC}\uFE0F</span>\\n              <span class=\\"dropdown-item-text\\">Interactive Photo Resizer &amp; Name Maker</span>\\n            </a>\\n          </li>\\n        </ul>\\n      </li>\\n      <!-- Header Menu Search Function with Search Icon -->\\n      <li class=\\"nav-search-item\\">\\n        <div class=\\"header-search-wrap\\">\\n          <form action=\\"/search\\" method=\\"GET\\" class=\\"header-search-form\\" id=\\"headerNavSearchForm\\">\\n            <span class=\\"header-search-icon\\" aria-hidden=\\"true\\">\u{1F50D}</span>\\n            <input \\n              type=\\"text\\" \\n              name=\\"q\\" \\n              id=\\"live-search-input\\" \\n              placeholder=\\"Search Exams, Jobs...\\" \\n              autocomplete=\\"off\\"\\n              value=\\"")
+    ; __append("\\" role=\\"menuitem\\">\\n              <span class=\\"dropdown-item-icon\\">\u{1F5BC}\uFE0F</span>\\n              <span class=\\"dropdown-item-text\\">Interactive Photo Resizer &amp; Name Maker</span>\\n            </a>\\n          </li>\\n        </ul>\\n      </li>\\n      ")
+    ;  } 
+    ; __append("\\n      <!-- Header Menu Search Function with Search Icon -->\\n      <li class=\\"nav-search-item\\">\\n        <div class=\\"header-search-wrap\\">\\n          <form action=\\"/search\\" method=\\"GET\\" class=\\"header-search-form\\" id=\\"headerNavSearchForm\\">\\n            <span class=\\"header-search-icon\\" aria-hidden=\\"true\\">\u{1F50D}</span>\\n            <input \\n              type=\\"text\\" \\n              name=\\"q\\" \\n              id=\\"live-search-input\\" \\n              placeholder=\\"Search Exams, Jobs...\\" \\n              autocomplete=\\"off\\"\\n              value=\\"")
     ; __append(escapeFn( typeof query !== 'undefined' ? query : '' ))
     ; __append("\\"\\n              aria-label=\\"Search Govt Exam Zone\\"\\n            >\\n            <button type=\\"submit\\" class=\\"header-search-btn\\">Search</button>\\n          </form>\\n          <div id=\\"search-results-dropdown\\" class=\\"header-search-results\\" style=\\"display: none;\\"></div>\\n        </div>\\n      </li>\\n    </ul>\\n  </div>\\n</nav>\\n</div>\\n<!-- Spacer to offset fixed header height so page content starts cleanly below -->\\n<div class=\\"site-header-spacer\\" id=\\"siteHeaderSpacer\\"></div>\\n<script>\\n(function() {\\n  function syncHeaderSpacer() {\\n    var wrapper = document.getElementById('siteHeaderStickyWrapper');\\n    var spacer = document.getElementById('siteHeaderSpacer');\\n    if (wrapper && spacer) {\\n      spacer.style.height = wrapper.offsetHeight + 'px';\\n    }\\n  }\\n  syncHeaderSpacer();\\n  window.addEventListener('resize', syncHeaderSpacer, { passive: true });\\n  window.addEventListener('load', syncHeaderSpacer, { passive: true });\\n})();\\n</script>\\n\\n<!-- Main Page Content Wrapper (Swappable for instant fluctuation-free transitions) -->\\n<div id=\\"pageContentWrapper\\">\\n")
   }
@@ -81194,6 +81232,14 @@ var require_server = __commonJS({
       app2.use(express.static(path.resolve("public")));
       app2.use("/uploads", express.static(path.resolve("uploads")));
     }
+    app2.get("/favicon.ico", (req, res) => {
+      const icoPath = path.resolve("public/favicon.ico");
+      const svgPath = path.resolve("public/images/gez-logo.svg");
+      const fs = __require("node:fs");
+      if (fs.existsSync(icoPath)) return res.sendFile(icoPath);
+      if (fs.existsSync(svgPath)) return res.sendFile(svgPath);
+      res.status(204).end();
+    });
     app2.get("/api/seed-db", async (req, res) => {
       const tableResults = [];
       try {
@@ -81388,7 +81434,25 @@ var worker_default = {
         if (env2.STORAGE_BUCKET) globalThis.STORAGE_BUCKET = env2.STORAGE_BUCKET;
       }
       const url = new URL(request.url);
-      const isAsset = /\.[a-zA-Z0-9]+$/.test(url.pathname) || url.pathname.startsWith("/css/") || url.pathname.startsWith("/js/") || url.pathname.startsWith("/images/") || url.pathname === "/robots.txt" || url.pathname === "/sitemap.xml" || url.pathname === "/manifest.json" || url.pathname === "/favicon.ico";
+      if (url.pathname.startsWith("/uploads/")) {
+        const fileKey = decodeURIComponent(url.pathname.replace(/^\/uploads\//, ""));
+        const bucket = env2?.STORAGE_BUCKET || globalThis.STORAGE_BUCKET;
+        if (bucket && typeof bucket.get === "function") {
+          try {
+            const object = await bucket.get(fileKey);
+            if (object) {
+              const headers = new Headers();
+              object.writeHttpMetadata(headers);
+              headers.set("etag", object.httpEtag);
+              headers.set("cache-control", "public, max-age=31536000, immutable");
+              return new Response(object.body, { headers });
+            }
+          } catch (r2Err) {
+            console.error("R2 fetch error:", r2Err);
+          }
+        }
+      }
+      const isAsset = /\.[a-zA-Z0-9]+$/.test(url.pathname) || url.pathname.startsWith("/css/") || url.pathname.startsWith("/js/") || url.pathname.startsWith("/images/") || url.pathname === "/robots.txt" || url.pathname === "/sitemap.xml" || url.pathname === "/manifest.json" || url.pathname === "/favicon.ico" || url.pathname === "/favicon.svg";
       if (isAsset && env2 && env2.ASSETS) {
         try {
           const assetRes = await env2.ASSETS.fetch(request);
@@ -81396,6 +81460,15 @@ var worker_default = {
             return assetRes;
           }
         } catch (assetErr) {
+        }
+      }
+      if (url.pathname === "/favicon.ico" && env2 && env2.ASSETS) {
+        try {
+          const fallbackRes = await env2.ASSETS.fetch(new Request(new URL("/images/gez-logo.svg", request.url), request));
+          if (fallbackRes && fallbackRes.status !== 404) {
+            return fallbackRes;
+          }
+        } catch (e) {
         }
       }
       return await handleExpressRequest(app, request);

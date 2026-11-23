@@ -44,11 +44,8 @@ const routesConfig = {
     "/css/*",
     "/js/*",
     "/images/*",
-    "/uploads/*",
     "/manifest.json",
-    "/robots.txt",
-    "/sitemap.xml",
-    "/favicon.ico"
+    "/robots.txt"
   ]
 };
 

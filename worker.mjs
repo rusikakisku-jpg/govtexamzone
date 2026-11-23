@@ -113,8 +113,29 @@ export default {
         if (env.STORAGE_BUCKET) globalThis.STORAGE_BUCKET = env.STORAGE_BUCKET;
       }
 
-      // Check if this request can be served as a static asset via env.ASSETS (Pages / Workers Assets)
       const url = new URL(request.url);
+
+      // 1. Serve uploaded media / documents directly from Cloudflare R2 bucket if requested
+      if (url.pathname.startsWith('/uploads/')) {
+        const fileKey = decodeURIComponent(url.pathname.replace(/^\/uploads\//, ''));
+        const bucket = env?.STORAGE_BUCKET || globalThis.STORAGE_BUCKET;
+        if (bucket && typeof bucket.get === 'function') {
+          try {
+            const object = await bucket.get(fileKey);
+            if (object) {
+              const headers = new Headers();
+              object.writeHttpMetadata(headers);
+              headers.set('etag', object.httpEtag);
+              headers.set('cache-control', 'public, max-age=31536000, immutable');
+              return new Response(object.body, { headers });
+            }
+          } catch (r2Err) {
+            console.error("R2 fetch error:", r2Err);
+          }
+        }
+      }
+
+      // 2. Check if this request can be served as a static asset via env.ASSETS (Pages / Workers Assets)
       const isAsset = /\.[a-zA-Z0-9]+$/.test(url.pathname) ||
                       url.pathname.startsWith('/css/') ||
                       url.pathname.startsWith('/js/') ||
@@ -122,7 +143,8 @@ export default {
                       url.pathname === '/robots.txt' ||
                       url.pathname === '/sitemap.xml' ||
                       url.pathname === '/manifest.json' ||
-                      url.pathname === '/favicon.ico';
+                      url.pathname === '/favicon.ico' ||
+                      url.pathname === '/favicon.svg';
 
       if (isAsset && env && env.ASSETS) {
         try {
@@ -131,6 +153,16 @@ export default {
             return assetRes;
           }
         } catch (assetErr) {}
+      }
+
+      // Favicon fallback to logo if favicon.ico is requested
+      if (url.pathname === '/favicon.ico' && env && env.ASSETS) {
+        try {
+          const fallbackRes = await env.ASSETS.fetch(new Request(new URL('/images/gez-logo.svg', request.url), request));
+          if (fallbackRes && fallbackRes.status !== 404) {
+            return fallbackRes;
+          }
+        } catch (e) {}
       }
 
       return await handleExpressRequest(app, request);
