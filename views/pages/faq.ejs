@@ -6,7 +6,7 @@
     ? (settings.site_domain.startsWith('http') ? settings.site_domain.replace(/\/$/, '') : 'https://' + settings.site_domain.replace(/\/$/, ''))
     : 'https://govtexamzone.com';
   const portalName = (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone';
-  const supportEmail = (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'support@govtexamzone.com';
+  const supportEmail = (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com';
 %>
 
 <!-- Schema.org JSON-LD Structured Data: BreadcrumbList & FAQPage -->

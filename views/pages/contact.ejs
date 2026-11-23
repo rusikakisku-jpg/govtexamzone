@@ -1,52 +1,161 @@
 <%- include('../partials/header') %>
 <%- include('../partials/subheader') %>
 
-<main class="container">
-  <div class="sarkari-box" style="margin-bottom: 30px;">
-    <div class="sarkari-box-header">
-      <%= pageTitle || 'Information' %> - Govt Exam Zone
-    </div>
+<%
+  const siteDomain = (typeof settings !== 'undefined' && settings.site_domain) 
+    ? (settings.site_domain.startsWith('http') ? settings.site_domain.replace(/\/$/, '') : 'https://' + settings.site_domain.replace(/\/$/, ''))
+    : 'https://govtexamzone.com';
+  const portalName = (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone';
+  const officialEmail = (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com';
+%>
 
-    <div class="static-page-content">
-      <h2 style="color: var(--primary-red); margin-bottom: 15px;">Contact Govt Exam Zone Helpdesk</h2>
-      <p>
-        If you have any feedback, suggestions, query regarding any examination notification or wish to report a correction, please feel free to contact us via the following official channels:
+<!-- Schema.org JSON-LD Structured Data: BreadcrumbList & ContactPage -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Home",
+          "item": "<%= siteDomain %>"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Contact Us",
+          "item": "<%= siteDomain %>/contact-us"
+        }
+      ]
+    },
+    {
+      "@type": "ContactPage",
+      "name": "Contact Us & Candidate Helpdesk - <%= portalName %>",
+      "url": "<%= siteDomain %>/contact-us",
+      "description": "Official communication and candidate helpdesk for <%= portalName %>. Reach our editorial desk at <%= officialEmail %>.",
+      "mainEntity": {
+        "@type": "Organization",
+        "name": "<%= portalName %>",
+        "url": "<%= siteDomain %>",
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "email": "<%= officialEmail %>",
+          "contactType": "Customer Support & Grievance Redressal",
+          "areaServed": "IN",
+          "availableLanguage": ["en", "hi"]
+        }
+      }
+    }
+  ]
+}
+</script>
+
+<main class="container">
+  <!-- Breadcrumb -->
+  <div style="font-size: 13px; margin: 10px 0 14px 2px; color: #666;">
+    <a href="/" style="color: var(--primary-red); font-weight: bold; text-decoration: none;">🏠 Home</a>
+    <span style="margin: 0 6px; color: #999;">»</span>
+    <span style="color: #333; font-weight: 600;">Contact Us</span>
+  </div>
+
+  <div class="sarkari-box" style="margin-bottom: 30px; background: #ffffff;">
+    <h1 class="sarkari-box-header" style="margin: 0; font-size: 16px; line-height: 1.3; text-align: left; padding: 14px 20px;">
+      Contact Us &amp; Candidate Helpdesk - <%= portalName %>
+    </h1>
+
+    <div class="static-page-content" style="padding: 22px 20px; line-height: 1.7; color: #334155;">
+      <p style="margin-top: 0; font-size: 14.5px;">
+        Welcome to the official <b><%= portalName %></b> communication desk. We value feedback, correction requests, and inquiries from competitive exam aspirants, educators, and the public.
       </p>
 
-      <div style="background: #fdfae7; border: 1px solid #ffd480; padding: 15px; border-radius: 4px; margin: 15px 0;">
-        <p><b>📧 Official Email:</b> <a href="mailto:<%= (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'support@govtexamzone.com' %>"><%= (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'support@govtexamzone.com' %></a></p>
-        <% if (typeof settings !== 'undefined' && settings.contact_phone) { %>
-        <p><b>📞 Candidate Helpline Phone:</b> <a href="tel:<%= settings.contact_phone %>"><%= settings.contact_phone %></a></p>
-        <% } %>
-        <% if (typeof settings !== 'undefined' && settings.office_address) { %>
-        <p><b>📍 Communication Address:</b> <%= settings.office_address %></p>
-        <% } %>
-        <p><b>📱 Official Telegram:</b> <a href="<%= (typeof settings !== 'undefined' && settings.telegram_url) ? settings.telegram_url : 'https://t.me/govtexamzoneofficial' %>" target="_blank"><%= (typeof settings !== 'undefined' && settings.telegram_url) ? settings.telegram_url : 'https://t.me/govtexamzoneofficial' %></a></p>
-        <p><b>💬 Official WhatsApp Channel:</b> <a href="<%= (typeof settings !== 'undefined' && settings.whatsapp_url) ? settings.whatsapp_url : 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10' %>" target="_blank">Join Govt Exam Zone WhatsApp Channel</a></p>
-        <% if (typeof settings !== 'undefined' && settings.youtube_url) { %>
-        <p><b>▶️ Official YouTube:</b> <a href="<%= settings.youtube_url %>" target="_blank"><%= settings.youtube_url %></a></p>
-        <% } %>
-        <% if (typeof settings !== 'undefined' && settings.twitter_url) { %>
-        <p><b>🐦 Official Twitter / X:</b> <a href="<%= settings.twitter_url %>" target="_blank"><%= settings.twitter_url %></a></p>
-        <% } %>
-        <% if (typeof settings !== 'undefined' && settings.instagram_url) { %>
-        <p><b>📸 Official Instagram:</b> <a href="<%= settings.instagram_url %>" target="_blank"><%= settings.instagram_url %></a></p>
-        <% } %>
-        <% if (typeof settings !== 'undefined' && settings.facebook_url) { %>
-        <p><b>📘 Official Facebook:</b> <a href="<%= settings.facebook_url %>" target="_blank"><%= settings.facebook_url %></a></p>
-        <% } %>
-        <p><b>🌐 Official Website:</b> <a href="<%= (typeof settings !== 'undefined' && settings.site_domain) ? (settings.site_domain.startsWith('http') ? settings.site_domain : 'https://' + settings.site_domain) : 'https://govtexamzone.com' %>"><%= (typeof settings !== 'undefined' && settings.site_domain) ? settings.site_domain : 'https://govtexamzone.com' %></a></p>
+      <!-- Primary Contact Card -->
+      <div style="background: #fdfae7; border: 1px solid #ffd480; border-radius: 8px; padding: 20px; margin: 20px 0;">
+        <h2 style="color: #92400e; font-size: 17px; margin-top: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+          <span>📧</span> Primary Support &amp; Editorial Communication
+        </h2>
+        
+        <p style="margin: 0 0 10px 0; font-size: 15px;">
+          <b>Official Email Address:</b> 
+          <a href="mailto:<%= officialEmail %>" style="color: var(--primary-red); font-weight: bold; text-decoration: underline; font-size: 16px;">
+            <%= officialEmail %>
+          </a>
+        </p>
+
+        <p style="margin: 0 0 10px 0; font-size: 13.5px; color: #78350f;">
+          <b>⏱️ Expected Response Time:</b> All emails are reviewed by our editorial team within <b>24 to 48 business hours</b> (Monday to Saturday, 10:00 AM – 6:00 PM IST).
+        </p>
+
+        <p style="margin: 0; font-size: 13.5px; color: #78350f;">
+          <b>🌐 Official Website:</b> <a href="<%= siteDomain %>" style="color: #0284c7; font-weight: bold;"><%= siteDomain %></a>
+        </p>
       </div>
 
-      <h3 style="color: var(--primary-red); margin-top: 25px;">Disclaimer Policy</h3>
-      <p>
-        govtexamzone.com is an informational portal created solely for public educational convenience to provide timely alerts regarding central and state government recruitment exams, results, admit cards, answer keys, and syllabus. We do not provide government jobs directly, nor do we charge fees from candidates. All candidates are advised to verify details with the respective official government recruiting agencies before applying.
+      <!-- Real-Time Community Channels -->
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 26px; margin-bottom: 12px;">
+        📲 Official Broadcast &amp; Real-Time Channels
+      </h2>
+      <p style="margin-bottom: 14px;">
+        For instant breaking job alerts, exam circulars, and hall ticket release notices, join our verified broadcast channels:
       </p>
 
-      <h3 style="color: var(--primary-red); margin-top: 25px;">DMCA Copyright Notice</h3>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 24px;">
+        <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 16px;">
+          <h3 style="margin: 0 0 6px 0; font-size: 15px; color: #0369a1; display: flex; align-items: center; gap: 6px;">
+            <span>✈️</span> Official Telegram Channel
+          </h3>
+          <p style="margin: 0 0 10px 0; font-size: 13px; color: #0284c7;">
+            Instant push notifications for newly announced government jobs, admit cards, and results.
+          </p>
+          <a href="<%= (typeof settings !== 'undefined' && settings.telegram_url) ? settings.telegram_url : 'https://t.me/govtexamzoneofficial' %>" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm" style="background: #0284c7; border-color: #0369a1; text-decoration: none; display: inline-block;">
+            Join Telegram Channel →
+          </a>
+        </div>
+
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 16px;">
+          <h3 style="margin: 0 0 6px 0; font-size: 15px; color: #15803d; display: flex; align-items: center; gap: 6px;">
+            <span>💬</span> Official WhatsApp Channel
+          </h3>
+          <p style="margin: 0 0 10px 0; font-size: 13px; color: #16a34a;">
+            Direct exam news updates delivered to your WhatsApp with official PDF links.
+          </p>
+          <a href="<%= (typeof settings !== 'undefined' && settings.whatsapp_url) ? settings.whatsapp_url : 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10' %>" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm" style="background: #16a34a; border-color: #15803d; text-decoration: none; display: inline-block;">
+            Join WhatsApp Channel →
+          </a>
+        </div>
+      </div>
+
+      <!-- Editorial Corrections & Typo Submissions -->
+      <h2 style="color: var(--primary-red); font-size: 18px; margin-top: 26px; margin-bottom: 10px;">
+        📝 Reporting Typographical Errors &amp; Date Corrections
+      </h2>
       <p>
-        All logos, trademarks, and registered names belong to their respective government bodies and organizations (such as SSC, UPSC, NTA, RRB, CBSE, State Police Boards). govtexamzone.com respects intellectual property rights. If you believe your copyrighted material is displayed on this site without permission, please write to our DMCA agent with proof of ownership for immediate review.
+        Accuracy is our benchmark. If you notice any discrepancy in eligibility criteria, age calculation dates, vacancy tables, or application deadlines, please report it directly with:
       </p>
+      <ul style="padding-left: 20px; margin-bottom: 14px;">
+        <li>URL of the specific notification page on our portal.</li>
+        <li>Brief description of the observed discrepancy.</li>
+        <li>Reference link to the official government employment gazette or official commission bulletin.</li>
+      </ul>
+      <p>
+        Send your email with the subject line <code>[Correction Request] - Exam Name</code> to 
+        <a href="mailto:<%= officialEmail %>" style="color: var(--primary-red); font-weight: bold;"><%= officialEmail %></a>. 
+        Our research desk will verify and update the post within hours.
+      </p>
+
+      <!-- Anti-Fraud & Scam Advisory -->
+      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 16px 20px; margin-top: 26px;">
+        <h3 style="margin-top: 0; color: #991b1b; font-size: 15px; display: flex; align-items: center; gap: 6px;">
+          <span>⚠️</span> Important Anti-Fraud &amp; Candidate Security Advisory
+        </h3>
+        <p style="margin: 0; font-size: 13.5px; color: #7f1d1d; line-height: 1.6;">
+          <b><%= portalName %> never asks for money, application fees, bank account numbers, or OTPs from candidates.</b> 
+          We do not sell employment forms or offer recruitment coaching. If any individual or entity contacts you claiming to represent <%= portalName %> and demanding money for job guarantees, treat it as fraudulent and report it immediately to our official email (<%= officialEmail %>) and your local cybercrime cell.
+        </p>
+      </div>
+
     </div>
   </div>
 </main>

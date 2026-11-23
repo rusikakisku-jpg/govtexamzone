@@ -50,7 +50,7 @@
           Noticed an error or wish to report a correction in any notification? Write directly to our research desk at:
         </p>
         <p style="margin: 0; font-size: 13.5px;">
-          <b>📧 Editorial Desk:</b> <a href="mailto:<%= (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'editor@govtexamzone.com' %>"><%= (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'editor@govtexamzone.com' %></a> | 
+          <b>📧 Official Email:</b> <a href="mailto:<%= (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com' %>" style="color: var(--primary-red); font-weight: bold;"><%= (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com' %></a> | 
           <b>🌐 Portal:</b> <a href="/">Govt Exam Zone Official</a>
         </p>
       </div>

@@ -20,7 +20,7 @@ router.use(async (req, res, next) => {
     const siteSettings = {
       telegram_url: 'https://t.me/govtexamzoneofficial',
       whatsapp_url: 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10',
-      contact_email: 'support@govtexamzone.com',
+      contact_email: 'contact.govtexamzone@gmail.com',
       site_title: 'Govt Exam Zone',
       site_logo: '/images/gez-logo.svg',
       site_favicon: '/images/gez-logo.svg'
@@ -33,7 +33,7 @@ router.use(async (req, res, next) => {
     res.locals.settings = {
       telegram_url: 'https://t.me/govtexamzoneofficial',
       whatsapp_url: 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10',
-      contact_email: 'support@govtexamzone.com',
+      contact_email: 'contact.govtexamzone@gmail.com',
       site_title: 'Govt Exam Zone',
       site_logo: '/images/gez-logo.svg',
       site_favicon: '/images/gez-logo.svg'
