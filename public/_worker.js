@@ -28621,14 +28621,94 @@ var require_helpers = __commonJS({
       }
     }
     var CATEGORIES = {
-      "result": { name: "Results", slug: "result", color: "#ab183d" },
-      "admit-card": { name: "Admit Card", slug: "admit-card", color: "#ab183d" },
-      "latest-jobs": { name: "Latest Jobs", slug: "latest-jobs", color: "#ab183d" },
-      "answer-key": { name: "Answer Key", slug: "answer-key", color: "#ab183d" },
-      "syllabus": { name: "Syllabus", slug: "syllabus", color: "#ab183d" },
-      "admission": { name: "Admission", slug: "admission", color: "#ab183d" },
-      "certificate-verification": { name: "Certificate Verification", slug: "certificate-verification", color: "#ab183d" },
-      "important": { name: "Important", slug: "important", color: "#ab183d" }
+      "latest-jobs": {
+        name: "Latest Jobs",
+        slug: "latest-jobs",
+        color: "#ab183d",
+        icon: "\u{1F4BC}",
+        badge: "Live Recruitment Updates",
+        headline: "Latest Government Jobs & Recruitment Notifications 2026",
+        introEn: "Welcome to Govt Exam Zone \u2014 your dedicated source for verified government job notifications across India. Stay informed about the latest Central and State Government vacancies, online application procedures, eligibility criteria, and last dates to apply. Whether you are preparing for UPSC, SSC, Railway (RRB), Banking, Defence, Teaching, or State Police recruitment, our editorial desk cross-checks all circulars directly with official government gazettes to deliver authentic, timely alerts.",
+        introHi: "Govt Exam Zone \u092E\u0947\u0902 \u0906\u092A\u0915\u093E \u0938\u094D\u0935\u093E\u0917\u0924 \u0939\u0948\u0964 \u092D\u093E\u0930\u0924 \u092D\u0930 \u092E\u0947\u0902 \u0915\u0947\u0902\u0926\u094D\u0930 \u090F\u0935\u0902 \u0930\u093E\u091C\u094D\u092F \u0938\u0930\u0915\u093E\u0930 \u0926\u094D\u0935\u093E\u0930\u093E \u091C\u093E\u0930\u0940 \u0938\u092D\u0940 \u0928\u0935\u0940\u0928\u0924\u092E \u0938\u0930\u0915\u093E\u0930\u0940 \u0928\u094C\u0915\u0930\u093F\u092F\u094B\u0902 (Sarkari Naukri) \u0915\u0940 \u0938\u091F\u0940\u0915 \u0914\u0930 \u0938\u092E\u092F\u092C\u0926\u094D\u0927 \u091C\u093E\u0928\u0915\u093E\u0930\u0940 \u092F\u0939\u093E\u0902 \u092A\u094D\u0930\u093E\u092A\u094D\u0924 \u0915\u0930\u0947\u0902\u0964 \u091A\u093E\u0939\u0947 \u0906\u092A UPSC, SSC, \u0930\u0947\u0932\u0935\u0947 \u092D\u0930\u094D\u0924\u0940 \u092C\u094B\u0930\u094D\u0921 (RRB), \u092C\u0948\u0902\u0915\u093F\u0902\u0917, \u092A\u0941\u0932\u093F\u0938 \u092F\u093E \u0936\u093F\u0915\u094D\u0937\u0915 \u092D\u0930\u094D\u0924\u0940 \u0915\u0940 \u0924\u0948\u092F\u093E\u0930\u0940 \u0915\u0930 \u0930\u0939\u0947 \u0939\u094B\u0902, \u0939\u092E\u093E\u0930\u0940 \u0938\u092E\u0930\u094D\u092A\u093F\u0924 \u091F\u0940\u092E \u0906\u0927\u093F\u0915\u093E\u0930\u093F\u0915 \u0930\u094B\u091C\u0917\u093E\u0930 \u0938\u092E\u093E\u091A\u093E\u0930 \u0914\u0930 \u0935\u093F\u092D\u093E\u0917\u0940\u092F \u0935\u0947\u092C\u0938\u093E\u0907\u091F\u094B\u0902 \u0938\u0947 \u0938\u0940\u0927\u0947 \u0938\u0924\u094D\u092F\u093E\u092A\u093F\u0924 \u0915\u0930\u0915\u0947 \u0911\u0928\u0932\u093E\u0907\u0928 \u0906\u0935\u0947\u0926\u0928 \u0932\u093F\u0902\u0915, \u0936\u0948\u0915\u094D\u0937\u0923\u093F\u0915 \u092F\u094B\u0917\u094D\u092F\u0924\u093E \u0914\u0930 \u0905\u0902\u0924\u093F\u092E \u0924\u093F\u0925\u093F \u0938\u0947 \u091C\u0941\u0921\u093C\u0940 \u0924\u093E\u091C\u093E \u0905\u092A\u0921\u0947\u091F \u0909\u092A\u0932\u092C\u094D\u0927 \u0915\u0930\u093E\u0924\u0940 \u0939\u0948\u0964",
+        highlights: ["\u{1F3DB}\uFE0F Central & State Vacancies", "\u{1F4C5} Verified Cutoff & Last Dates", "\u{1F517} 100% Direct Official Apply Links"]
+      },
+      "admit-card": {
+        name: "Admit Card",
+        slug: "admit-card",
+        color: "#ab183d",
+        icon: "\u{1F3AB}",
+        badge: "Hall Ticket Downloads",
+        headline: "Government Exam Admit Cards & Hall Tickets 2026",
+        introEn: "Welcome to Govt Exam Zone \u2014 your instant access point for government exam admit cards and hall tickets nationwide. Stay updated on upcoming preliminary, mains, skill tests, and physical examination schedules conducted by major recruitment commissions. Find direct server download links, exam city intimation slips, and step-by-step instructions to print your official hall ticket without server delays.",
+        introHi: "Govt Exam Zone \u092E\u0947\u0902 \u0906\u092A\u0915\u093E \u0938\u094D\u0935\u093E\u0917\u0924 \u0939\u0948\u0964 \u092A\u0942\u0930\u0947 \u092D\u093E\u0930\u0924 \u092E\u0947\u0902 \u0935\u093F\u092D\u093F\u0928\u094D\u0928 \u0938\u0930\u0915\u093E\u0930\u0940 \u091A\u092F\u0928 \u0906\u092F\u094B\u0917\u094B\u0902 \u0926\u094D\u0935\u093E\u0930\u093E \u0906\u092F\u094B\u091C\u093F\u0924 \u092A\u0930\u0940\u0915\u094D\u0937\u093E\u0913\u0902 \u0915\u0947 \u092A\u094D\u0930\u0935\u0947\u0936 \u092A\u0924\u094D\u0930 (Admit Card) \u0914\u0930 \u0939\u0949\u0932 \u091F\u093F\u0915\u091F \u0915\u0940 \u0924\u0924\u094D\u0915\u093E\u0932 \u091C\u093E\u0928\u0915\u093E\u0930\u0940 \u092F\u0939\u093E\u0902 \u0909\u092A\u0932\u092C\u094D\u0927 \u0939\u0948\u0964 SSC, UPSC, \u0930\u0947\u0932\u0935\u0947 RRB, \u092A\u0941\u0932\u093F\u0938, \u092C\u0948\u0902\u0915\u093F\u0902\u0917 \u0914\u0930 \u0936\u093F\u0915\u094D\u0937\u0915 \u092A\u093E\u0924\u094D\u0930\u0924\u093E \u092A\u0930\u0940\u0915\u094D\u0937\u093E\u0913\u0902 \u0915\u0947 \u090F\u0921\u092E\u093F\u091F \u0915\u093E\u0930\u094D\u0921 \u091C\u093E\u0930\u0940 \u0939\u094B\u0924\u0947 \u0939\u0940 \u0921\u093E\u092F\u0930\u0947\u0915\u094D\u091F \u0938\u0930\u094D\u0935\u0930 \u0921\u093E\u0909\u0928\u0932\u094B\u0921 \u0932\u093F\u0902\u0915, \u090F\u0917\u094D\u091C\u093E\u092E \u0938\u093F\u091F\u0940 \u0938\u094D\u0932\u093F\u092A \u0914\u0930 \u0921\u093E\u0909\u0928\u0932\u094B\u0921 \u0915\u0930\u0928\u0947 \u0915\u0947 \u0906\u0938\u093E\u0928 \u0928\u093F\u0930\u094D\u0926\u0947\u0936 \u092F\u0939\u093E\u0902 \u0938\u092E\u092F \u092A\u0930 \u092A\u094D\u0930\u0926\u093E\u0928 \u0915\u093F\u090F \u091C\u093E\u0924\u0947 \u0939\u0948\u0902\u0964",
+        highlights: ["\u{1F3AB} Direct Official Server Links", "\u{1F4CD} Exam City & Date Intimation", "\u{1F5A8}\uFE0F Step-by-Step Download Guide"]
+      },
+      "result": {
+        name: "Results",
+        slug: "result",
+        color: "#ab183d",
+        icon: "\u{1F3C6}",
+        badge: "Merit Lists & Scorecards",
+        headline: "Government Exam Results, Cutoff Marks & Merit Lists 2026",
+        introEn: "Welcome to Govt Exam Zone \u2014 track your competitive examination results with total speed and authenticity. We bring you prompt announcements for tier-wise written examinations, cutoff marks, selection lists, and final merit rankings across Central and State government boards. Check your scorecards and download official result PDF documents directly through fast, reliable mirror links.",
+        introHi: "Govt Exam Zone \u092E\u0947\u0902 \u0906\u092A\u0915\u093E \u0938\u094D\u0935\u093E\u0917\u0924 \u0939\u0948\u0964 \u0935\u093F\u092D\u093F\u0928\u094D\u0928 \u0938\u0930\u0915\u093E\u0930\u0940 \u092D\u0930\u094D\u0924\u0940 \u0906\u092F\u094B\u0917\u094B\u0902 \u0914\u0930 \u0935\u093F\u0936\u094D\u0935\u0935\u093F\u0926\u094D\u092F\u093E\u0932\u092F\u094B\u0902 \u0926\u094D\u0935\u093E\u0930\u093E \u0906\u092F\u094B\u091C\u093F\u0924 \u092A\u094D\u0930\u0924\u093F\u092F\u094B\u0917\u0940 \u092A\u0930\u0940\u0915\u094D\u0937\u093E\u0913\u0902 \u0915\u0947 \u092A\u0930\u093F\u0923\u093E\u092E (Results), \u0906\u0927\u093F\u0915\u093E\u0930\u093F\u0915 \u0915\u091F-\u0911\u092B \u092E\u093E\u0930\u094D\u0915\u094D\u0938 \u0914\u0930 \u092E\u0947\u0930\u093F\u091F \u0932\u093F\u0938\u094D\u091F \u0915\u0940 \u092A\u094D\u0930\u093E\u092E\u093E\u0923\u093F\u0915 \u091C\u093E\u0928\u0915\u093E\u0930\u0940 \u092F\u0939\u093E\u0902 \u0926\u0947\u0916\u0947\u0902\u0964 \u092A\u0930\u0940\u0915\u094D\u0937\u093E \u0938\u0902\u092A\u0928\u094D\u0928 \u0939\u094B\u0928\u0947 \u0915\u0947 \u092C\u093E\u0926 \u092A\u0930\u093F\u0923\u093E\u092E \u0918\u094B\u0937\u093F\u0924 \u0939\u094B\u0924\u0947 \u0939\u0940 \u0939\u092E \u0906\u0927\u093F\u0915\u093E\u0930\u093F\u0915 PDF \u091A\u092F\u0928 \u0938\u0942\u091A\u0940, \u0905\u0902\u0915 \u092A\u0924\u094D\u0930 (Scorecard) \u0914\u0930 \u0938\u0902\u092C\u0902\u0927\u093F\u0924 \u092C\u094B\u0930\u094D\u0921 \u0915\u0947 \u0921\u093E\u092F\u0930\u0947\u0915\u094D\u091F \u0932\u093F\u0902\u0915 \u0924\u0941\u0930\u0902\u0924 \u0909\u092A\u0932\u092C\u094D\u0927 \u0915\u0930\u093E\u0924\u0947 \u0939\u0948\u0902\u0964",
+        highlights: ["\u{1F3C6} Official PDF Merit Lists", "\u{1F4CA} Category-wise Cutoff Marks", "\u26A1 Fast Mirror Result Access"]
+      },
+      "syllabus": {
+        name: "Syllabus",
+        slug: "syllabus",
+        color: "#ab183d",
+        icon: "\u{1F4DA}",
+        badge: "Exam Patterns & Syllabus",
+        headline: "Official Exam Syllabus, Question Patterns & Marks Distribution 2026",
+        introEn: "Welcome to Govt Exam Zone \u2014 download official, comprehensive examination syllabi and test patterns for competitive examinations throughout India. A winning preparation strategy starts with complete clarity on subject-wise weightage, marking schemes, and time duration. Download detailed, verified PDF syllabi for SSC, UPSC, Railway (RRB NTPC, ALP, Group D), Police, and State Commission exams.",
+        introHi: "Govt Exam Zone \u092E\u0947\u0902 \u0906\u092A\u0915\u093E \u0938\u094D\u0935\u093E\u0917\u0924 \u0939\u0948\u0964 \u0938\u0930\u0915\u093E\u0930\u0940 \u092A\u094D\u0930\u0924\u093F\u092F\u094B\u0917\u0940 \u092A\u0930\u0940\u0915\u094D\u0937\u093E\u0913\u0902 \u0915\u0947 \u0938\u0902\u092A\u0942\u0930\u094D\u0923 \u0914\u0930 \u0928\u0935\u0940\u0928\u0924\u092E \u092A\u093E\u0920\u094D\u092F\u0915\u094D\u0930\u092E (Syllabus) \u0924\u0925\u093E \u092A\u0930\u0940\u0915\u094D\u0937\u093E \u092A\u0948\u091F\u0930\u094D\u0928 \u0915\u0940 \u0938\u091F\u0940\u0915 \u091C\u093E\u0928\u0915\u093E\u0930\u0940 \u092F\u0939\u093E\u0902 \u092A\u094D\u0930\u093E\u092A\u094D\u0924 \u0915\u0930\u0947\u0902\u0964 \u0915\u093F\u0938\u0940 \u092D\u0940 \u092D\u0930\u094D\u0924\u0940 \u092A\u0930\u0940\u0915\u094D\u0937\u093E \u092E\u0947\u0902 \u0938\u092B\u0932\u0924\u093E \u0915\u0947 \u0932\u093F\u090F \u0935\u093F\u0937\u092F\u0935\u093E\u0930 \u0905\u0902\u0915 \u0935\u093F\u092D\u093E\u091C\u0928, \u0928\u0947\u0917\u0947\u091F\u093F\u0935 \u092E\u093E\u0930\u094D\u0915\u093F\u0902\u0917 \u0914\u0930 \u092A\u0930\u0940\u0915\u094D\u0937\u093E \u0905\u0935\u0927\u093F \u0915\u093E \u091C\u094D\u091E\u093E\u0928 \u0906\u0935\u0936\u094D\u092F\u0915 \u0939\u0948\u0964 \u092F\u0939\u093E\u0902 \u0906\u092A UPSC, SSC, \u0930\u0947\u0932\u0935\u0947, \u092A\u0941\u0932\u093F\u0938 \u0914\u0930 \u0936\u093F\u0915\u094D\u0937\u0923 \u092A\u0930\u0940\u0915\u094D\u0937\u093E\u0913\u0902 \u0915\u0947 \u0906\u0927\u093F\u0915\u093E\u0930\u093F\u0915 \u0938\u093F\u0932\u0947\u092C\u0938 PDF \u0938\u0930\u0932\u0924\u093E \u0938\u0947 \u0921\u093E\u0909\u0928\u0932\u094B\u0921 \u0915\u0930 \u0938\u0915\u0924\u0947 \u0939\u0948\u0902\u0964",
+        highlights: ["\u{1F4DA} Subject-wise Detailed Topics", "\u23F1\uFE0F Exam Pattern & Marking Scheme", "\u{1F4E5} Official Notification PDF Sourcing"]
+      },
+      "answer-key": {
+        name: "Answer Key",
+        slug: "answer-key",
+        color: "#ab183d",
+        icon: "\u{1F511}",
+        badge: "Official Answer Keys",
+        headline: "Official Exam Answer Keys, Response Sheets & Objection Portals 2026",
+        introEn: "Welcome to Govt Exam Zone \u2014 verify your answers with official provisional and final answer keys released by government recruiting authorities. Calculate your estimated scores, download candidate response sheets, and access official objection windows before deadlines. We provide direct links to commission dispute portals for SSC, RRB, Police, NTA, and State Board exams.",
+        introHi: "Govt Exam Zone \u092E\u0947\u0902 \u0906\u092A\u0915\u093E \u0938\u094D\u0935\u093E\u0917\u0924 \u0939\u0948\u0964 \u092D\u093E\u0930\u0924 \u092D\u0930 \u092E\u0947\u0902 \u0906\u092F\u094B\u091C\u093F\u0924 \u0935\u093F\u092D\u093F\u0928\u094D\u0928 \u092A\u094D\u0930\u0924\u093F\u092F\u094B\u0917\u0940 \u092A\u0930\u0940\u0915\u094D\u0937\u093E\u0913\u0902 \u0915\u0940 \u0906\u0927\u093F\u0915\u093E\u0930\u093F\u0915 \u0909\u0924\u094D\u0924\u0930 \u0915\u0941\u0902\u091C\u0940 (Answer Key) \u0914\u0930 \u0930\u093F\u0938\u094D\u092A\u0949\u0928\u094D\u0938 \u0936\u0940\u091F \u092F\u0939\u093E\u0902 \u0926\u0947\u0916\u0947\u0902\u0964 \u092A\u0930\u0940\u0915\u094D\u0937\u093E \u0915\u0947 \u0924\u0941\u0930\u0902\u0924 \u092C\u093E\u0926 \u0905\u092A\u0928\u0947 \u0938\u0902\u092D\u093E\u0935\u093F\u0924 \u0905\u0902\u0915\u094B\u0902 \u0915\u0940 \u0917\u0923\u0928\u093E \u0915\u0930\u0928\u0947, \u0938\u0939\u0940 \u0909\u0924\u094D\u0924\u0930\u094B\u0902 \u0915\u093E \u092E\u093F\u0932\u093E\u0928 \u0915\u0930\u0928\u0947 \u0914\u0930 \u0928\u093F\u0930\u094D\u0927\u093E\u0930\u093F\u0924 \u0938\u092E\u092F \u0938\u0940\u092E\u093E \u092E\u0947\u0902 \u0911\u0928\u0932\u093E\u0907\u0928 \u0906\u092A\u0924\u094D\u0924\u093F (Objection) \u0926\u0930\u094D\u091C \u0915\u0930\u093E\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0921\u093E\u092F\u0930\u0947\u0915\u094D\u091F \u0906\u0927\u093F\u0915\u093E\u0930\u093F\u0915 \u0932\u093F\u0902\u0915 \u092F\u0939\u093E\u0902 \u0909\u092A\u0932\u092C\u094D\u0927 \u0915\u0930\u093E\u090F \u091C\u093E\u0924\u0947 \u0939\u0948\u0902\u0964",
+        highlights: ["\u{1F511} Provisional & Final Keys", "\u{1F4DD} Question Paper & Response Sheets", "\u2696\uFE0F Direct Online Objection Links"]
+      },
+      "admission": {
+        name: "Admission",
+        slug: "admission",
+        color: "#ab183d",
+        icon: "\u{1F393}",
+        badge: "National Entrance Forms",
+        headline: "National & State Entrance Examinations & Admission Forms 2026",
+        introEn: "Welcome to Govt Exam Zone \u2014 your guide for premier entrance examinations, admission registration forms, counselling schedules, and university allotments across India. Discover verified circulars for NTA NEET, JEE Main, CUET, Polytechnic, ITI, B.Ed, and Central University programmes with complete eligibility and direct apply access.",
+        introHi: "Govt Exam Zone \u092E\u0947\u0902 \u0906\u092A\u0915\u093E \u0938\u094D\u0935\u093E\u0917\u0924 \u0939\u0948\u0964 \u0926\u0947\u0936 \u0915\u0947 \u092A\u094D\u0930\u0924\u093F\u0937\u094D\u0920\u093F\u0924 \u0935\u093F\u0936\u094D\u0935\u0935\u093F\u0926\u094D\u092F\u093E\u0932\u092F\u094B\u0902, \u0924\u0915\u0928\u0940\u0915\u0940 \u0938\u0902\u0938\u094D\u0925\u093E\u0928\u094B\u0902 \u0914\u0930 \u092C\u094B\u0930\u094D\u0921\u094B\u0902 \u0926\u094D\u0935\u093E\u0930\u093E \u0906\u092F\u094B\u091C\u093F\u0924 \u0930\u093E\u0937\u094D\u091F\u094D\u0930\u0940\u092F \u0914\u0930 \u0930\u093E\u091C\u094D\u092F \u0938\u094D\u0924\u0930\u0940\u092F \u092A\u094D\u0930\u0935\u0947\u0936 \u092A\u0930\u0940\u0915\u094D\u0937\u093E\u0913\u0902 (Admission Forms), \u0915\u093E\u0909\u0902\u0938\u0932\u093F\u0902\u0917 \u0936\u0947\u0921\u094D\u092F\u0942\u0932 \u0914\u0930 \u0938\u0940\u091F \u0906\u0935\u0902\u091F\u0928 \u0915\u0940 \u0935\u093F\u0938\u094D\u0924\u0943\u0924 \u091C\u093E\u0928\u0915\u093E\u0930\u0940 \u092F\u0939\u093E\u0902 \u092A\u094D\u0930\u093E\u092A\u094D\u0924 \u0915\u0930\u0947\u0902\u0964 NEET, JEE Main, CUET \u0914\u0930 B.Ed \u091C\u0948\u0938\u0940 \u092A\u094D\u0930\u092E\u0941\u0916 \u092A\u094D\u0930\u0935\u0947\u0936 \u092A\u0930\u0940\u0915\u094D\u0937\u093E\u0913\u0902 \u0915\u0947 \u0906\u0935\u0947\u0926\u0928 \u092B\u0949\u0930\u094D\u092E \u0914\u0930 \u092E\u0939\u0924\u094D\u0935\u092A\u0942\u0930\u094D\u0923 \u0928\u093F\u0930\u094D\u0926\u0947\u0936 \u092F\u0939\u093E\u0902 \u0926\u0947\u0916\u0947\u0902\u0964",
+        highlights: ["\u{1F393} Top University & College Admissions", "\u{1F4C5} Counselling & Seat Allocation", "\u{1F517} Direct Registration Links"]
+      },
+      "certificate-verification": {
+        name: "Certificate Verification",
+        slug: "certificate-verification",
+        color: "#ab183d",
+        icon: "\u{1F4D1}",
+        badge: "Citizen Digital Services",
+        headline: "Official Certificate Verification, e-Governance & Citizen Documents",
+        introEn: "Welcome to Govt Exam Zone \u2014 authentic information and direct links for document verification, e-certificates, and public digital identity services. Access authorized portals for Aadhaar updates, PAN Card applications, Caste/Income certificate verification, and DigiLocker credentials essential for government job verification rounds.",
+        introHi: "Govt Exam Zone \u092E\u0947\u0902 \u0906\u092A\u0915\u093E \u0938\u094D\u0935\u093E\u0917\u0924 \u0939\u0948\u0964 \u0938\u0930\u0915\u093E\u0930\u0940 \u0928\u094C\u0915\u0930\u093F\u092F\u094B\u0902 \u0915\u0947 \u0926\u0938\u094D\u0924\u093E\u0935\u0947\u091C \u0938\u0924\u094D\u092F\u093E\u092A\u0928 (Document Verification), \u0921\u093F\u091C\u093F\u091F\u0932 \u092A\u0939\u091A\u093E\u0928 \u092A\u0924\u094D\u0930 \u0914\u0930 \u092A\u094D\u0930\u092E\u093E\u0923 \u092A\u0924\u094D\u0930 \u0938\u0924\u094D\u092F\u093E\u092A\u0928 \u0938\u0947\u0935\u093E\u0913\u0902 \u0915\u0940 \u092A\u094D\u0930\u093E\u092E\u093E\u0923\u093F\u0915 \u091C\u093E\u0928\u0915\u093E\u0930\u0940 \u092F\u0939\u093E\u0902 \u092A\u094D\u0930\u093E\u092A\u094D\u0924 \u0915\u0930\u0947\u0902\u0964 \u0906\u0927\u093E\u0930, \u092A\u0948\u0928 \u0915\u093E\u0930\u094D\u0921, \u091C\u093E\u0924\u093F \u090F\u0935\u0902 \u0906\u092F \u092A\u094D\u0930\u092E\u093E\u0923 \u092A\u0924\u094D\u0930 \u0938\u0947 \u091C\u0941\u0921\u093C\u0947 \u0905\u0927\u093F\u0915\u0943\u0924 \u0938\u0930\u0915\u093E\u0930\u0940 \u092A\u094B\u0930\u094D\u091F\u0932\u094D\u0938 \u0915\u0947 \u0932\u093F\u0902\u0915 \u092F\u0939\u093E\u0902 \u0926\u093F\u090F \u0917\u090F \u0939\u0948\u0902 \u091C\u094B \u092D\u0930\u094D\u0924\u0940 \u092A\u094D\u0930\u0915\u094D\u0930\u093F\u092F\u093E \u0915\u0947 \u0938\u092E\u092F \u0906\u0935\u0936\u094D\u092F\u0915 \u0939\u094B\u0924\u0947 \u0939\u0948\u0902\u0964",
+        highlights: ["\u{1F4D1} Document Verification Guidelines", "\u{1F194} Authorized Citizen Identity Links", "\u{1F512} Official Government Service Gateways"]
+      },
+      "important": {
+        name: "Important",
+        slug: "important",
+        color: "#ab183d",
+        icon: "\u{1F514}",
+        badge: "Candidate Advisories & OTR",
+        headline: "Important Candidate Notices, OTR Registrations & Welfare Schemes",
+        introEn: "Welcome to Govt Exam Zone \u2014 track critical candidate advisories, One-Time Registration (OTR) procedures, government scholarship programs, and student welfare initiatives. Stay ahead with timely updates on SSC OTR, State Commission OTRs, National Scholarship Portals, and major administrative recruitment notifications.",
+        introHi: "Govt Exam Zone \u092E\u0947\u0902 \u0906\u092A\u0915\u093E \u0938\u094D\u0935\u093E\u0917\u0924 \u0939\u0948\u0964 \u092A\u094D\u0930\u0924\u093F\u092F\u094B\u0917\u0940 \u092A\u0930\u0940\u0915\u094D\u0937\u093E\u0930\u094D\u0925\u093F\u092F\u094B\u0902 \u0915\u0947 \u0932\u093F\u090F \u0905\u0924\u093F-\u092E\u0939\u0924\u094D\u0935\u092A\u0942\u0930\u094D\u0923 \u0938\u0942\u091A\u0928\u093E\u090F\u0902, \u0935\u0928-\u091F\u093E\u0907\u092E \u0930\u091C\u093F\u0938\u094D\u091F\u094D\u0930\u0947\u0936\u0928 (OTR), \u0938\u0930\u0915\u093E\u0930\u0940 \u091B\u093E\u0924\u094D\u0930\u0935\u0943\u0924\u094D\u0924\u093F (Scholarship) \u092F\u094B\u091C\u0928\u093E\u090F\u0902 \u0914\u0930 \u091C\u0928-\u0915\u0932\u094D\u092F\u093E\u0923\u0915\u093E\u0930\u0940 \u092A\u0939\u0932\u094B\u0902 \u0915\u0940 \u0905\u0926\u094D\u092F\u0924\u0928 \u091C\u093E\u0928\u0915\u093E\u0930\u0940 \u092F\u0939\u093E\u0902 \u0909\u092A\u0932\u092C\u094D\u0927 \u0939\u0948\u0964 SSC OTR, \u0930\u093E\u091C\u094D\u092F \u0906\u092F\u094B\u0917 OTR \u0914\u0930 \u091B\u093E\u0924\u094D\u0930\u0935\u0943\u0924\u094D\u0924\u093F \u092B\u0949\u0930\u094D\u092E \u0938\u0947 \u091C\u0941\u0921\u093C\u0940 \u0938\u092E\u092F\u092C\u0926\u094D\u0927 \u091C\u093E\u0928\u0915\u093E\u0930\u0940 \u092A\u094D\u0930\u093E\u092A\u094D\u0924 \u0915\u0930\u0947\u0902\u0964",
+        highlights: ["\u{1F514} Urgent Commission Advisories", "\u{1F4DD} Step-by-Step OTR Guidelines", "\u{1F393} Student Scholarship Updates"]
+      }
     };
     module.exports = {
       slugify,
@@ -28768,6 +28848,11 @@ var require_webRoutes = __commonJS({
       } catch (err) {
         next(err);
       }
+    });
+    router.get(["/latest-jobs", "/admit-card", "/result", "/results", "/answer-key", "/syllabus", "/admission", "/certificate-verification", "/important"], (req, res) => {
+      let slug = req.path.replace(/^\//, "").replace(/\/$/, "");
+      if (slug === "results") slug = "result";
+      res.redirect(301, `/category/${slug}`);
     });
     router.get("/post/:slug", async (req, res, next) => {
       try {
@@ -78949,9 +79034,41 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( catInfo.name ))
     ; __append("</span>\\n  </div>\\n\\n  <div class=\\"sarkari-box\\" style=\\"margin-bottom: 30px;\\">\\n    <h1 class=\\"sarkari-box-header\\" style=\\"margin: 0; font-size: 16px; line-height: 1.3;\\">\\n      ")
     ; __append(escapeFn( catInfo.name ))
-    ; __append(" - Govt Exam Zone 2026\\n    </h1>\\n\\n    <div style=\\"padding: 12px 18px; background: #fafafa; border-bottom: 1px solid #ddd; font-size: 13.5px; color: #555;\\">\\n      Showing active notifications for <b>")
+    ; __append(" - Govt Exam Zone 2026\\n    </h1>\\n\\n    <!-- Category Overview & Bilingual Guidance Card -->\\n    <div class=\\"category-hero-card\\" style=\\"padding: 18px 20px; background: #ffffff; border-bottom: 2px solid #f1f5f9;\\">\\n      <!-- Title & Icon Bar -->\\n      <div style=\\"display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;\\">\\n        <div style=\\"display: flex; align-items: center; gap: 10px;\\">\\n          <span style=\\"font-size: 26px; line-height: 1;\\">")
+    ; __append(escapeFn( catInfo.icon || '\u{1F4CC}' ))
+    ; __append("</span>\\n          <div>\\n            <h2 style=\\"margin: 0; font-size: 16.5px; color: #0f172a; font-weight: 700;\\">\\n              ")
+    ; __append(escapeFn( catInfo.headline || (catInfo.name + ' Notifications & Updates 2026') ))
+    ; __append("\\n            </h2>\\n            <div style=\\"font-size: 12px; color: #64748b; margin-top: 2px;\\">\\n              Govt Exam Zone \u2022 Primary-Source Verified Employment Desk\\n            </div>\\n          </div>\\n        </div>\\n        <div style=\\"display: flex; align-items: center; gap: 8px;\\">\\n          ")
+    ;  if (catInfo.badge) { 
+    ; __append("\\n            <span style=\\"background: #fee2e2; color: #991b1b; font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 9999px; border: 1px solid #fca5a5;\\">\\n              \u26A1 ")
+    ; __append(escapeFn( catInfo.badge ))
+    ; __append("\\n            </span>\\n          ")
+    ;  } 
+    ; __append("\\n          <span style=\\"background: #f1f5f9; color: #334155; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 4px; border: 1px solid #e2e8f0;\\">\\n            ")
+    ; __append(escapeFn( totalPosts ))
+    ; __append(" Active Updates\\n          </span>\\n        </div>\\n      </div>\\n\\n      <!-- Feature Highlight Pills -->\\n      ")
+    ;  if (catInfo.highlights && catInfo.highlights.length > 0) { 
+    ; __append("\\n        <div style=\\"display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px;\\">\\n          ")
+    ;  catInfo.highlights.forEach(h => { 
+    ; __append("\\n            <span style=\\"background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 10px; font-size: 12px; color: #334155; font-weight: 600;\\">\\n              ")
+    ; __append(escapeFn( h ))
+    ; __append("\\n            </span>\\n          ")
+    ;  }) 
+    ; __append("\\n        </div>\\n      ")
+    ;  } 
+    ; __append("\\n\\n      <!-- Bilingual Explanatory Panels -->\\n      <div style=\\"display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 1.65; color: #334155;\\">\\n        <!-- English Description -->\\n        <div style=\\"background: #f8fafc; border-left: 3px solid var(--primary-red); padding: 12px 15px; border-radius: 0 5px 5px 0;\\">\\n          <p style=\\"margin: 0;\\">\\n            ")
+    ; __append(escapeFn( catInfo.introEn || ('Stay informed with the latest verified ' + catInfo.name + ' notifications, official application links, and examination updates published across Central and State government commissions.') ))
+    ; __append("\\n          </p>\\n        </div>\\n\\n        <!-- Hindi Description -->\\n        <div style=\\"background: #fffbeb; border-left: 3px solid #d97706; padding: 12px 15px; border-radius: 0 5px 5px 0; color: #78350f;\\">\\n          <p style=\\"margin: 0; font-family: inherit;\\">\\n            ")
+    ; __append(escapeFn( catInfo.introHi || ('\u092D\u093E\u0930\u0924 \u092D\u0930 \u092E\u0947\u0902 \u0906\u092F\u094B\u091C\u093F\u0924 \u0935\u093F\u092D\u093F\u0928\u094D\u0928 \u0938\u0930\u0915\u093E\u0930\u0940 \u092A\u094D\u0930\u0924\u093F\u092F\u094B\u0917\u0940 \u092A\u0930\u0940\u0915\u094D\u0937\u093E\u0913\u0902 \u0915\u0947 ' + catInfo.name + ' \u0938\u0947 \u091C\u0941\u0921\u093C\u0940 \u092A\u094D\u0930\u092E\u093E\u0923\u093F\u0924 \u091C\u093E\u0928\u0915\u093E\u0930\u0940, \u0906\u0927\u093F\u0915\u093E\u0930\u093F\u0915 \u0928\u094B\u091F\u093F\u0938 \u0914\u0930 \u092E\u0939\u0924\u094D\u0935\u092A\u0942\u0930\u094D\u0923 \u0924\u093F\u0925\u093F\u092F\u094B\u0902 \u0915\u0940 \u0924\u093E\u091C\u093E \u0905\u092A\u0921\u0947\u091F \u092F\u0939\u093E\u0902 \u092A\u094D\u0930\u093E\u092A\u094D\u0924 \u0915\u0930\u0947\u0902\u0964') ))
+    ; __append("\\n          </p>\\n        </div>\\n      </div>\\n\\n      <!-- Quick Real-Time Channel Bar -->\\n      <div style=\\"margin-top: 14px; padding-top: 10px; border-top: 1px dashed #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px; color: #64748b;\\">\\n        <span>\u{1F514} <b>Instant Alerts:</b> Join our verified channels to receive immediate notifications as soon as a new ")
     ; __append(escapeFn( catInfo.name ))
-    ; __append("</b>.\\n    </div>\\n\\n    <ul class=\\"sarkari-box-list\\">\\n      ")
+    ; __append(" notice is released.</span>\\n        <div style=\\"display: flex; gap: 10px;\\">\\n          <a href=\\"")
+    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.telegram_url) ? settings.telegram_url : 'https://t.me/govtexamzoneofficial' 
+))
+    ; __append("\\" target=\\"_blank\\" rel=\\"noopener\\" style=\\"color: #0284c7; font-weight: 700; text-decoration: none;\\">\u2708\uFE0F Telegram</a>\\n          <span style=\\"color: #cbd5e1;\\">|</span>\\n          <a href=\\"")
+    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.whatsapp_url) ? settings.whatsapp_url : 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10' 
+))
+    ; __append("\\" target=\\"_blank\\" rel=\\"noopener\\" style=\\"color: #16a34a; font-weight: 700; text-decoration: none;\\">\u{1F4AC} WhatsApp</a>\\n        </div>\\n      </div>\\n    </div>\\n\\n    <ul class=\\"sarkari-box-list\\">\\n      ")
     ;  if (posts && posts.length > 0) { 
     ; __append("\\n        ")
     ;  posts.forEach(post => { 
@@ -79039,9 +79156,41 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( catInfo.name ))
     ; __append("</span>\\n  </div>\\n\\n  <div class=\\"sarkari-box\\" style=\\"margin-bottom: 30px;\\">\\n    <h1 class=\\"sarkari-box-header\\" style=\\"margin: 0; font-size: 16px; line-height: 1.3;\\">\\n      ")
     ; __append(escapeFn( catInfo.name ))
-    ; __append(" - Govt Exam Zone 2026\\n    </h1>\\n\\n    <div style=\\"padding: 12px 18px; background: #fafafa; border-bottom: 1px solid #ddd; font-size: 13.5px; color: #555;\\">\\n      Showing active notifications for <b>")
+    ; __append(" - Govt Exam Zone 2026\\n    </h1>\\n\\n    <!-- Category Overview & Bilingual Guidance Card -->\\n    <div class=\\"category-hero-card\\" style=\\"padding: 18px 20px; background: #ffffff; border-bottom: 2px solid #f1f5f9;\\">\\n      <!-- Title & Icon Bar -->\\n      <div style=\\"display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;\\">\\n        <div style=\\"display: flex; align-items: center; gap: 10px;\\">\\n          <span style=\\"font-size: 26px; line-height: 1;\\">")
+    ; __append(escapeFn( catInfo.icon || '\u{1F4CC}' ))
+    ; __append("</span>\\n          <div>\\n            <h2 style=\\"margin: 0; font-size: 16.5px; color: #0f172a; font-weight: 700;\\">\\n              ")
+    ; __append(escapeFn( catInfo.headline || (catInfo.name + ' Notifications & Updates 2026') ))
+    ; __append("\\n            </h2>\\n            <div style=\\"font-size: 12px; color: #64748b; margin-top: 2px;\\">\\n              Govt Exam Zone \u2022 Primary-Source Verified Employment Desk\\n            </div>\\n          </div>\\n        </div>\\n        <div style=\\"display: flex; align-items: center; gap: 8px;\\">\\n          ")
+    ;  if (catInfo.badge) { 
+    ; __append("\\n            <span style=\\"background: #fee2e2; color: #991b1b; font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 9999px; border: 1px solid #fca5a5;\\">\\n              \u26A1 ")
+    ; __append(escapeFn( catInfo.badge ))
+    ; __append("\\n            </span>\\n          ")
+    ;  } 
+    ; __append("\\n          <span style=\\"background: #f1f5f9; color: #334155; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 4px; border: 1px solid #e2e8f0;\\">\\n            ")
+    ; __append(escapeFn( totalPosts ))
+    ; __append(" Active Updates\\n          </span>\\n        </div>\\n      </div>\\n\\n      <!-- Feature Highlight Pills -->\\n      ")
+    ;  if (catInfo.highlights && catInfo.highlights.length > 0) { 
+    ; __append("\\n        <div style=\\"display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px;\\">\\n          ")
+    ;  catInfo.highlights.forEach(h => { 
+    ; __append("\\n            <span style=\\"background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 10px; font-size: 12px; color: #334155; font-weight: 600;\\">\\n              ")
+    ; __append(escapeFn( h ))
+    ; __append("\\n            </span>\\n          ")
+    ;  }) 
+    ; __append("\\n        </div>\\n      ")
+    ;  } 
+    ; __append("\\n\\n      <!-- Bilingual Explanatory Panels -->\\n      <div style=\\"display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 1.65; color: #334155;\\">\\n        <!-- English Description -->\\n        <div style=\\"background: #f8fafc; border-left: 3px solid var(--primary-red); padding: 12px 15px; border-radius: 0 5px 5px 0;\\">\\n          <p style=\\"margin: 0;\\">\\n            ")
+    ; __append(escapeFn( catInfo.introEn || ('Stay informed with the latest verified ' + catInfo.name + ' notifications, official application links, and examination updates published across Central and State government commissions.') ))
+    ; __append("\\n          </p>\\n        </div>\\n\\n        <!-- Hindi Description -->\\n        <div style=\\"background: #fffbeb; border-left: 3px solid #d97706; padding: 12px 15px; border-radius: 0 5px 5px 0; color: #78350f;\\">\\n          <p style=\\"margin: 0; font-family: inherit;\\">\\n            ")
+    ; __append(escapeFn( catInfo.introHi || ('\u092D\u093E\u0930\u0924 \u092D\u0930 \u092E\u0947\u0902 \u0906\u092F\u094B\u091C\u093F\u0924 \u0935\u093F\u092D\u093F\u0928\u094D\u0928 \u0938\u0930\u0915\u093E\u0930\u0940 \u092A\u094D\u0930\u0924\u093F\u092F\u094B\u0917\u0940 \u092A\u0930\u0940\u0915\u094D\u0937\u093E\u0913\u0902 \u0915\u0947 ' + catInfo.name + ' \u0938\u0947 \u091C\u0941\u0921\u093C\u0940 \u092A\u094D\u0930\u092E\u093E\u0923\u093F\u0924 \u091C\u093E\u0928\u0915\u093E\u0930\u0940, \u0906\u0927\u093F\u0915\u093E\u0930\u093F\u0915 \u0928\u094B\u091F\u093F\u0938 \u0914\u0930 \u092E\u0939\u0924\u094D\u0935\u092A\u0942\u0930\u094D\u0923 \u0924\u093F\u0925\u093F\u092F\u094B\u0902 \u0915\u0940 \u0924\u093E\u091C\u093E \u0905\u092A\u0921\u0947\u091F \u092F\u0939\u093E\u0902 \u092A\u094D\u0930\u093E\u092A\u094D\u0924 \u0915\u0930\u0947\u0902\u0964') ))
+    ; __append("\\n          </p>\\n        </div>\\n      </div>\\n\\n      <!-- Quick Real-Time Channel Bar -->\\n      <div style=\\"margin-top: 14px; padding-top: 10px; border-top: 1px dashed #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px; color: #64748b;\\">\\n        <span>\u{1F514} <b>Instant Alerts:</b> Join our verified channels to receive immediate notifications as soon as a new ")
     ; __append(escapeFn( catInfo.name ))
-    ; __append("</b>.\\n    </div>\\n\\n    <ul class=\\"sarkari-box-list\\">\\n      ")
+    ; __append(" notice is released.</span>\\n        <div style=\\"display: flex; gap: 10px;\\">\\n          <a href=\\"")
+    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.telegram_url) ? settings.telegram_url : 'https://t.me/govtexamzoneofficial' 
+))
+    ; __append("\\" target=\\"_blank\\" rel=\\"noopener\\" style=\\"color: #0284c7; font-weight: 700; text-decoration: none;\\">\u2708\uFE0F Telegram</a>\\n          <span style=\\"color: #cbd5e1;\\">|</span>\\n          <a href=\\"")
+    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.whatsapp_url) ? settings.whatsapp_url : 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10' 
+))
+    ; __append("\\" target=\\"_blank\\" rel=\\"noopener\\" style=\\"color: #16a34a; font-weight: 700; text-decoration: none;\\">\u{1F4AC} WhatsApp</a>\\n        </div>\\n      </div>\\n    </div>\\n\\n    <ul class=\\"sarkari-box-list\\">\\n      ")
     ;  if (posts && posts.length > 0) { 
     ; __append("\\n        ")
     ;  posts.forEach(post => { 

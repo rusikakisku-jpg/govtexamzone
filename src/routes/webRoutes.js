@@ -147,6 +147,13 @@ router.get('/category/:cat', async (req, res, next) => {
   }
 });
 
+// Direct Category URL Aliases (e.g. /latest-jobs -> /category/latest-jobs)
+router.get(['/latest-jobs', '/admit-card', '/result', '/results', '/answer-key', '/syllabus', '/admission', '/certificate-verification', '/important'], (req, res) => {
+  let slug = req.path.replace(/^\//, '').replace(/\/$/, '');
+  if (slug === 'results') slug = 'result';
+  res.redirect(301, `/category/${slug}`);
+});
+
 // Post Detail Page
 router.get('/post/:slug', async (req, res, next) => {
   try {
