@@ -41,45 +41,8 @@
       <%= catInfo.name %> - Govt Exam Zone 2026
     </h1>
 
-    <!-- Category Overview & Bilingual Guidance Card -->
-    <div class="category-hero-card" style="padding: 18px 20px; background: #ffffff; border-bottom: 2px solid #f1f5f9;">
-      <!-- Title & Icon Bar -->
-      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <span style="font-size: 26px; line-height: 1;"><%= catInfo.icon || '📌' %></span>
-          <div>
-            <h2 style="margin: 0; font-size: 16.5px; color: #0f172a; font-weight: 700;">
-              <%= catInfo.headline || (catInfo.name + ' Notifications & Updates 2026') %>
-            </h2>
-            <div style="font-size: 12px; color: #64748b; margin-top: 2px;">
-              Govt Exam Zone • Primary-Source Verified Employment Desk
-            </div>
-          </div>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <% if (catInfo.badge) { %>
-            <span style="background: #fee2e2; color: #991b1b; font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 9999px; border: 1px solid #fca5a5;">
-              ⚡ <%= catInfo.badge %>
-            </span>
-          <% } %>
-          <span style="background: #f1f5f9; color: #334155; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 4px; border: 1px solid #e2e8f0;">
-            <%= totalPosts %> Active Updates
-          </span>
-        </div>
-      </div>
-
-      <!-- Feature Highlight Pills -->
-      <% if (catInfo.highlights && catInfo.highlights.length > 0) { %>
-        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px;">
-          <% catInfo.highlights.forEach(h => { %>
-            <span style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 10px; font-size: 12px; color: #334155; font-weight: 600;">
-              <%= h %>
-            </span>
-          <% }) %>
-        </div>
-      <% } %>
-
-      <!-- Bilingual Explanatory Panels -->
+    <!-- Category Overview & Bilingual Guidance -->
+    <div style="padding: 14px 18px; background: #ffffff; border-bottom: 1px solid #e2e8f0;">
       <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 1.65; color: #334155;">
         <!-- English Description -->
         <div style="background: #f8fafc; border-left: 3px solid var(--primary-red); padding: 12px 15px; border-radius: 0 5px 5px 0;">
@@ -93,16 +56,6 @@
           <p style="margin: 0; font-family: inherit;">
             <%= catInfo.introHi || ('भारत भर में आयोजित विभिन्न सरकारी प्रतियोगी परीक्षाओं के ' + catInfo.name + ' से जुड़ी प्रमाणित जानकारी, आधिकारिक नोटिस और महत्वपूर्ण तिथियों की ताजा अपडेट यहां प्राप्त करें।') %>
           </p>
-        </div>
-      </div>
-
-      <!-- Quick Real-Time Channel Bar -->
-      <div style="margin-top: 14px; padding-top: 10px; border-top: 1px dashed #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px; color: #64748b;">
-        <span>🔔 <b>Instant Alerts:</b> Join our verified channels to receive immediate notifications as soon as a new <%= catInfo.name %> notice is released.</span>
-        <div style="display: flex; gap: 10px;">
-          <a href="<%= (typeof settings !== 'undefined' && settings.telegram_url) ? settings.telegram_url : 'https://t.me/govtexamzoneofficial' %>" target="_blank" rel="noopener" style="color: #0284c7; font-weight: 700; text-decoration: none;">✈️ Telegram</a>
-          <span style="color: #cbd5e1;">|</span>
-          <a href="<%= (typeof settings !== 'undefined' && settings.whatsapp_url) ? settings.whatsapp_url : 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10' %>" target="_blank" rel="noopener" style="color: #16a34a; font-weight: 700; text-decoration: none;">💬 WhatsApp</a>
         </div>
       </div>
     </div>
