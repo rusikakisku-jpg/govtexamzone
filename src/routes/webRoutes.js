@@ -291,6 +291,7 @@ router.get('/sitemap.xml', async (req, res) => {
 
     // Static Informational Pages (Essential for Google E-E-A-T & AdSense)
     xml += `  <url><loc>${host}/about-us</loc><lastmod>${todayStr}</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>\n`;
+    xml += `  <url><loc>${host}/faq</loc><lastmod>${todayStr}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>\n`;
     xml += `  <url><loc>${host}/contact-us</loc><lastmod>${todayStr}</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>\n`;
     xml += `  <url><loc>${host}/terms-conditions</loc><lastmod>${todayStr}</lastmod><changefreq>monthly</changefreq><priority>0.5</priority></url>\n`;
     xml += `  <url><loc>${host}/disclaimer</loc><lastmod>${todayStr}</lastmod><changefreq>monthly</changefreq><priority>0.5</priority></url>\n`;
@@ -397,6 +398,15 @@ router.get('/about-us', async (req, res, next) => {
   }
 });
 router.get('/about', (req, res) => res.redirect(301, '/about-us'));
+
+// Dedicated FAQ Page
+router.get('/faq', (req, res) => {
+  res.render('pages/faq', {
+    title: 'Frequently Asked Questions (FAQ) - Govt Exam Zone | Candidate Helpdesk',
+    metaDescription: 'Find clear answers to frequently asked questions about Government Jobs 2026 notifications, online application process, admit cards, exam results, and verification at Govt Exam Zone.'
+  });
+});
+router.get('/faqs', (req, res) => res.redirect(301, '/faq'));
 
 // Dedicated Contact Page
 router.get('/contact-us', (req, res) => {
