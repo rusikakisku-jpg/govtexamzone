@@ -41,23 +41,11 @@
       <%= catInfo.name %> - Govt Exam Zone 2026
     </h1>
 
-    <!-- Category Overview & Bilingual Guidance -->
-    <div style="padding: 14px 18px; background: #ffffff; border-bottom: 1px solid #e2e8f0;">
-      <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 1.65; color: #334155;">
-        <!-- English Description -->
-        <div style="background: #f8fafc; border-left: 3px solid var(--primary-red); padding: 12px 15px; border-radius: 0 5px 5px 0;">
-          <p style="margin: 0;">
-            <%= catInfo.introEn || ('Stay informed with the latest verified ' + catInfo.name + ' notifications, official application links, and examination updates published across Central and State government commissions.') %>
-          </p>
-        </div>
-
-        <!-- Hindi Description -->
-        <div style="background: #fffbeb; border-left: 3px solid #d97706; padding: 12px 15px; border-radius: 0 5px 5px 0; color: #78350f;">
-          <p style="margin: 0; font-family: inherit;">
-            <%= catInfo.introHi || ('भारत भर में आयोजित विभिन्न सरकारी प्रतियोगी परीक्षाओं के ' + catInfo.name + ' से जुड़ी प्रमाणित जानकारी, आधिकारिक नोटिस और महत्वपूर्ण तिथियों की ताजा अपडेट यहां प्राप्त करें।') %>
-          </p>
-        </div>
-      </div>
+    <!-- Category Overview -->
+    <div style="padding: 14px 18px; background: #fafafa; border-bottom: 1px solid #e2e8f0; font-size: 13.5px; line-height: 1.65; color: #334155;">
+      <p style="margin: 0;">
+        <%= catInfo.introEn || ('Stay informed with the latest verified ' + catInfo.name + ' notifications, official application links, and examination updates published across Central and State government commissions.') %>
+      </p>
     </div>
 
     <ul class="sarkari-box-list">
