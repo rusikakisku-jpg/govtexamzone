@@ -908,7 +908,9 @@ body.admin-body {
 }
 
 @media screen and (max-width: 992px) {
+  html,
   body.admin-body {
+    max-width: 100%;
     overflow-x: hidden;
     -webkit-tap-highlight-color: transparent;
   }
@@ -921,7 +923,7 @@ body.admin-body {
   }
 
   .admin-main-viewport {
-    padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(82px + env(safe-area-inset-bottom, 0px));
   }
 
   .admin-topbar {
@@ -934,7 +936,7 @@ body.admin-body {
 
   /* Native App-Like Fixed Bottom Navigation Bar */
   .admin-mobile-bottom-nav {
-    display: flex;
+    display: flex !important;
     align-items: stretch;
     justify-content: space-around;
     position: fixed;
@@ -1153,6 +1155,18 @@ body.admin-body {
   .admin-filter-form .btn {
     width: 100%;
     max-width: 100% !important;
+  }
+
+  /* Collapse multi-column admin grids cleanly to 1 column on narrow phones */
+  .layout-selector-grid,
+  .badges-admin-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Ensure TinyMCE fits cleanly on mobile screens */
+  .tox.tox-tinymce {
+    max-width: 100% !important;
+    width: 100% !important;
   }
 }
 

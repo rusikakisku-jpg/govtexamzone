@@ -16,6 +16,7 @@ const upload = multer({
 
 // Middleware to inject site settings & active path into all admin views
 router.use(async (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.locals.currentPath = (req.originalUrl || '/admin').split('?')[0].replace(/\/$/, '') || '/admin';
   try {
     const sRows = await d1.prepare('SELECT * FROM settings').all();
