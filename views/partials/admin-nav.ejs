@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
   <title><%= title || 'Govt Exam Zone - Professional Admin Console' %></title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -148,6 +149,12 @@
               Cloudflare R2 Storage
             <% } else if (currentPath === '/admin/d1') { %>
               Cloudflare D1 SQL
+            <% } else if (currentPath === '/admin/settings') { %>
+              Portal Settings
+            <% } else if (currentPath.startsWith('/admin/authors')) { %>
+              Authors &amp; Team
+            <% } else if (currentPath.startsWith('/admin/posts/edit')) { %>
+              Edit Notification
             <% } else { %>
               Management
             <% } %>
@@ -163,13 +170,13 @@
 
         <!-- View Live Site Button -->
         <a href="/" target="_blank" class="topbar-btn live-site-btn">
-          <span>🌐 View Public Site</span>
+          <span>🌐 <span class="topbar-btn-label">View Public Site</span></span>
           <span class="btn-arrow">↗</span>
         </a>
 
         <!-- Logout Action -->
         <a href="/admin/logout" class="topbar-btn logout-btn">
-          <span>Logout</span>
+          <span>🚪 <span class="topbar-btn-label">Logout</span></span>
         </a>
       </div>
     </header>

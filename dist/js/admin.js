@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const sidebar = document.getElementById('adminSidebar');
   const backdrop = document.getElementById('sidebarBackdrop');
   const toggleBtn = document.getElementById('sidebarToggleBtn');
+  const bottomMenuBtn = document.getElementById('bottomMenuTrigger');
   const closeBtn = document.getElementById('sidebarCloseBtn');
 
   function openSidebar() {
@@ -36,8 +37,24 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   if (toggleBtn) toggleBtn.addEventListener('click', openSidebar);
+  if (bottomMenuBtn) {
+    bottomMenuBtn.addEventListener('click', function() {
+      if (sidebar && sidebar.classList.contains('open')) {
+        closeSidebar();
+      } else {
+        openSidebar();
+      }
+    });
+  }
   if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
   if (backdrop) backdrop.addEventListener('click', closeSidebar);
+  if (sidebar) {
+    sidebar.querySelectorAll('a.nav-item').forEach(function(link) {
+      link.addEventListener('click', function() {
+        if (window.innerWidth <= 992) closeSidebar();
+      });
+    });
+  }
 
   // Live Clock
   function updateClock() {

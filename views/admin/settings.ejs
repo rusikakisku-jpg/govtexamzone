@@ -863,10 +863,20 @@
     }
     .settings-nav-pills {
       gap: 6px;
+      flex-wrap: nowrap !important;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      padding-bottom: 10px !important;
+    }
+    .settings-nav-pills::-webkit-scrollbar {
+      display: none;
     }
     .settings-pill {
       font-size: 11.5px;
-      padding: 5px 10px;
+      padding: 6px 12px;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
   }
 </style>

@@ -899,3 +899,310 @@ body.admin-body {
   }
 }
 
+/* ==========================================================================
+   Mobile App-Style UI & Bottom Navigation Bar (<= 992px)
+   ========================================================================== */
+
+.admin-mobile-bottom-nav {
+  display: none;
+}
+
+@media screen and (max-width: 992px) {
+  body.admin-body {
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .admin-app-layout,
+  .admin-main-viewport,
+  .admin-container {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .admin-main-viewport {
+    padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .admin-topbar {
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 0 14px;
+    height: 56px;
+  }
+
+  /* Native App-Like Fixed Bottom Navigation Bar */
+  .admin-mobile-bottom-nav {
+    display: flex;
+    align-items: stretch;
+    justify-content: space-around;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(64px + env(safe-area-inset-bottom, 0px));
+    padding: 4px 6px env(safe-area-inset-bottom, 4px);
+    background: rgba(255, 255, 255, 0.97);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid #e2e8f0;
+    box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.08);
+    z-index: 950;
+  }
+
+  .bottom-nav-item {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    text-decoration: none;
+    color: #64748b;
+    background: transparent;
+    border: none;
+    padding: 4px 2px;
+    font-family: inherit;
+    cursor: pointer;
+    position: relative;
+    transition: color 0.15s ease, transform 0.12s ease;
+    border-radius: 10px;
+  }
+
+  .bottom-nav-item:active {
+    transform: scale(0.93);
+  }
+
+  .bottom-nav-icon {
+    font-size: 19px;
+    line-height: 1.1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 10px;
+    border-radius: 999px;
+    transition: background-color 0.15s ease;
+  }
+
+  .bottom-nav-label {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  .bottom-nav-item.active {
+    color: var(--admin-primary);
+  }
+
+  .bottom-nav-item.active .bottom-nav-icon {
+    background: var(--admin-primary-light);
+  }
+
+  .author-bottom-nav .bottom-nav-item.active {
+    color: #2563eb;
+  }
+
+  .author-bottom-nav .bottom-nav-item.active .bottom-nav-icon {
+    background: #eff6ff;
+  }
+
+  /* Elevated Center Floating Create Button */
+  .bottom-nav-fab-wrap {
+    margin-top: -12px;
+  }
+
+  .bottom-nav-fab {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--admin-primary) 0%, #e11d48 100%);
+    color: #ffffff;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 14px rgba(171, 24, 61, 0.35);
+    border: 3px solid #ffffff;
+  }
+
+  .bottom-nav-fab-wrap.active .bottom-nav-fab {
+    transform: scale(1.05);
+  }
+
+  /* Prevent inline min/max-width form overflows on mobile */
+  .admin-card .form-group,
+  .admin-card .form-row > * {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .admin-card form input,
+  .admin-card form select,
+  .admin-card form textarea {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Responsive Table Containers */
+  .admin-table-responsive,
+  .admin-card > div[style*="overflow-x"] {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media screen and (max-width: 640px) {
+  .topbar-btn-label {
+    display: none;
+  }
+
+  .topbar-btn {
+    padding: 6px 10px !important;
+    font-size: 13px !important;
+  }
+
+  .topbar-right {
+    gap: 8px;
+  }
+
+  .topbar-breadcrumb {
+    font-size: 12.5px;
+    max-width: 155px;
+  }
+
+  .admin-container {
+    padding: 12px 10px !important;
+  }
+
+  .admin-card {
+    padding: 15px 12px !important;
+    border-radius: 12px !important;
+    margin-bottom: 16px;
+  }
+
+  .admin-card-header h2 {
+    font-size: 16px;
+    line-height: 1.35;
+  }
+
+  .admin-welcome-banner {
+    padding: 16px !important;
+    border-radius: 12px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .admin-welcome-banner h1 {
+    font-size: 18px !important;
+  }
+
+  .admin-welcome-actions {
+    width: 100%;
+  }
+
+  .admin-welcome-actions .btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    margin-bottom: 16px;
+  }
+
+  .stat-card {
+    padding: 12px !important;
+    border-radius: 10px !important;
+  }
+
+  .stat-card .stat-val {
+    font-size: 22px !important;
+  }
+
+  .admin-cat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  /* Prevent iOS Safari zoom on input focus */
+  .form-control {
+    font-size: 16px;
+    min-height: 42px;
+  }
+
+  select.form-control {
+    min-height: 42px;
+  }
+
+  .admin-filter-form {
+    padding: 12px !important;
+    gap: 8px !important;
+  }
+
+  .admin-filter-form .form-control,
+  .admin-filter-form .btn {
+    width: 100%;
+    max-width: 100% !important;
+  }
+}
+
+@media screen and (max-width: 380px) {
+  .stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Author Portal Hamburger & Topbar Action Buttons */
+.mobile-toggle-btn {
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 3.5px;
+  min-width: 38px;
+  min-height: 36px;
+}
+
+.toggle-bar {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--admin-text-secondary);
+  border-radius: 2px;
+}
+
+.topbar-action-btn {
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: var(--admin-text-secondary);
+  border: 1px solid #cbd5e1;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+@media screen and (max-width: 640px) {
+  .author-badge-strip {
+    display: none !important;
+  }
+  .topbar-action-btn {
+    padding: 5px 8px;
+    font-size: 12px;
+  }
+}
+
+
+

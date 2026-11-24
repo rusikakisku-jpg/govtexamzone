@@ -32,6 +32,7 @@
 
   <!-- Uploaded Files List -->
   <h3 style="font-size: 16px; margin-bottom: 12px;">Stored Files (<%= uploads ? uploads.length : 0 %>)</h3>
+  <div class="admin-table-responsive" style="overflow-x: auto;">
   <table class="admin-table">
     <thead>
       <tr>
@@ -80,6 +81,7 @@
       <% } %>
     </tbody>
   </table>
+  </div>
 </div>
 
 <%- include('../partials/admin-footer') %>

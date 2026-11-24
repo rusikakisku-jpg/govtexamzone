@@ -19,8 +19,9 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 } // 25MB max
 });
 
-// Middleware to inject site settings into author portal views
+// Middleware to inject site settings & active path into author portal views
 router.use(async (req, res, next) => {
+  res.locals.currentPath = (req.originalUrl || '/author-portal').split('?')[0].replace(/\/$/, '') || '/author-portal';
   try {
     const sRows = await d1.prepare('SELECT * FROM settings').all();
     const siteSettings = {

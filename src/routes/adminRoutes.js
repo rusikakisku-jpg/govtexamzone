@@ -14,8 +14,9 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 } // 25MB max
 });
 
-// Middleware to inject site settings into all admin views
+// Middleware to inject site settings & active path into all admin views
 router.use(async (req, res, next) => {
+  res.locals.currentPath = (req.originalUrl || '/admin').split('?')[0].replace(/\/$/, '') || '/admin';
   try {
     const sRows = await d1.prepare('SELECT * FROM settings').all();
     const siteSettings = {
