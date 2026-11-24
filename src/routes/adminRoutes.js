@@ -23,7 +23,7 @@ router.use(async (req, res, next) => {
       whatsapp_url: 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10',
       contact_email: 'contact.govtexamzone@gmail.com',
       site_title: 'Govt Exam Zone',
-      site_logo: '/images/gez-logo.svg',
+      site_logo: '',
       site_favicon: '/images/gez-logo.svg'
     };
     if (sRows && Array.isArray(sRows)) {
@@ -36,7 +36,7 @@ router.use(async (req, res, next) => {
       whatsapp_url: 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10',
       contact_email: 'contact.govtexamzone@gmail.com',
       site_title: 'Govt Exam Zone',
-      site_logo: '/images/gez-logo.svg',
+      site_logo: '',
       site_favicon: '/images/gez-logo.svg'
     };
   }
@@ -755,7 +755,7 @@ router.get('/settings', async (req, res, next) => {
       whatsapp_url: 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10',
       contact_email: 'contact.govtexamzone@gmail.com',
       site_title: 'Govt Exam Zone',
-      site_logo: '/images/gez-logo.svg',
+      site_logo: '',
       site_favicon: '/images/gez-logo.svg',
       header_subtitle: 'WWW.GOVTEXAMZONE.COM',
       site_tagline: 'Latest Govt Jobs, Admit Card, Results 2026',
@@ -844,6 +844,8 @@ router.post('/settings/save', upload.fields([
         await d1.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').bind(key, value.trim()).run();
       }
     }
+    // Invalidate cached settings so changes apply immediately
+    globalThis.__invalidateSettingsCache?.();
     res.redirect('/admin/settings?saved=1');
   } catch (err) {
     next(err);

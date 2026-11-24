@@ -86,14 +86,34 @@
         <div class="form-row">
           <!-- Logo Management -->
           <div class="form-group" style="flex: 1; min-width: 280px;">
-            <label for="site_logo">Website Main Logo</label>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label for="site_logo" style="margin-bottom: 0;">Website Main Logo</label>
+              <button 
+                type="button" 
+                id="removeLogoBtn" 
+                class="btn btn-sm" 
+                style="background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;"
+                title="Remove logo so header shows clean text title only"
+              >
+                🗑️ Delete / Remove Logo
+              </button>
+            </div>
+
             <div style="display: flex; gap: 14px; align-items: center; margin-bottom: 10px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px;">
-              <div style="width: 70px; height: 70px; background: #ab183d; border-radius: 6px; display: flex; align-items: center; justify-content: center; padding: 5px; flex-shrink: 0;">
-                <img id="logoPreviewImg" src="<%= settings.site_logo || '/images/gez-logo.svg' %>" alt="Current Logo" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+              <div id="logoPreviewBox" style="width: 70px; height: 70px; background: #ab183d; border-radius: 6px; display: flex; align-items: center; justify-content: center; padding: 5px; flex-shrink: 0; color: #fff; font-size: 11px; text-align: center;">
+                <% if (settings.site_logo && settings.site_logo.trim()) { %>
+                  <img id="logoPreviewImg" src="<%= settings.site_logo %>" alt="Current Logo" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+                  <span id="logoNoLogoText" style="font-size: 11px; font-weight: 600; color: #cbd5e1; display: none;">No Logo<br>(Text Only)</span>
+                <% } else { %>
+                  <img id="logoPreviewImg" src="" alt="Current Logo" style="max-width: 100%; max-height: 100%; object-fit: contain; display: none;">
+                  <span id="logoNoLogoText" style="font-size: 11px; font-weight: 600; color: #cbd5e1; display: inline-block;">No Logo<br>(Text Only)</span>
+                <% } %>
               </div>
-              <div style="font-size: 12px; color: #475569; overflow: hidden;">
-                <div style="font-weight: 700; color: #1e293b; margin-bottom: 2px;">Active Header Logo</div>
-                <div id="logoPathText" style="word-break: break-all; font-family: monospace; color: #0284c7;"><%= settings.site_logo || '/images/gez-logo.svg' %></div>
+              <div style="font-size: 12px; color: #475569; overflow: hidden; flex: 1;">
+                <div style="font-weight: 700; color: #1e293b; margin-bottom: 2px;">Header Logo Status</div>
+                <div id="logoPathText" style="word-break: break-all; font-family: monospace; color: <%= (settings.site_logo && settings.site_logo.trim()) ? '#0284c7' : '#dc2626' %>;">
+                  <%= (settings.site_logo && settings.site_logo.trim()) ? settings.site_logo : 'No logo active (Header displays text title only)' %>
+                </div>
               </div>
             </div>
 
@@ -116,10 +136,10 @@
                 id="site_logo" 
                 name="site_logo" 
                 class="form-control" 
-                value="<%= settings.site_logo || '/images/gez-logo.svg' %>" 
-                placeholder="/images/gez-logo.svg or https://..."
+                value="<%= settings.site_logo || '' %>" 
+                placeholder="Leave empty for no logo, or enter image path (e.g. /images/logo.png)"
               >
-              <small class="field-hint">PNG, SVG, WEBP, or JPG. Automatically updates header, Open Graph, and social previews.</small>
+              <small class="field-hint">Leave blank or click "Delete / Remove Logo" above if you don't want any logo in the header. To add a logo, upload a file or enter a path.</small>
             </div>
           </div>
 
@@ -697,6 +717,8 @@
   const logoPreviewImg = document.getElementById('logoPreviewImg');
   const logoTextInput = document.getElementById('site_logo');
   const logoPathText = document.getElementById('logoPathText');
+  const logoNoLogoText = document.getElementById('logoNoLogoText');
+  const removeLogoBtn = document.getElementById('removeLogoBtn');
 
   if (logoFileInput && logoPreviewImg) {
     logoFileInput.addEventListener('change', function(e) {
@@ -705,7 +727,12 @@
         const reader = new FileReader();
         reader.onload = function(evt) {
           logoPreviewImg.src = evt.target.result;
-          if (logoPathText) logoPathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';
+          logoPreviewImg.style.display = 'block';
+          if (logoNoLogoText) logoNoLogoText.style.display = 'none';
+          if (logoPathText) {
+            logoPathText.style.color = '#0284c7';
+            logoPathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';
+          }
         };
         reader.readAsDataURL(file);
       }
@@ -715,9 +742,40 @@
   // Live preview for Logo text input
   if (logoTextInput && logoPreviewImg) {
     logoTextInput.addEventListener('input', function() {
-      if (this.value.trim()) {
-        logoPreviewImg.src = this.value.trim();
-        if (logoPathText) logoPathText.textContent = this.value.trim();
+      const val = this.value.trim();
+      if (val) {
+        logoPreviewImg.src = val;
+        logoPreviewImg.style.display = 'block';
+        if (logoNoLogoText) logoNoLogoText.style.display = 'none';
+        if (logoPathText) {
+          logoPathText.style.color = '#0284c7';
+          logoPathText.textContent = val;
+        }
+      } else {
+        logoPreviewImg.src = '';
+        logoPreviewImg.style.display = 'none';
+        if (logoNoLogoText) logoNoLogoText.style.display = 'inline-block';
+        if (logoPathText) {
+          logoPathText.style.color = '#dc2626';
+          logoPathText.textContent = 'No logo active (Header displays text title only)';
+        }
+      }
+    });
+  }
+
+  // Live Remove Logo Button
+  if (removeLogoBtn && logoTextInput) {
+    removeLogoBtn.addEventListener('click', function() {
+      logoTextInput.value = '';
+      if (logoFileInput) logoFileInput.value = '';
+      if (logoPreviewImg) {
+        logoPreviewImg.src = '';
+        logoPreviewImg.style.display = 'none';
+      }
+      if (logoNoLogoText) logoNoLogoText.style.display = 'inline-block';
+      if (logoPathText) {
+        logoPathText.style.color = '#dc2626';
+        logoPathText.textContent = 'Logo cleared. Click "Save Settings" below to apply changes.';
       }
     });
   }

@@ -7,6 +7,10 @@ const { CATEGORIES, safeJsonParse, formatDate, formatPrettyDate } = require('../
 let cachedSettings = null;
 let settingsCacheTime = 0;
 const SETTINGS_CACHE_TTL = 60 * 1000; // 60 seconds
+globalThis.__invalidateSettingsCache = () => {
+  cachedSettings = null;
+  settingsCacheTime = 0;
+};
 
 // Middleware to inject common data
 router.use(async (req, res, next) => {
@@ -33,7 +37,7 @@ router.use(async (req, res, next) => {
       whatsapp_url: 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10',
       contact_email: 'contact.govtexamzone@gmail.com',
       site_title: 'Govt Exam Zone',
-      site_logo: '/images/gez-logo.svg',
+      site_logo: '',
       site_favicon: '/images/gez-logo.svg'
     };
     if (sRows && Array.isArray(sRows)) {
@@ -48,7 +52,7 @@ router.use(async (req, res, next) => {
       whatsapp_url: 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10',
       contact_email: 'contact.govtexamzone@gmail.com',
       site_title: 'Govt Exam Zone',
-      site_logo: '/images/gez-logo.svg',
+      site_logo: '',
       site_favicon: '/images/gez-logo.svg'
     };
   }

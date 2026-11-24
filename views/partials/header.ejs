@@ -151,9 +151,11 @@
   <header class="site-header">
     <div class="container">
       <div class="header-inner">
+        <% if (typeof settings !== 'undefined' && settings.site_logo && settings.site_logo.trim()) { %>
         <a href="/" class="header-logo" title="<%= (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' %> Official Portal">
-          <img src="<%= (typeof settings !== 'undefined' && settings.site_logo) ? settings.site_logo : '/images/gez-logo.svg' %>" alt="<%= (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' %> Emblem Logo" width="110" height="110">
+          <img src="<%= settings.site_logo %>" alt="<%= (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' %> Emblem Logo" width="110" height="110">
         </a>
+        <% } %>
         <div class="header-text">
           <h1 class="header-title"><a href="/"><%= (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title.toUpperCase() : 'GOVT EXAM ZONE' %></a></h1>
           <div class="header-subtitle"><%= (typeof settings !== 'undefined' && settings.header_subtitle) ? settings.header_subtitle : 'WWW.GOVTEXAMZONE.COM' %></div>
