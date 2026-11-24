@@ -38,7 +38,8 @@ router.use(async (req, res, next) => {
       contact_email: 'contact.govtexamzone@gmail.com',
       site_title: 'Govt Exam Zone',
       site_logo: '',
-      site_favicon: '/images/gez-logo.svg'
+      site_favicon: '/images/gez-logo.svg',
+      post_detail_layout: 'classic'
     };
     if (sRows && Array.isArray(sRows)) {
       sRows.forEach(r => { siteSettings[r.key] = r.value; });
@@ -60,7 +61,8 @@ router.use(async (req, res, next) => {
       contact_email: 'contact.govtexamzone@gmail.com',
       site_title: 'Govt Exam Zone',
       site_logo: '',
-      site_favicon: '/images/gez-logo.svg'
+      site_favicon: '/images/gez-logo.svg',
+      post_detail_layout: 'classic'
     };
   }
   next();
@@ -184,10 +186,22 @@ router.get('/post/:slug', async (req, res, next) => {
     // Increment views asynchronously
     d1.prepare('UPDATE posts SET views = views + 1 WHERE id = ?').bind(post.id).run().catch(console.error);
 
-    // Fetch related posts in same category
-    const relatedPosts = await d1.prepare(
-      'SELECT id, title, slug, post_date FROM posts WHERE category = ? AND id != ? ORDER BY id DESC LIMIT 8'
-    ).bind(post.category, post.id).all();
+    // Fetch related posts, author, recent posts, popular posts, and category counts concurrently
+    const [relatedPosts, authorRow, recentPosts, popularPosts, categoryCounts] = await Promise.all([
+      d1.prepare(
+        "SELECT id, title, slug, post_date FROM posts WHERE category = ? AND id != ? AND status = 'active' ORDER BY id DESC LIMIT 8"
+      ).bind(post.category, post.id).all(),
+      d1.prepare('SELECT * FROM authors WHERE id = ?').bind(post.author_id || 1).first(),
+      d1.prepare(
+        "SELECT id, title, slug, category, post_date, created_at FROM posts WHERE status = 'active' AND id != ? ORDER BY id DESC LIMIT 5"
+      ).bind(post.id).all(),
+      d1.prepare(
+        "SELECT id, title, slug, category, post_date, views, created_at FROM posts WHERE status = 'active' ORDER BY views DESC, id DESC LIMIT 5"
+      ).all(),
+      d1.prepare(
+        "SELECT category, COUNT(*) as count FROM posts WHERE status = 'active' GROUP BY category"
+      ).all()
+    ]);
 
     // Parse JSON fields
     const importantDates = safeJsonParse(post.important_dates, []);
@@ -197,8 +211,7 @@ router.get('/post/:slug', async (req, res, next) => {
     const categoryDetails = safeJsonParse(post.category_details, []);
     const links = safeJsonParse(post.links, []);
 
-    // Fetch author details
-    const author = await d1.prepare('SELECT * FROM authors WHERE id = ?').bind(post.author_id || 1).first() || {
+    const author = authorRow || {
       name: 'Govt Exam Zone Editorial Team',
       slug: 'editorial-team',
       role: 'Senior Recruitment Analyst & Fact-Checker Lead',
@@ -206,7 +219,7 @@ router.get('/post/:slug', async (req, res, next) => {
       bio: 'The official editorial and verification desk of Govt Exam Zone.'
     };
 
-    res.set('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600');
+    res.set('Cache-Control', 'public, max-age=30, s-maxage=60, stale-while-revalidate=120');
 
     res.render('pages/detail', {
       title: `${post.title} - Govt Exam Zone | WWW.GOVTEXAMZONE.COM`,
@@ -222,7 +235,10 @@ router.get('/post/:slug', async (req, res, next) => {
       vacancyDetails,
       categoryDetails,
       links,
-      relatedPosts,
+      relatedPosts: relatedPosts || [],
+      recentPosts: recentPosts || [],
+      popularPosts: popularPosts || [],
+      categoryCounts: categoryCounts || [],
       fullUrl: `${req.protocol}://${req.get('host')}${req.originalUrl}`
     });
   } catch (err) {

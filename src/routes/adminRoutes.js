@@ -195,7 +195,7 @@ router.post('/posts/new', upload.fields([
   try {
     const {
       title, category, department, post_date, last_date,
-      short_desc, total_vacancy, how_to_apply,
+      short_desc, total_vacancy, how_to_apply, article_content,
       apply_online_url, official_website_url, is_featured, status,
       author_id
     } = req.body;
@@ -257,14 +257,14 @@ router.post('/posts/new', upload.fields([
       INSERT INTO posts (
         title, slug, category, department, post_date, last_date,
         short_desc, total_vacancy, important_dates, application_fee,
-        age_limit, vacancy_details, category_details, how_to_apply,
+        age_limit, vacancy_details, category_details, how_to_apply, article_content,
         links, notification_pdf, admit_card_url, result_url,
         apply_online_url, official_website_url, is_featured, status,
         author_id
       ) VALUES (
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
-        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?
@@ -272,7 +272,7 @@ router.post('/posts/new', upload.fields([
     `).bind(
       title, finalSlug, category, department || null, post_date || null, last_date || null,
       short_desc || null, total_vacancy || null, importantDates, applicationFee,
-      ageLimit, vacancyDetails, categoryDetails, how_to_apply || null,
+      ageLimit, vacancyDetails, categoryDetails, how_to_apply || null, article_content || null,
       links, notificationPdf || null, admitCardUrl || null, resultUrl || null,
       apply_online_url || null, official_website_url || null, is_featured ? 1 : 0, status || 'active',
       authorId
@@ -329,6 +329,7 @@ router.post('/posts/edit/:id', upload.fields([
     const short_desc = req.body.short_desc !== undefined ? req.body.short_desc : (currentPost.short_desc || null);
     const total_vacancy = req.body.total_vacancy !== undefined ? req.body.total_vacancy : (currentPost.total_vacancy || null);
     const how_to_apply = req.body.how_to_apply !== undefined ? req.body.how_to_apply : (currentPost.how_to_apply || null);
+    const article_content = req.body.article_content !== undefined ? req.body.article_content : (currentPost.article_content || null);
     const apply_online_url = req.body.apply_online_url !== undefined ? req.body.apply_online_url : (currentPost.apply_online_url || null);
     const official_website_url = req.body.official_website_url !== undefined ? req.body.official_website_url : (currentPost.official_website_url || null);
     const status = req.body.status || currentPost.status || 'active';
@@ -382,7 +383,7 @@ router.post('/posts/edit/:id', upload.fields([
       UPDATE posts SET
         title = ?, slug = ?, category = ?, department = ?, post_date = ?, last_date = ?,
         short_desc = ?, total_vacancy = ?, important_dates = ?, application_fee = ?,
-        age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?,
+        age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?, article_content = ?,
         links = ?, notification_pdf = ?, admit_card_url = ?, result_url = ?,
         apply_online_url = ?, official_website_url = ?, is_featured = ?, status = ?,
         author_id = ?,
@@ -391,7 +392,7 @@ router.post('/posts/edit/:id', upload.fields([
     `).bind(
       title, finalSlug, category, department, post_date, last_date,
       short_desc, total_vacancy, importantDates, applicationFee,
-      ageLimit, vacancyDetails, categoryDetails, how_to_apply,
+      ageLimit, vacancyDetails, categoryDetails, how_to_apply, article_content,
       links, notificationPdf, admitCardUrl, resultUrl,
       apply_online_url, official_website_url, is_featured ? 1 : 0, status,
       authorId,
@@ -780,7 +781,8 @@ router.get('/settings', async (req, res, next) => {
       ad_top_code: '',
       ad_bottom_code: '',
       header_custom_code: '',
-      footer_custom_code: ''
+      footer_custom_code: '',
+      post_detail_layout: 'classic'
     };
     if (rows && Array.isArray(rows)) {
       rows.forEach(r => { settings[r.key] = r.value; });

@@ -23,6 +23,7 @@ const CORE_TABLES = [
     vacancy_details TEXT,
     category_details TEXT,
     how_to_apply TEXT,
+    article_content TEXT,
     links TEXT,
     notification_pdf TEXT,
     admit_card_url TEXT,
@@ -186,6 +187,10 @@ class D1Client {
           this.localDb.run('ALTER TABLE posts ADD COLUMN author_id INTEGER DEFAULT 1');
           console.log('✅ Migrated: added author_id column to posts table.');
         }
+        if (!colNames.includes('article_content')) {
+          this.localDb.run('ALTER TABLE posts ADD COLUMN article_content TEXT');
+          console.log('✅ Migrated: added article_content column to posts table.');
+        }
       }
 
       const resAuthors = this.localDb.exec('PRAGMA table_info(authors)');
@@ -257,6 +262,10 @@ class D1Client {
       for (const statement of statements) {
         await this.queryRemote(statement);
       }
+      // Safe column migration for existing remote D1 tables
+      try {
+        await this.queryRemote('ALTER TABLE posts ADD COLUMN article_content TEXT');
+      } catch (migErr) {}
       console.log('✅ Cloudflare D1 remote schema verified.');
     } catch (err) {
       console.warn('⚠️ Warning during remote D1 schema initialization:', err.message);
@@ -293,6 +302,11 @@ class D1Client {
       }
 
       console.log('✅ Native Cloudflare D1 tables and indexes verified.');
+
+      // 2b. Safe column migration for existing Native D1 tables
+      try {
+        await nativeD1.prepare('ALTER TABLE posts ADD COLUMN article_content TEXT').run();
+      } catch (colErr) {}
 
       // 3. Check if marquees table has data; if empty, auto-seed initial Govt Exam Zone records
       try {

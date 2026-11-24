@@ -261,6 +261,24 @@
       ><%= post ? post.how_to_apply : '1. Candidate Can Apply Online From Official Portal.\n2. Read Notification Carefully Before Filling Form.\n3. Keep Ready Photo, Sign & ID Proof.\n4. Pay Exam Fee and Print Final Application Form.' %></textarea>
     </div>
 
+    <!-- Optional Full Blog Article / Detailed Editorial Content -->
+    <div style="background: #f0f9ff; border: 1px solid #bae6fd; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+      <div style="margin-bottom: 8px;">
+        <label for="article_content" style="margin: 0; font-size: 15px; font-weight: 700; color: #0369a1;">📝 Full Blog Article / Detailed Editorial Content (Optional HTML)</label>
+        <div style="font-size: 12px; color: #475569; margin-top: 2px;">
+          Write detailed guides, exam pattern analysis, FAQs, or custom HTML tables here. Renders cleanly in both Classic and 2-Column Blog layouts.
+        </div>
+      </div>
+      <textarea 
+        id="article_content" 
+        name="article_content" 
+        class="form-control" 
+        rows="8" 
+        placeholder="<h2>1. Exam Overview &amp; Pattern</h2>&#10;<p>Write detailed article content or paste structured HTML here...</p>"
+        style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px;"
+      ><%= post && post.article_content ? post.article_content : '' %></textarea>
+    </div>
+
     <!-- Visual Interactive Builder: Some Useful Important Links -->
     <div style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">

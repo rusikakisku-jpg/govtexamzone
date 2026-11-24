@@ -28,6 +28,7 @@
   <!-- Section Quick Navigation Pills -->
   <div class="settings-nav-pills" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 26px; border-bottom: 1px solid #e2e8f0; padding-bottom: 14px;">
     <a href="#section-branding" class="settings-pill active">🌐 General &amp; Branding</a>
+    <a href="#section-layout" class="settings-pill">📰 Post Page Layout</a>
     <a href="#section-social" class="settings-pill">📲 Social Communities</a>
     <a href="#section-helpdesk" class="settings-pill">✉️ Contact &amp; Helpdesk</a>
     <a href="#section-seo" class="settings-pill">🚀 SEO &amp; Analytics</a>
@@ -223,6 +224,85 @@
           placeholder="© 2026 govtexamzone.com. All Rights Reserved."
         >
         <small class="field-hint">Displayed at the very bottom of every page.</small>
+      </div>
+    </div>
+
+
+    <!-- 1B. Full Post / Blog Detail Page Layout Configuration -->
+    <div id="section-layout" class="settings-group-card">
+      <div class="settings-group-header">
+        <span class="settings-group-icon">📰</span>
+        <div>
+          <h3 class="settings-group-title">Post / Full Blog Detail Page Layout (2 UI Modes)</h3>
+          <p class="settings-group-desc">Choose how full post/blog detail pages display on the frontend. Both Classic Sarkari posts and rich Blog articles automatically adapt to your selected layout.</p>
+        </div>
+      </div>
+
+      <% const activeLayout = (settings.post_detail_layout === 'blog_2col') ? 'blog_2col' : 'classic'; %>
+      <div class="layout-selector-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+        <!-- Option 1: Classic Sarkari Single-Column -->
+        <label class="layout-option-card <%= activeLayout === 'classic' ? 'selected' : '' %>" for="layout_classic">
+          <input 
+            type="radio" 
+            id="layout_classic" 
+            name="post_detail_layout" 
+            value="classic" 
+            <%= activeLayout === 'classic' ? 'checked' : '' %>
+            style="display: none;"
+          >
+          <div class="layout-card-top">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="layout-radio-dot"></span>
+              <strong style="font-size: 14.5px; color: #0f172a;">Classic Sarkari Single-Column</strong>
+            </div>
+            <span class="layout-badge classic-badge">Default Style</span>
+          </div>
+          <div class="layout-wireframe">
+            <div style="width: 100%; height: 10px; background: #ab183d; border-radius: 3px; margin-bottom: 6px;"></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 6px;">
+              <div style="height: 20px; background: #e2e8f0; border-radius: 3px;"></div>
+              <div style="height: 20px; background: #e2e8f0; border-radius: 3px;"></div>
+            </div>
+            <div style="width: 100%; height: 22px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px;"></div>
+          </div>
+          <p class="layout-card-desc">
+            Traditional centered single-column layout with full-width Important Dates, Application Fee, Vacancy tables, and Links.
+          </p>
+        </label>
+
+        <!-- Option 2: 2-Column Blog Layout with Sidebar -->
+        <label class="layout-option-card <%= activeLayout === 'blog_2col' ? 'selected' : '' %>" for="layout_blog_2col">
+          <input 
+            type="radio" 
+            id="layout_blog_2col" 
+            name="post_detail_layout" 
+            value="blog_2col" 
+            <%= activeLayout === 'blog_2col' ? 'checked' : '' %>
+            style="display: none;"
+          >
+          <div class="layout-card-top">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="layout-radio-dot"></span>
+              <strong style="font-size: 14.5px; color: #0f172a;">2-Column Blog + Sidebar Layout</strong>
+            </div>
+            <span class="layout-badge blog-badge">CBTRank Style</span>
+          </div>
+          <div class="layout-wireframe" style="display: grid; grid-template-columns: 2fr 1fr; gap: 6px;">
+            <div>
+              <div style="width: 70%; height: 8px; background: #0066ff; border-radius: 2px; margin-bottom: 5px;"></div>
+              <div style="width: 100%; height: 18px; background: #e2e8f0; border-radius: 3px; margin-bottom: 5px;"></div>
+              <div style="width: 100%; height: 24px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px;"></div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 12px; background: #dbeafe; border-radius: 2px;"></div>
+              <div style="height: 20px; background: #e2e8f0; border-radius: 2px;"></div>
+              <div style="height: 20px; background: #e2e8f0; border-radius: 2px;"></div>
+            </div>
+          </div>
+          <p class="layout-card-desc">
+            Modern 2-column magazine layout: Full blog/post content on the left + Right sidebar with Search, Recent Posts, Popular Posts &amp; Share bar.
+          </p>
+        </label>
       </div>
     </div>
 
@@ -697,6 +777,86 @@
     color: #ffffff;
   }
 
+  .layout-option-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+    border: 2px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    margin: 0;
+  }
+
+  .layout-option-card:hover {
+    border-color: #94a3b8;
+    background: #ffffff;
+  }
+
+  .layout-option-card.selected {
+    border-color: #0066ff;
+    background: #eff6ff;
+    box-shadow: 0 4px 12px rgba(0, 102, 255, 0.12);
+  }
+
+  .layout-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .layout-radio-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid #94a3b8;
+    background: #ffffff;
+    display: inline-block;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .layout-option-card.selected .layout-radio-dot {
+    border-color: #0066ff;
+    background: #0066ff;
+    box-shadow: inset 0 0 0 3px #ffffff;
+  }
+
+  .layout-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 9999px;
+  }
+
+  .classic-badge {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .blog-badge {
+    background: #dbeafe;
+    color: #1e40af;
+  }
+
+  .layout-wireframe {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 8px;
+  }
+
+  .layout-card-desc {
+    margin: 0;
+    font-size: 12.5px;
+    color: #475569;
+    line-height: 1.5;
+  }
+
   @media (max-width: 600px) {
     .settings-group-card {
       padding: 16px 14px;
@@ -809,6 +969,18 @@
       }
     });
   }
+
+  // Interactive visual selection for Post Layout cards
+  document.querySelectorAll('.layout-option-card input[type="radio"]').forEach(function(radio) {
+    radio.addEventListener('change', function() {
+      document.querySelectorAll('.layout-option-card').forEach(function(card) {
+        card.classList.remove('selected');
+      });
+      if (this.checked) {
+        this.closest('.layout-option-card').classList.add('selected');
+      }
+    });
+  });
 </script>
 
 <%- include('../partials/admin-footer') %>

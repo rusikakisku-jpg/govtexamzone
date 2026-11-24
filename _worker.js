@@ -28226,6 +28226,7 @@ var require_d1Client = __commonJS({
     vacancy_details TEXT,
     category_details TEXT,
     how_to_apply TEXT,
+    article_content TEXT,
     links TEXT,
     notification_pdf TEXT,
     admit_card_url TEXT,
@@ -28376,6 +28377,10 @@ var require_d1Client = __commonJS({
               this.localDb.run("ALTER TABLE posts ADD COLUMN author_id INTEGER DEFAULT 1");
               console.log("\u2705 Migrated: added author_id column to posts table.");
             }
+            if (!colNames.includes("article_content")) {
+              this.localDb.run("ALTER TABLE posts ADD COLUMN article_content TEXT");
+              console.log("\u2705 Migrated: added article_content column to posts table.");
+            }
           }
           const resAuthors = this.localDb.exec("PRAGMA table_info(authors)");
           if (resAuthors && resAuthors[0] && resAuthors[0].values) {
@@ -28435,6 +28440,10 @@ var require_d1Client = __commonJS({
           for (const statement of statements) {
             await this.queryRemote(statement);
           }
+          try {
+            await this.queryRemote("ALTER TABLE posts ADD COLUMN article_content TEXT");
+          } catch (migErr) {
+          }
           console.log("\u2705 Cloudflare D1 remote schema verified.");
         } catch (err) {
           console.warn("\u26A0\uFE0F Warning during remote D1 schema initialization:", err.message);
@@ -28466,6 +28475,10 @@ var require_d1Client = __commonJS({
             }
           }
           console.log("\u2705 Native Cloudflare D1 tables and indexes verified.");
+          try {
+            await nativeD1.prepare("ALTER TABLE posts ADD COLUMN article_content TEXT").run();
+          } catch (colErr) {
+          }
           try {
             const countRow = await nativeD1.prepare("SELECT COUNT(*) as count FROM marquees").first();
             if (!countRow || countRow.count === 0) {
@@ -28717,7 +28730,8 @@ var require_webRoutes = __commonJS({
           contact_email: "contact.govtexamzone@gmail.com",
           site_title: "Govt Exam Zone",
           site_logo: "",
-          site_favicon: "/images/gez-logo.svg"
+          site_favicon: "/images/gez-logo.svg",
+          post_detail_layout: "classic"
         };
         if (sRows && Array.isArray(sRows)) {
           sRows.forEach((r) => {
@@ -28741,7 +28755,8 @@ var require_webRoutes = __commonJS({
           contact_email: "contact.govtexamzone@gmail.com",
           site_title: "Govt Exam Zone",
           site_logo: "",
-          site_favicon: "/images/gez-logo.svg"
+          site_favicon: "/images/gez-logo.svg",
+          post_detail_layout: "classic"
         };
       }
       next();
@@ -28841,23 +28856,35 @@ var require_webRoutes = __commonJS({
           });
         }
         d1.prepare("UPDATE posts SET views = views + 1 WHERE id = ?").bind(post.id).run().catch(console.error);
-        const relatedPosts = await d1.prepare(
-          "SELECT id, title, slug, post_date FROM posts WHERE category = ? AND id != ? ORDER BY id DESC LIMIT 8"
-        ).bind(post.category, post.id).all();
+        const [relatedPosts, authorRow, recentPosts, popularPosts, categoryCounts] = await Promise.all([
+          d1.prepare(
+            "SELECT id, title, slug, post_date FROM posts WHERE category = ? AND id != ? AND status = 'active' ORDER BY id DESC LIMIT 8"
+          ).bind(post.category, post.id).all(),
+          d1.prepare("SELECT * FROM authors WHERE id = ?").bind(post.author_id || 1).first(),
+          d1.prepare(
+            "SELECT id, title, slug, category, post_date, created_at FROM posts WHERE status = 'active' AND id != ? ORDER BY id DESC LIMIT 5"
+          ).bind(post.id).all(),
+          d1.prepare(
+            "SELECT id, title, slug, category, post_date, views, created_at FROM posts WHERE status = 'active' ORDER BY views DESC, id DESC LIMIT 5"
+          ).all(),
+          d1.prepare(
+            "SELECT category, COUNT(*) as count FROM posts WHERE status = 'active' GROUP BY category"
+          ).all()
+        ]);
         const importantDates = safeJsonParse(post.important_dates, []);
         const applicationFee = safeJsonParse(post.application_fee, []);
         const ageLimit = safeJsonParse(post.age_limit, {});
         const vacancyDetails = safeJsonParse(post.vacancy_details, []);
         const categoryDetails = safeJsonParse(post.category_details, []);
         const links = safeJsonParse(post.links, []);
-        const author = await d1.prepare("SELECT * FROM authors WHERE id = ?").bind(post.author_id || 1).first() || {
+        const author = authorRow || {
           name: "Govt Exam Zone Editorial Team",
           slug: "editorial-team",
           role: "Senior Recruitment Analyst & Fact-Checker Lead",
           avatar_url: "/images/default-avatar.svg",
           bio: "The official editorial and verification desk of Govt Exam Zone."
         };
-        res.set("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600");
+        res.set("Cache-Control", "public, max-age=30, s-maxage=60, stale-while-revalidate=120");
         res.render("pages/detail", {
           title: `${post.title} - Govt Exam Zone | WWW.GOVTEXAMZONE.COM`,
           metaDescription: post.short_desc ? post.short_desc.replace(/\s+/g, " ").trim() : `${post.title}. Check notification details, eligibility criteria, application process, and official links at Govt Exam Zone.`,
@@ -28870,7 +28897,10 @@ var require_webRoutes = __commonJS({
           vacancyDetails,
           categoryDetails,
           links,
-          relatedPosts,
+          relatedPosts: relatedPosts || [],
+          recentPosts: recentPosts || [],
+          popularPosts: popularPosts || [],
+          categoryCounts: categoryCounts || [],
           fullUrl: `${req.protocol}://${req.get("host")}${req.originalUrl}`
         });
       } catch (err) {
@@ -74973,6 +75003,7 @@ var require_adminRoutes = __commonJS({
           short_desc,
           total_vacancy,
           how_to_apply,
+          article_content,
           apply_online_url,
           official_website_url,
           is_featured,
@@ -75026,14 +75057,14 @@ var require_adminRoutes = __commonJS({
       INSERT INTO posts (
         title, slug, category, department, post_date, last_date,
         short_desc, total_vacancy, important_dates, application_fee,
-        age_limit, vacancy_details, category_details, how_to_apply,
+        age_limit, vacancy_details, category_details, how_to_apply, article_content,
         links, notification_pdf, admit_card_url, result_url,
         apply_online_url, official_website_url, is_featured, status,
         author_id
       ) VALUES (
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
-        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?
@@ -75053,6 +75084,7 @@ var require_adminRoutes = __commonJS({
           vacancyDetails,
           categoryDetails,
           how_to_apply || null,
+          article_content || null,
           links,
           notificationPdf || null,
           admitCardUrl || null,
@@ -75110,6 +75142,7 @@ var require_adminRoutes = __commonJS({
         const short_desc = req.body.short_desc !== void 0 ? req.body.short_desc : currentPost.short_desc || null;
         const total_vacancy = req.body.total_vacancy !== void 0 ? req.body.total_vacancy : currentPost.total_vacancy || null;
         const how_to_apply = req.body.how_to_apply !== void 0 ? req.body.how_to_apply : currentPost.how_to_apply || null;
+        const article_content = req.body.article_content !== void 0 ? req.body.article_content : currentPost.article_content || null;
         const apply_online_url = req.body.apply_online_url !== void 0 ? req.body.apply_online_url : currentPost.apply_online_url || null;
         const official_website_url = req.body.official_website_url !== void 0 ? req.body.official_website_url : currentPost.official_website_url || null;
         const status = req.body.status || currentPost.status || "active";
@@ -75156,7 +75189,7 @@ var require_adminRoutes = __commonJS({
       UPDATE posts SET
         title = ?, slug = ?, category = ?, department = ?, post_date = ?, last_date = ?,
         short_desc = ?, total_vacancy = ?, important_dates = ?, application_fee = ?,
-        age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?,
+        age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?, article_content = ?,
         links = ?, notification_pdf = ?, admit_card_url = ?, result_url = ?,
         apply_online_url = ?, official_website_url = ?, is_featured = ?, status = ?,
         author_id = ?,
@@ -75177,6 +75210,7 @@ var require_adminRoutes = __commonJS({
           vacancyDetails,
           categoryDetails,
           how_to_apply,
+          article_content,
           links,
           notificationPdf,
           admitCardUrl,
@@ -75541,7 +75575,8 @@ var require_adminRoutes = __commonJS({
           ad_top_code: "",
           ad_bottom_code: "",
           header_custom_code: "",
-          footer_custom_code: ""
+          footer_custom_code: "",
+          post_detail_layout: "classic"
         };
         if (rows && Array.isArray(rows)) {
           rows.forEach((r) => {
@@ -75862,6 +75897,7 @@ var require_authorRoutes = __commonJS({
           short_desc,
           total_vacancy,
           how_to_apply,
+          article_content,
           apply_online_url,
           official_website_url,
           status
@@ -75913,14 +75949,14 @@ var require_authorRoutes = __commonJS({
       INSERT INTO posts (
         title, slug, category, department, post_date, last_date,
         short_desc, total_vacancy, important_dates, application_fee,
-        age_limit, vacancy_details, category_details, how_to_apply,
+        age_limit, vacancy_details, category_details, how_to_apply, article_content,
         links, notification_pdf, admit_card_url, result_url,
         apply_online_url, official_website_url, is_featured, status,
         author_id
       ) VALUES (
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
-        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?
@@ -75940,6 +75976,7 @@ var require_authorRoutes = __commonJS({
           vacancyDetails,
           categoryDetails,
           how_to_apply || null,
+          article_content || null,
           links,
           notificationPdf || null,
           admitCardUrl || null,
@@ -76005,6 +76042,7 @@ var require_authorRoutes = __commonJS({
         const short_desc = req.body.short_desc !== void 0 ? req.body.short_desc : currentPost.short_desc || null;
         const total_vacancy = req.body.total_vacancy !== void 0 ? req.body.total_vacancy : currentPost.total_vacancy || null;
         const how_to_apply = req.body.how_to_apply !== void 0 ? req.body.how_to_apply : currentPost.how_to_apply || null;
+        const article_content = req.body.article_content !== void 0 ? req.body.article_content : currentPost.article_content || null;
         const apply_online_url = req.body.apply_online_url !== void 0 ? req.body.apply_online_url : currentPost.apply_online_url || null;
         const official_website_url = req.body.official_website_url !== void 0 ? req.body.official_website_url : currentPost.official_website_url || null;
         const postStatus = status || currentPost.status || "active";
@@ -76050,7 +76088,7 @@ var require_authorRoutes = __commonJS({
         UPDATE posts SET
           title = ?, slug = ?, category = ?, department = ?, post_date = ?, last_date = ?,
           short_desc = ?, total_vacancy = ?, important_dates = ?, application_fee = ?,
-          age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?,
+          age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?, article_content = ?,
           links = ?, notification_pdf = ?, admit_card_url = ?, result_url = ?,
           apply_online_url = ?, official_website_url = ?, status = ?,
           updated_at = CURRENT_TIMESTAMP
@@ -76070,6 +76108,7 @@ var require_authorRoutes = __commonJS({
             vacancyDetails,
             categoryDetails,
             how_to_apply,
+            article_content,
             links,
             notificationPdf,
             admitCardUrl,
@@ -76084,7 +76123,7 @@ var require_authorRoutes = __commonJS({
         UPDATE posts SET
           title = ?, slug = ?, category = ?, department = ?, post_date = ?, last_date = ?,
           short_desc = ?, total_vacancy = ?, important_dates = ?, application_fee = ?,
-          age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?,
+          age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?, article_content = ?,
           links = ?, notification_pdf = ?, admit_card_url = ?, result_url = ?,
           apply_online_url = ?, official_website_url = ?, status = ?,
           updated_at = CURRENT_TIMESTAMP
@@ -76104,6 +76143,7 @@ var require_authorRoutes = __commonJS({
             vacancyDetails,
             categoryDetails,
             how_to_apply,
+            article_content,
             links,
             notificationPdf,
             admitCardUrl,
@@ -77222,6 +77262,8 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( post ? (post.age_limit || '{}') : '{}' ))
     ; __append("\\">\\n    </div>\\n\\n    <!-- How to Apply -->\\n    <div class=\\"form-group\\">\\n      <label for=\\"how_to_apply\\">How to Apply Steps</label>\\n      <textarea \\n        id=\\"how_to_apply\\" \\n        name=\\"how_to_apply\\" \\n        class=\\"form-control\\" \\n        rows=\\"4\\" \\n      >")
     ; __append(escapeFn( post ? post.how_to_apply : '1. Candidate Can Apply Online From Official Portal.\\n2. Read Notification Carefully Before Filling Form.\\n3. Keep Ready Photo, Sign & ID Proof.\\n4. Pay Exam Fee and Print Final Application Form.' ))
+    ; __append("</textarea>\\n    </div>\\n\\n    <!-- Optional Full Blog Article / Detailed Editorial Content -->\\n    <div style=\\"background: #f0f9ff; border: 1px solid #bae6fd; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"margin-bottom: 8px;\\">\\n        <label for=\\"article_content\\" style=\\"margin: 0; font-size: 15px; font-weight: 700; color: #0369a1;\\">\u{1F4DD} Full Blog Article / Detailed Editorial Content (Optional HTML)</label>\\n        <div style=\\"font-size: 12px; color: #475569; margin-top: 2px;\\">\\n          Write detailed guides, exam pattern analysis, FAQs, or custom HTML tables here. Works automatically in both <strong>Classic Sarkari</strong> and <strong>2-Column Blog</strong> layouts!\\n        </div>\\n      </div>\\n      <textarea \\n        id=\\"article_content\\" \\n        name=\\"article_content\\" \\n        class=\\"form-control\\" \\n        rows=\\"8\\" \\n        placeholder=\\"<h2>1. Exam Overview &amp; Pattern</h2>&#10;<p>Write detailed article content or paste structured HTML here...</p>\\"\\n        style=\\"font-family: 'JetBrains Mono', monospace; font-size: 12.5px;\\"\\n      >")
+    ; __append(escapeFn( post && post.article_content ? post.article_content : '' ))
     ; __append("</textarea>\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Some Useful Important Links -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F517} Some Useful Important Links (Custom Links Table)</h3>\\n          <small style=\\"color: #64748b;\\">Add custom download links, Server 1 / Server 2, answer key, mock test, syllabus, etc.</small>\\n        </div>\\n        <button type=\\"button\\" id=\\"btn-add-link\\" class=\\"btn btn-secondary btn-sm\\">+ Add Link Row</button>\\n      </div>\\n      <div id=\\"links-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"links\\" name=\\"links\\" value=\\"")
     ; __append(escapeFn( post ? (post.links || '[]') : '[]' ))
     ; __append("\\">\\n    </div>\\n\\n    <!-- Direct External Links -->\\n    <div class=\\"form-row\\">\\n      <div class=\\"form-group\\">\\n        <label for=\\"apply_online_url\\">Apply Online URL</label>\\n        <input \\n          type=\\"url\\" \\n          id=\\"apply_online_url\\" \\n          name=\\"apply_online_url\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"https://ssc.gov.in\\" \\n          value=\\"")
@@ -77330,6 +77372,8 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( post ? (post.age_limit || '{}') : '{}' ))
     ; __append("\\">\\n    </div>\\n\\n    <!-- How to Apply -->\\n    <div class=\\"form-group\\">\\n      <label for=\\"how_to_apply\\">How to Apply Steps</label>\\n      <textarea \\n        id=\\"how_to_apply\\" \\n        name=\\"how_to_apply\\" \\n        class=\\"form-control\\" \\n        rows=\\"4\\" \\n      >")
     ; __append(escapeFn( post ? post.how_to_apply : '1. Candidate Can Apply Online From Official Portal.\\n2. Read Notification Carefully Before Filling Form.\\n3. Keep Ready Photo, Sign & ID Proof.\\n4. Pay Exam Fee and Print Final Application Form.' ))
+    ; __append("</textarea>\\n    </div>\\n\\n    <!-- Optional Full Blog Article / Detailed Editorial Content -->\\n    <div style=\\"background: #f0f9ff; border: 1px solid #bae6fd; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"margin-bottom: 8px;\\">\\n        <label for=\\"article_content\\" style=\\"margin: 0; font-size: 15px; font-weight: 700; color: #0369a1;\\">\u{1F4DD} Full Blog Article / Detailed Editorial Content (Optional HTML)</label>\\n        <div style=\\"font-size: 12px; color: #475569; margin-top: 2px;\\">\\n          Write detailed guides, exam pattern analysis, FAQs, or custom HTML tables here. Works automatically in both <strong>Classic Sarkari</strong> and <strong>2-Column Blog</strong> layouts!\\n        </div>\\n      </div>\\n      <textarea \\n        id=\\"article_content\\" \\n        name=\\"article_content\\" \\n        class=\\"form-control\\" \\n        rows=\\"8\\" \\n        placeholder=\\"<h2>1. Exam Overview &amp; Pattern</h2>&#10;<p>Write detailed article content or paste structured HTML here...</p>\\"\\n        style=\\"font-family: 'JetBrains Mono', monospace; font-size: 12.5px;\\"\\n      >")
+    ; __append(escapeFn( post && post.article_content ? post.article_content : '' ))
     ; __append("</textarea>\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Some Useful Important Links -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F517} Some Useful Important Links (Custom Links Table)</h3>\\n          <small style=\\"color: #64748b;\\">Add custom download links, Server 1 / Server 2, answer key, mock test, syllabus, etc.</small>\\n        </div>\\n        <button type=\\"button\\" id=\\"btn-add-link\\" class=\\"btn btn-secondary btn-sm\\">+ Add Link Row</button>\\n      </div>\\n      <div id=\\"links-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"links\\" name=\\"links\\" value=\\"")
     ; __append(escapeFn( post ? (post.links || '[]') : '[]' ))
     ; __append("\\">\\n    </div>\\n\\n    <!-- Direct External Links -->\\n    <div class=\\"form-row\\">\\n      <div class=\\"form-group\\">\\n        <label for=\\"apply_online_url\\">Apply Online URL</label>\\n        <input \\n          type=\\"url\\" \\n          id=\\"apply_online_url\\" \\n          name=\\"apply_online_url\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"https://ssc.gov.in\\" \\n          value=\\"")
@@ -77654,7 +77698,7 @@ var require_templateEngine = __commonJS({
     ;  if (typeof saved !== 'undefined' && saved) { 
     ; __append("\\n    <div style=\\"background: #dcfce7; border: 1px solid #86efac; color: #166534; padding: 14px 18px; border-radius: 8px; margin-bottom: 24px; font-weight: 600; display: flex; align-items: center; gap: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);\\">\\n      <span style=\\"font-size: 18px;\\">\u2705</span>\\n      <span>Portal settings successfully saved and instantly synchronized across the entire website!</span>\\n    </div>\\n  ")
     ;  } 
-    ; __append("\\n\\n  <!-- Section Quick Navigation Pills -->\\n  <div class=\\"settings-nav-pills\\" style=\\"display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 26px; border-bottom: 1px solid #e2e8f0; padding-bottom: 14px;\\">\\n    <a href=\\"#section-branding\\" class=\\"settings-pill active\\">\u{1F310} General &amp; Branding</a>\\n    <a href=\\"#section-social\\" class=\\"settings-pill\\">\u{1F4F2} Social Communities</a>\\n    <a href=\\"#section-helpdesk\\" class=\\"settings-pill\\">\u2709\uFE0F Contact &amp; Helpdesk</a>\\n    <a href=\\"#section-seo\\" class=\\"settings-pill\\">\u{1F680} SEO &amp; Analytics</a>\\n    <a href=\\"#section-announcement\\" class=\\"settings-pill\\">\u{1F4E2} Urgent Alert Bar</a>\\n    <a href=\\"#section-adsense\\" class=\\"settings-pill\\">\u{1F4B0} AdSense &amp; Ads</a>\\n    <a href=\\"#section-scripts\\" class=\\"settings-pill\\">\u{1F6E0}\uFE0F Custom Scripts</a>\\n  </div>\\n\\n  <form id=\\"masterSettingsForm\\" action=\\"/admin/settings/save\\" method=\\"POST\\" enctype=\\"multipart/form-data\\">\\n    \\n    <!-- 1. General & Brand Identity -->\\n    <div id=\\"section-branding\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F310}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">1. General &amp; Brand Identity</h3>\\n          <p class=\\"settings-group-desc\\">Configure website name, logo tagline, domain URL, and copyright attribution.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"site_title\\">Portal Brand Name *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"site_title\\" \\n            name=\\"site_title\\" \\n            class=\\"form-control\\" \\n            value=\\"")
+    ; __append("\\n\\n  <!-- Section Quick Navigation Pills -->\\n  <div class=\\"settings-nav-pills\\" style=\\"display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 26px; border-bottom: 1px solid #e2e8f0; padding-bottom: 14px;\\">\\n    <a href=\\"#section-branding\\" class=\\"settings-pill active\\">\u{1F310} General &amp; Branding</a>\\n    <a href=\\"#section-layout\\" class=\\"settings-pill\\">\u{1F4F0} Post Page Layout</a>\\n    <a href=\\"#section-social\\" class=\\"settings-pill\\">\u{1F4F2} Social Communities</a>\\n    <a href=\\"#section-helpdesk\\" class=\\"settings-pill\\">\u2709\uFE0F Contact &amp; Helpdesk</a>\\n    <a href=\\"#section-seo\\" class=\\"settings-pill\\">\u{1F680} SEO &amp; Analytics</a>\\n    <a href=\\"#section-announcement\\" class=\\"settings-pill\\">\u{1F4E2} Urgent Alert Bar</a>\\n    <a href=\\"#section-adsense\\" class=\\"settings-pill\\">\u{1F4B0} AdSense &amp; Ads</a>\\n    <a href=\\"#section-scripts\\" class=\\"settings-pill\\">\u{1F6E0}\uFE0F Custom Scripts</a>\\n  </div>\\n\\n  <form id=\\"masterSettingsForm\\" action=\\"/admin/settings/save\\" method=\\"POST\\" enctype=\\"multipart/form-data\\">\\n    \\n    <!-- 1. General & Brand Identity -->\\n    <div id=\\"section-branding\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F310}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">1. General &amp; Brand Identity</h3>\\n          <p class=\\"settings-group-desc\\">Configure website name, logo tagline, domain URL, and copyright attribution.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"site_title\\">Portal Brand Name *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"site_title\\" \\n            name=\\"site_title\\" \\n            class=\\"form-control\\" \\n            value=\\"")
     ; __append(escapeFn( settings.site_title || 'Govt Exam Zone' ))
     ; __append("\\" \\n            placeholder=\\"Govt Exam Zone\\"\\n            required\\n          >\\n          <small class=\\"field-hint\\">Primary portal name displayed in top header and browser titles.</small>\\n        </div>\\n\\n        <div class=\\"form-group\\">\\n          <label for=\\"header_subtitle\\">Header Subtitle (Logo Tag)</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"header_subtitle\\" \\n            name=\\"header_subtitle\\" \\n            class=\\"form-control\\" \\n            value=\\"")
     ; __append(escapeFn( settings.header_subtitle || 'WWW.GOVTEXAMZONE.COM' ))
@@ -77685,7 +77729,17 @@ var require_templateEngine = __commonJS({
 ))
     ; __append("\\" \\n            placeholder=\\"https://govtexamzone.com\\"\\n          >\\n          <small class=\\"field-hint\\">Canonical domain used for generating sitemaps and share links.</small>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-group\\" style=\\"margin-top: 14px;\\">\\n        <label for=\\"copyright_text\\">Footer Copyright Notice</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"copyright_text\\" \\n          name=\\"copyright_text\\" \\n          class=\\"form-control\\" \\n          value=\\"")
     ; __append(escapeFn( settings.copyright_text || '\xA9 2026 govtexamzone.com. All Rights Reserved.' ))
-    ; __append("\\" \\n          placeholder=\\"\xA9 2026 govtexamzone.com. All Rights Reserved.\\"\\n        >\\n        <small class=\\"field-hint\\">Displayed at the very bottom of every page.</small>\\n      </div>\\n    </div>\\n\\n\\n    <!-- 2. Social Media & Community Channels -->\\n    <div id=\\"section-social\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4F2}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">2. Social Media &amp; Community Channels</h3>\\n          <p class=\\"settings-group-desc\\">Connect official Telegram, WhatsApp, YouTube, and social media handles.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"telegram_url\\">\u2708\uFE0F Official Telegram Channel Link *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"telegram_url\\" \\n            name=\\"telegram_url\\" \\n            class=\\"form-control\\" \\n            value=\\"")
+    ; __append("\\" \\n          placeholder=\\"\xA9 2026 govtexamzone.com. All Rights Reserved.\\"\\n        >\\n        <small class=\\"field-hint\\">Displayed at the very bottom of every page.</small>\\n      </div>\\n    </div>\\n\\n\\n    <!-- 1B. Full Post / Blog Detail Page Layout Configuration -->\\n    <div id=\\"section-layout\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4F0}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">Post / Full Blog Detail Page Layout (2 UI Modes)</h3>\\n          <p class=\\"settings-group-desc\\">Choose how full post/blog detail pages display on the frontend. Both Classic Sarkari posts and rich Blog articles automatically adapt to your selected layout.</p>\\n        </div>\\n      </div>\\n\\n      ")
+    ;  const activeLayout = (settings.post_detail_layout === 'blog_2col') ? 'blog_2col' : 'classic'; 
+    ; __append("\\n      <div class=\\"layout-selector-grid\\" style=\\"display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;\\">\\n        <!-- Option 1: Classic Sarkari Single-Column -->\\n        <label class=\\"layout-option-card ")
+    ; __append(escapeFn( activeLayout === 'classic' ? 'selected' : '' ))
+    ; __append("\\" for=\\"layout_classic\\">\\n          <input \\n            type=\\"radio\\" \\n            id=\\"layout_classic\\" \\n            name=\\"post_detail_layout\\" \\n            value=\\"classic\\" \\n            ")
+    ; __append(escapeFn( activeLayout === 'classic' ? 'checked' : '' ))
+    ; __append("\\n            style=\\"display: none;\\"\\n          >\\n          <div class=\\"layout-card-top\\">\\n            <div style=\\"display: flex; align-items: center; gap: 8px;\\">\\n              <span class=\\"layout-radio-dot\\"></span>\\n              <strong style=\\"font-size: 14.5px; color: #0f172a;\\">Classic Sarkari Single-Column</strong>\\n            </div>\\n            <span class=\\"layout-badge classic-badge\\">Default Style</span>\\n          </div>\\n          <div class=\\"layout-wireframe\\">\\n            <div style=\\"width: 100%; height: 10px; background: #ab183d; border-radius: 3px; margin-bottom: 6px;\\"></div>\\n            <div style=\\"display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 6px;\\">\\n              <div style=\\"height: 20px; background: #e2e8f0; border-radius: 3px;\\"></div>\\n              <div style=\\"height: 20px; background: #e2e8f0; border-radius: 3px;\\"></div>\\n            </div>\\n            <div style=\\"width: 100%; height: 22px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px;\\"></div>\\n          </div>\\n          <p class=\\"layout-card-desc\\">\\n            Traditional centered single-column layout with full-width Important Dates, Application Fee, Vacancy tables, and Links.\\n          </p>\\n        </label>\\n\\n        <!-- Option 2: 2-Column Blog Layout with Sidebar -->\\n        <label class=\\"layout-option-card ")
+    ; __append(escapeFn( activeLayout === 'blog_2col' ? 'selected' : '' ))
+    ; __append("\\" for=\\"layout_blog_2col\\">\\n          <input \\n            type=\\"radio\\" \\n            id=\\"layout_blog_2col\\" \\n            name=\\"post_detail_layout\\" \\n            value=\\"blog_2col\\" \\n            ")
+    ; __append(escapeFn( activeLayout === 'blog_2col' ? 'checked' : '' ))
+    ; __append("\\n            style=\\"display: none;\\"\\n          >\\n          <div class=\\"layout-card-top\\">\\n            <div style=\\"display: flex; align-items: center; gap: 8px;\\">\\n              <span class=\\"layout-radio-dot\\"></span>\\n              <strong style=\\"font-size: 14.5px; color: #0f172a;\\">2-Column Blog + Sidebar Layout</strong>\\n            </div>\\n            <span class=\\"layout-badge blog-badge\\">CBTRank Style</span>\\n          </div>\\n          <div class=\\"layout-wireframe\\" style=\\"display: grid; grid-template-columns: 2fr 1fr; gap: 6px;\\">\\n            <div>\\n              <div style=\\"width: 70%; height: 8px; background: #0066ff; border-radius: 2px; margin-bottom: 5px;\\"></div>\\n              <div style=\\"width: 100%; height: 18px; background: #e2e8f0; border-radius: 3px; margin-bottom: 5px;\\"></div>\\n              <div style=\\"width: 100%; height: 24px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px;\\"></div>\\n            </div>\\n            <div style=\\"display: flex; flex-direction: column; gap: 4px;\\">\\n              <div style=\\"height: 12px; background: #dbeafe; border-radius: 2px;\\"></div>\\n              <div style=\\"height: 20px; background: #e2e8f0; border-radius: 2px;\\"></div>\\n              <div style=\\"height: 20px; background: #e2e8f0; border-radius: 2px;\\"></div>\\n            </div>\\n          </div>\\n          <p class=\\"layout-card-desc\\">\\n            Modern 2-column magazine layout: Full blog/post content on the left + Right sidebar with Search, Recent Posts, Popular Posts &amp; Share bar.\\n          </p>\\n        </label>\\n      </div>\\n    </div>\\n\\n\\n    <!-- 2. Social Media & Community Channels -->\\n    <div id=\\"section-social\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4F2}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">2. Social Media &amp; Community Channels</h3>\\n          <p class=\\"settings-group-desc\\">Connect official Telegram, WhatsApp, YouTube, and social media handles.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"telegram_url\\">\u2708\uFE0F Official Telegram Channel Link *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"telegram_url\\" \\n            name=\\"telegram_url\\" \\n            class=\\"form-control\\" \\n            value=\\"")
     ; __append(escapeFn( settings.telegram_url || 'https://t.me/govtexamzoneofficial' 
 ))
     ; __append("\\" \\n            placeholder=\\"https://t.me/govtexamzoneofficial\\"\\n            required\\n          >\\n          <small class=\\"field-hint\\">Connected to top \\"Join Telegram Channel\\" button and mobile drawer.</small>\\n        </div>\\n\\n        <div class=\\"form-group\\">\\n          <label for=\\"whatsapp_url\\">\u{1F4AC} Official WhatsApp Channel Link *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"whatsapp_url\\" \\n            name=\\"whatsapp_url\\" \\n            class=\\"form-control\\" \\n            value=\\"")
@@ -77737,7 +77791,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( settings.header_custom_code || '' ))
     ; __append("</textarea>\\n        <small class=\\"field-hint\\">Code injected right before the closing &lt;/head&gt; tag on all public pages.</small>\\n      </div>\\n\\n      <div class=\\"form-group\\" style=\\"margin-top: 14px;\\">\\n        <label for=\\"footer_custom_code\\">Custom Footer Code (Injected before &lt;/body&gt;)</label>\\n        <textarea \\n          id=\\"footer_custom_code\\" \\n          name=\\"footer_custom_code\\" \\n          class=\\"form-control code-editor\\" \\n          rows=\\"4\\" \\n          placeholder=\\"<!-- e.g. Live chat widget, visitor counter, external tracking script -->\\"\\n        >")
     ; __append(escapeFn( settings.footer_custom_code || '' ))
-    ; __append("</textarea>\\n        <small class=\\"field-hint\\">Code injected right before the closing &lt;/body&gt; tag on all public pages.</small>\\n      </div>\\n    </div>\\n\\n    <!-- Bottom Save Action Bar -->\\n    <div style=\\"background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px 24px; display: flex; justify-content: space-between; align-items: center; margin-top: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); flex-wrap: wrap; gap: 12px;\\">\\n      <div>\\n        <span style=\\"font-weight: 700; color: #0f172a; font-size: 14.5px;\\">Ready to update portal configuration?</span>\\n        <div style=\\"font-size: 12px; color: #64748b; margin-top: 2px;\\">Changes take effect immediately across all desktop and mobile devices.</div>\\n      </div>\\n      <div style=\\"display: flex; gap: 10px;\\">\\n        <a href=\\"/admin\\" class=\\"btn btn-secondary\\">Cancel</a>\\n        <button type=\\"submit\\" class=\\"btn btn-primary\\" style=\\"padding: 10px 28px; font-size: 15px; font-weight: 700;\\">\\n          \u{1F4BE} Save All Settings\\n        </button>\\n      </div>\\n    </div>\\n\\n  </form>\\n</div>\\n\\n<style>\\n  .settings-group-card {\\n    background: #ffffff;\\n    border: 1px solid #e2e8f0;\\n    border-radius: 10px;\\n    padding: 22px 24px;\\n    margin-bottom: 22px;\\n    box-shadow: 0 1px 3px rgba(0,0,0,0.04);\\n    scroll-margin-top: 80px;\\n  }\\n\\n  .settings-group-header {\\n    display: flex;\\n    gap: 12px;\\n    align-items: flex-start;\\n    margin-bottom: 18px;\\n    border-bottom: 1px solid #f1f5f9;\\n    padding-bottom: 14px;\\n  }\\n\\n  .settings-group-icon {\\n    font-size: 24px;\\n    background: #f8fafc;\\n    padding: 8px;\\n    border-radius: 8px;\\n    border: 1px solid #e2e8f0;\\n    line-height: 1;\\n  }\\n\\n  .settings-group-title {\\n    margin: 0;\\n    font-size: 16px;\\n    font-weight: 700;\\n    color: #0f172a;\\n  }\\n\\n  .settings-group-desc {\\n    margin: 4px 0 0 0;\\n    font-size: 12.5px;\\n    color: #64748b;\\n  }\\n\\n  .field-hint {\\n    display: block;\\n    font-size: 11.5px;\\n    color: #64748b;\\n    margin-top: 5px;\\n    line-height: 1.4;\\n  }\\n\\n  .code-editor {\\n    font-family: 'JetBrains Mono', monospace;\\n    font-size: 12.5px;\\n    background: #0f172a !important;\\n    color: #38bdf8 !important;\\n    border: 1px solid #334155 !important;\\n  }\\n\\n  .code-editor::placeholder {\\n    color: #64748b !important;\\n  }\\n\\n  .settings-pill {\\n    text-decoration: none;\\n    font-size: 12.5px;\\n    font-weight: 600;\\n    color: #475569;\\n    background: #f1f5f9;\\n    padding: 6px 14px;\\n    border-radius: 9999px;\\n    transition: all 0.15s ease;\\n  }\\n\\n  .settings-pill:hover, .settings-pill:focus {\\n    background: #ab183d;\\n    color: #ffffff;\\n  }\\n\\n  @media (max-width: 600px) {\\n    .settings-group-card {\\n      padding: 16px 14px;\\n    }\\n    .settings-nav-pills {\\n      gap: 6px;\\n    }\\n    .settings-pill {\\n      font-size: 11.5px;\\n      padding: 5px 10px;\\n    }\\n  }\\n</style>\\n\\n<script>\\n  // Live preview for Logo file input\\n  const logoFileInput = document.getElementById('site_logo_file');\\n  const logoPreviewImg = document.getElementById('logoPreviewImg');\\n  const logoTextInput = document.getElementById('site_logo');\\n  const logoPathText = document.getElementById('logoPathText');\\n  const logoNoLogoText = document.getElementById('logoNoLogoText');\\n  const removeLogoBtn = document.getElementById('removeLogoBtn');\\n\\n  if (logoFileInput && logoPreviewImg) {\\n    logoFileInput.addEventListener('change', function(e) {\\n      const file = e.target.files && e.target.files[0];\\n      if (file) {\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          logoPreviewImg.src = evt.target.result;\\n          logoPreviewImg.style.display = 'block';\\n          if (logoNoLogoText) logoNoLogoText.style.display = 'none';\\n          if (logoPathText) {\\n            logoPathText.style.color = '#0284c7';\\n            logoPathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n          }\\n        };\\n        reader.readAsDataURL(file);\\n      }\\n    });\\n  }\\n\\n  // Live preview for Logo text input\\n  if (logoTextInput && logoPreviewImg) {\\n    logoTextInput.addEventListener('input', function() {\\n      const val = this.value.trim();\\n      if (val) {\\n        logoPreviewImg.src = val;\\n        logoPreviewImg.style.display = 'block';\\n        if (logoNoLogoText) logoNoLogoText.style.display = 'none';\\n        if (logoPathText) {\\n          logoPathText.style.color = '#0284c7';\\n          logoPathText.textContent = val;\\n        }\\n      } else {\\n        logoPreviewImg.src = '';\\n        logoPreviewImg.style.display = 'none';\\n        if (logoNoLogoText) logoNoLogoText.style.display = 'inline-block';\\n        if (logoPathText) {\\n          logoPathText.style.color = '#dc2626';\\n          logoPathText.textContent = 'No logo active (Header displays text title only)';\\n        }\\n      }\\n    });\\n  }\\n\\n  // Live Remove Logo Button\\n  if (removeLogoBtn && logoTextInput) {\\n    removeLogoBtn.addEventListener('click', function() {\\n      logoTextInput.value = '';\\n      if (logoFileInput) logoFileInput.value = '';\\n      if (logoPreviewImg) {\\n        logoPreviewImg.src = '';\\n        logoPreviewImg.style.display = 'none';\\n      }\\n      if (logoNoLogoText) logoNoLogoText.style.display = 'inline-block';\\n      if (logoPathText) {\\n        logoPathText.style.color = '#dc2626';\\n        logoPathText.textContent = 'Logo cleared. Click \\"Save Settings\\" below to apply changes.';\\n      }\\n    });\\n  }\\n\\n  // Live preview for Favicon file input\\n  const faviconFileInput = document.getElementById('site_favicon_file');\\n  const faviconPreviewImg = document.getElementById('faviconPreviewImg');\\n  const faviconTextInput = document.getElementById('site_favicon');\\n  const faviconPathText = document.getElementById('faviconPathText');\\n\\n  if (faviconFileInput && faviconPreviewImg) {\\n    faviconFileInput.addEventListener('change', function(e) {\\n      const file = e.target.files && e.target.files[0];\\n      if (file) {\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          faviconPreviewImg.src = evt.target.result;\\n          if (faviconPathText) faviconPathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n        };\\n        reader.readAsDataURL(file);\\n      }\\n    });\\n  }\\n\\n  // Live preview for Favicon text input\\n  if (faviconTextInput && faviconPreviewImg) {\\n    faviconTextInput.addEventListener('input', function() {\\n      if (this.value.trim()) {\\n        faviconPreviewImg.src = this.value.trim();\\n        if (faviconPathText) faviconPathText.textContent = this.value.trim();\\n      }\\n    });\\n  }\\n</script>\\n\\n")
+    ; __append("</textarea>\\n        <small class=\\"field-hint\\">Code injected right before the closing &lt;/body&gt; tag on all public pages.</small>\\n      </div>\\n    </div>\\n\\n    <!-- Bottom Save Action Bar -->\\n    <div style=\\"background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px 24px; display: flex; justify-content: space-between; align-items: center; margin-top: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); flex-wrap: wrap; gap: 12px;\\">\\n      <div>\\n        <span style=\\"font-weight: 700; color: #0f172a; font-size: 14.5px;\\">Ready to update portal configuration?</span>\\n        <div style=\\"font-size: 12px; color: #64748b; margin-top: 2px;\\">Changes take effect immediately across all desktop and mobile devices.</div>\\n      </div>\\n      <div style=\\"display: flex; gap: 10px;\\">\\n        <a href=\\"/admin\\" class=\\"btn btn-secondary\\">Cancel</a>\\n        <button type=\\"submit\\" class=\\"btn btn-primary\\" style=\\"padding: 10px 28px; font-size: 15px; font-weight: 700;\\">\\n          \u{1F4BE} Save All Settings\\n        </button>\\n      </div>\\n    </div>\\n\\n  </form>\\n</div>\\n\\n<style>\\n  .settings-group-card {\\n    background: #ffffff;\\n    border: 1px solid #e2e8f0;\\n    border-radius: 10px;\\n    padding: 22px 24px;\\n    margin-bottom: 22px;\\n    box-shadow: 0 1px 3px rgba(0,0,0,0.04);\\n    scroll-margin-top: 80px;\\n  }\\n\\n  .settings-group-header {\\n    display: flex;\\n    gap: 12px;\\n    align-items: flex-start;\\n    margin-bottom: 18px;\\n    border-bottom: 1px solid #f1f5f9;\\n    padding-bottom: 14px;\\n  }\\n\\n  .settings-group-icon {\\n    font-size: 24px;\\n    background: #f8fafc;\\n    padding: 8px;\\n    border-radius: 8px;\\n    border: 1px solid #e2e8f0;\\n    line-height: 1;\\n  }\\n\\n  .settings-group-title {\\n    margin: 0;\\n    font-size: 16px;\\n    font-weight: 700;\\n    color: #0f172a;\\n  }\\n\\n  .settings-group-desc {\\n    margin: 4px 0 0 0;\\n    font-size: 12.5px;\\n    color: #64748b;\\n  }\\n\\n  .field-hint {\\n    display: block;\\n    font-size: 11.5px;\\n    color: #64748b;\\n    margin-top: 5px;\\n    line-height: 1.4;\\n  }\\n\\n  .code-editor {\\n    font-family: 'JetBrains Mono', monospace;\\n    font-size: 12.5px;\\n    background: #0f172a !important;\\n    color: #38bdf8 !important;\\n    border: 1px solid #334155 !important;\\n  }\\n\\n  .code-editor::placeholder {\\n    color: #64748b !important;\\n  }\\n\\n  .settings-pill {\\n    text-decoration: none;\\n    font-size: 12.5px;\\n    font-weight: 600;\\n    color: #475569;\\n    background: #f1f5f9;\\n    padding: 6px 14px;\\n    border-radius: 9999px;\\n    transition: all 0.15s ease;\\n  }\\n\\n  .settings-pill:hover, .settings-pill:focus {\\n    background: #ab183d;\\n    color: #ffffff;\\n  }\\n\\n  .layout-option-card {\\n    display: flex;\\n    flex-direction: column;\\n    gap: 10px;\\n    padding: 16px;\\n    border: 2px solid #e2e8f0;\\n    border-radius: 10px;\\n    background: #f8fafc;\\n    cursor: pointer;\\n    transition: all 0.18s ease;\\n    margin: 0;\\n  }\\n\\n  .layout-option-card:hover {\\n    border-color: #94a3b8;\\n    background: #ffffff;\\n  }\\n\\n  .layout-option-card.selected {\\n    border-color: #0066ff;\\n    background: #eff6ff;\\n    box-shadow: 0 4px 12px rgba(0, 102, 255, 0.12);\\n  }\\n\\n  .layout-card-top {\\n    display: flex;\\n    justify-content: space-between;\\n    align-items: center;\\n    gap: 8px;\\n    flex-wrap: wrap;\\n  }\\n\\n  .layout-radio-dot {\\n    width: 16px;\\n    height: 16px;\\n    border-radius: 50%;\\n    border: 2px solid #94a3b8;\\n    background: #ffffff;\\n    display: inline-block;\\n    position: relative;\\n    flex-shrink: 0;\\n  }\\n\\n  .layout-option-card.selected .layout-radio-dot {\\n    border-color: #0066ff;\\n    background: #0066ff;\\n    box-shadow: inset 0 0 0 3px #ffffff;\\n  }\\n\\n  .layout-badge {\\n    font-size: 11px;\\n    font-weight: 700;\\n    padding: 2px 8px;\\n    border-radius: 9999px;\\n  }\\n\\n  .classic-badge {\\n    background: #fee2e2;\\n    color: #991b1b;\\n  }\\n\\n  .blog-badge {\\n    background: #dbeafe;\\n    color: #1e40af;\\n  }\\n\\n  .layout-wireframe {\\n    background: #ffffff;\\n    border: 1px solid #cbd5e1;\\n    border-radius: 6px;\\n    padding: 8px;\\n  }\\n\\n  .layout-card-desc {\\n    margin: 0;\\n    font-size: 12.5px;\\n    color: #475569;\\n    line-height: 1.5;\\n  }\\n\\n  @media (max-width: 600px) {\\n    .settings-group-card {\\n      padding: 16px 14px;\\n    }\\n    .settings-nav-pills {\\n      gap: 6px;\\n    }\\n    .settings-pill {\\n      font-size: 11.5px;\\n      padding: 5px 10px;\\n    }\\n  }\\n</style>\\n\\n<script>\\n  // Live preview for Logo file input\\n  const logoFileInput = document.getElementById('site_logo_file');\\n  const logoPreviewImg = document.getElementById('logoPreviewImg');\\n  const logoTextInput = document.getElementById('site_logo');\\n  const logoPathText = document.getElementById('logoPathText');\\n  const logoNoLogoText = document.getElementById('logoNoLogoText');\\n  const removeLogoBtn = document.getElementById('removeLogoBtn');\\n\\n  if (logoFileInput && logoPreviewImg) {\\n    logoFileInput.addEventListener('change', function(e) {\\n      const file = e.target.files && e.target.files[0];\\n      if (file) {\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          logoPreviewImg.src = evt.target.result;\\n          logoPreviewImg.style.display = 'block';\\n          if (logoNoLogoText) logoNoLogoText.style.display = 'none';\\n          if (logoPathText) {\\n            logoPathText.style.color = '#0284c7';\\n            logoPathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n          }\\n        };\\n        reader.readAsDataURL(file);\\n      }\\n    });\\n  }\\n\\n  // Live preview for Logo text input\\n  if (logoTextInput && logoPreviewImg) {\\n    logoTextInput.addEventListener('input', function() {\\n      const val = this.value.trim();\\n      if (val) {\\n        logoPreviewImg.src = val;\\n        logoPreviewImg.style.display = 'block';\\n        if (logoNoLogoText) logoNoLogoText.style.display = 'none';\\n        if (logoPathText) {\\n          logoPathText.style.color = '#0284c7';\\n          logoPathText.textContent = val;\\n        }\\n      } else {\\n        logoPreviewImg.src = '';\\n        logoPreviewImg.style.display = 'none';\\n        if (logoNoLogoText) logoNoLogoText.style.display = 'inline-block';\\n        if (logoPathText) {\\n          logoPathText.style.color = '#dc2626';\\n          logoPathText.textContent = 'No logo active (Header displays text title only)';\\n        }\\n      }\\n    });\\n  }\\n\\n  // Live Remove Logo Button\\n  if (removeLogoBtn && logoTextInput) {\\n    removeLogoBtn.addEventListener('click', function() {\\n      logoTextInput.value = '';\\n      if (logoFileInput) logoFileInput.value = '';\\n      if (logoPreviewImg) {\\n        logoPreviewImg.src = '';\\n        logoPreviewImg.style.display = 'none';\\n      }\\n      if (logoNoLogoText) logoNoLogoText.style.display = 'inline-block';\\n      if (logoPathText) {\\n        logoPathText.style.color = '#dc2626';\\n        logoPathText.textContent = 'Logo cleared. Click \\"Save Settings\\" below to apply changes.';\\n      }\\n    });\\n  }\\n\\n  // Live preview for Favicon file input\\n  const faviconFileInput = document.getElementById('site_favicon_file');\\n  const faviconPreviewImg = document.getElementById('faviconPreviewImg');\\n  const faviconTextInput = document.getElementById('site_favicon');\\n  const faviconPathText = document.getElementById('faviconPathText');\\n\\n  if (faviconFileInput && faviconPreviewImg) {\\n    faviconFileInput.addEventListener('change', function(e) {\\n      const file = e.target.files && e.target.files[0];\\n      if (file) {\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          faviconPreviewImg.src = evt.target.result;\\n          if (faviconPathText) faviconPathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n        };\\n        reader.readAsDataURL(file);\\n      }\\n    });\\n  }\\n\\n  // Live preview for Favicon text input\\n  if (faviconTextInput && faviconPreviewImg) {\\n    faviconTextInput.addEventListener('input', function() {\\n      if (this.value.trim()) {\\n        faviconPreviewImg.src = this.value.trim();\\n        if (faviconPathText) faviconPathText.textContent = this.value.trim();\\n      }\\n    });\\n  }\\n\\n  // Interactive visual selection for Post Layout cards\\n  document.querySelectorAll('.layout-option-card input[type=\\"radio\\"]').forEach(function(radio) {\\n    radio.addEventListener('change', function() {\\n      document.querySelectorAll('.layout-option-card').forEach(function(card) {\\n        card.classList.remove('selected');\\n      });\\n      if (this.checked) {\\n        this.closest('.layout-option-card').classList.add('selected');\\n      }\\n    });\\n  });\\n</script>\\n\\n")
     ; __append( include('../partials/admin-footer') )
     ; __append("\\n")
   }
@@ -77751,7 +77805,7 @@ var require_templateEngine = __commonJS({
     ;  if (typeof saved !== 'undefined' && saved) { 
     ; __append("\\n    <div style=\\"background: #dcfce7; border: 1px solid #86efac; color: #166534; padding: 14px 18px; border-radius: 8px; margin-bottom: 24px; font-weight: 600; display: flex; align-items: center; gap: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);\\">\\n      <span style=\\"font-size: 18px;\\">\u2705</span>\\n      <span>Portal settings successfully saved and instantly synchronized across the entire website!</span>\\n    </div>\\n  ")
     ;  } 
-    ; __append("\\n\\n  <!-- Section Quick Navigation Pills -->\\n  <div class=\\"settings-nav-pills\\" style=\\"display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 26px; border-bottom: 1px solid #e2e8f0; padding-bottom: 14px;\\">\\n    <a href=\\"#section-branding\\" class=\\"settings-pill active\\">\u{1F310} General &amp; Branding</a>\\n    <a href=\\"#section-social\\" class=\\"settings-pill\\">\u{1F4F2} Social Communities</a>\\n    <a href=\\"#section-helpdesk\\" class=\\"settings-pill\\">\u2709\uFE0F Contact &amp; Helpdesk</a>\\n    <a href=\\"#section-seo\\" class=\\"settings-pill\\">\u{1F680} SEO &amp; Analytics</a>\\n    <a href=\\"#section-announcement\\" class=\\"settings-pill\\">\u{1F4E2} Urgent Alert Bar</a>\\n    <a href=\\"#section-adsense\\" class=\\"settings-pill\\">\u{1F4B0} AdSense &amp; Ads</a>\\n    <a href=\\"#section-scripts\\" class=\\"settings-pill\\">\u{1F6E0}\uFE0F Custom Scripts</a>\\n  </div>\\n\\n  <form id=\\"masterSettingsForm\\" action=\\"/admin/settings/save\\" method=\\"POST\\" enctype=\\"multipart/form-data\\">\\n    \\n    <!-- 1. General & Brand Identity -->\\n    <div id=\\"section-branding\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F310}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">1. General &amp; Brand Identity</h3>\\n          <p class=\\"settings-group-desc\\">Configure website name, logo tagline, domain URL, and copyright attribution.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"site_title\\">Portal Brand Name *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"site_title\\" \\n            name=\\"site_title\\" \\n            class=\\"form-control\\" \\n            value=\\"")
+    ; __append("\\n\\n  <!-- Section Quick Navigation Pills -->\\n  <div class=\\"settings-nav-pills\\" style=\\"display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 26px; border-bottom: 1px solid #e2e8f0; padding-bottom: 14px;\\">\\n    <a href=\\"#section-branding\\" class=\\"settings-pill active\\">\u{1F310} General &amp; Branding</a>\\n    <a href=\\"#section-layout\\" class=\\"settings-pill\\">\u{1F4F0} Post Page Layout</a>\\n    <a href=\\"#section-social\\" class=\\"settings-pill\\">\u{1F4F2} Social Communities</a>\\n    <a href=\\"#section-helpdesk\\" class=\\"settings-pill\\">\u2709\uFE0F Contact &amp; Helpdesk</a>\\n    <a href=\\"#section-seo\\" class=\\"settings-pill\\">\u{1F680} SEO &amp; Analytics</a>\\n    <a href=\\"#section-announcement\\" class=\\"settings-pill\\">\u{1F4E2} Urgent Alert Bar</a>\\n    <a href=\\"#section-adsense\\" class=\\"settings-pill\\">\u{1F4B0} AdSense &amp; Ads</a>\\n    <a href=\\"#section-scripts\\" class=\\"settings-pill\\">\u{1F6E0}\uFE0F Custom Scripts</a>\\n  </div>\\n\\n  <form id=\\"masterSettingsForm\\" action=\\"/admin/settings/save\\" method=\\"POST\\" enctype=\\"multipart/form-data\\">\\n    \\n    <!-- 1. General & Brand Identity -->\\n    <div id=\\"section-branding\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F310}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">1. General &amp; Brand Identity</h3>\\n          <p class=\\"settings-group-desc\\">Configure website name, logo tagline, domain URL, and copyright attribution.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"site_title\\">Portal Brand Name *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"site_title\\" \\n            name=\\"site_title\\" \\n            class=\\"form-control\\" \\n            value=\\"")
     ; __append(escapeFn( settings.site_title || 'Govt Exam Zone' ))
     ; __append("\\" \\n            placeholder=\\"Govt Exam Zone\\"\\n            required\\n          >\\n          <small class=\\"field-hint\\">Primary portal name displayed in top header and browser titles.</small>\\n        </div>\\n\\n        <div class=\\"form-group\\">\\n          <label for=\\"header_subtitle\\">Header Subtitle (Logo Tag)</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"header_subtitle\\" \\n            name=\\"header_subtitle\\" \\n            class=\\"form-control\\" \\n            value=\\"")
     ; __append(escapeFn( settings.header_subtitle || 'WWW.GOVTEXAMZONE.COM' ))
@@ -77782,7 +77836,17 @@ var require_templateEngine = __commonJS({
 ))
     ; __append("\\" \\n            placeholder=\\"https://govtexamzone.com\\"\\n          >\\n          <small class=\\"field-hint\\">Canonical domain used for generating sitemaps and share links.</small>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-group\\" style=\\"margin-top: 14px;\\">\\n        <label for=\\"copyright_text\\">Footer Copyright Notice</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"copyright_text\\" \\n          name=\\"copyright_text\\" \\n          class=\\"form-control\\" \\n          value=\\"")
     ; __append(escapeFn( settings.copyright_text || '\xA9 2026 govtexamzone.com. All Rights Reserved.' ))
-    ; __append("\\" \\n          placeholder=\\"\xA9 2026 govtexamzone.com. All Rights Reserved.\\"\\n        >\\n        <small class=\\"field-hint\\">Displayed at the very bottom of every page.</small>\\n      </div>\\n    </div>\\n\\n\\n    <!-- 2. Social Media & Community Channels -->\\n    <div id=\\"section-social\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4F2}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">2. Social Media &amp; Community Channels</h3>\\n          <p class=\\"settings-group-desc\\">Connect official Telegram, WhatsApp, YouTube, and social media handles.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"telegram_url\\">\u2708\uFE0F Official Telegram Channel Link *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"telegram_url\\" \\n            name=\\"telegram_url\\" \\n            class=\\"form-control\\" \\n            value=\\"")
+    ; __append("\\" \\n          placeholder=\\"\xA9 2026 govtexamzone.com. All Rights Reserved.\\"\\n        >\\n        <small class=\\"field-hint\\">Displayed at the very bottom of every page.</small>\\n      </div>\\n    </div>\\n\\n\\n    <!-- 1B. Full Post / Blog Detail Page Layout Configuration -->\\n    <div id=\\"section-layout\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4F0}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">Post / Full Blog Detail Page Layout (2 UI Modes)</h3>\\n          <p class=\\"settings-group-desc\\">Choose how full post/blog detail pages display on the frontend. Both Classic Sarkari posts and rich Blog articles automatically adapt to your selected layout.</p>\\n        </div>\\n      </div>\\n\\n      ")
+    ;  const activeLayout = (settings.post_detail_layout === 'blog_2col') ? 'blog_2col' : 'classic'; 
+    ; __append("\\n      <div class=\\"layout-selector-grid\\" style=\\"display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;\\">\\n        <!-- Option 1: Classic Sarkari Single-Column -->\\n        <label class=\\"layout-option-card ")
+    ; __append(escapeFn( activeLayout === 'classic' ? 'selected' : '' ))
+    ; __append("\\" for=\\"layout_classic\\">\\n          <input \\n            type=\\"radio\\" \\n            id=\\"layout_classic\\" \\n            name=\\"post_detail_layout\\" \\n            value=\\"classic\\" \\n            ")
+    ; __append(escapeFn( activeLayout === 'classic' ? 'checked' : '' ))
+    ; __append("\\n            style=\\"display: none;\\"\\n          >\\n          <div class=\\"layout-card-top\\">\\n            <div style=\\"display: flex; align-items: center; gap: 8px;\\">\\n              <span class=\\"layout-radio-dot\\"></span>\\n              <strong style=\\"font-size: 14.5px; color: #0f172a;\\">Classic Sarkari Single-Column</strong>\\n            </div>\\n            <span class=\\"layout-badge classic-badge\\">Default Style</span>\\n          </div>\\n          <div class=\\"layout-wireframe\\">\\n            <div style=\\"width: 100%; height: 10px; background: #ab183d; border-radius: 3px; margin-bottom: 6px;\\"></div>\\n            <div style=\\"display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 6px;\\">\\n              <div style=\\"height: 20px; background: #e2e8f0; border-radius: 3px;\\"></div>\\n              <div style=\\"height: 20px; background: #e2e8f0; border-radius: 3px;\\"></div>\\n            </div>\\n            <div style=\\"width: 100%; height: 22px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px;\\"></div>\\n          </div>\\n          <p class=\\"layout-card-desc\\">\\n            Traditional centered single-column layout with full-width Important Dates, Application Fee, Vacancy tables, and Links.\\n          </p>\\n        </label>\\n\\n        <!-- Option 2: 2-Column Blog Layout with Sidebar -->\\n        <label class=\\"layout-option-card ")
+    ; __append(escapeFn( activeLayout === 'blog_2col' ? 'selected' : '' ))
+    ; __append("\\" for=\\"layout_blog_2col\\">\\n          <input \\n            type=\\"radio\\" \\n            id=\\"layout_blog_2col\\" \\n            name=\\"post_detail_layout\\" \\n            value=\\"blog_2col\\" \\n            ")
+    ; __append(escapeFn( activeLayout === 'blog_2col' ? 'checked' : '' ))
+    ; __append("\\n            style=\\"display: none;\\"\\n          >\\n          <div class=\\"layout-card-top\\">\\n            <div style=\\"display: flex; align-items: center; gap: 8px;\\">\\n              <span class=\\"layout-radio-dot\\"></span>\\n              <strong style=\\"font-size: 14.5px; color: #0f172a;\\">2-Column Blog + Sidebar Layout</strong>\\n            </div>\\n            <span class=\\"layout-badge blog-badge\\">CBTRank Style</span>\\n          </div>\\n          <div class=\\"layout-wireframe\\" style=\\"display: grid; grid-template-columns: 2fr 1fr; gap: 6px;\\">\\n            <div>\\n              <div style=\\"width: 70%; height: 8px; background: #0066ff; border-radius: 2px; margin-bottom: 5px;\\"></div>\\n              <div style=\\"width: 100%; height: 18px; background: #e2e8f0; border-radius: 3px; margin-bottom: 5px;\\"></div>\\n              <div style=\\"width: 100%; height: 24px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px;\\"></div>\\n            </div>\\n            <div style=\\"display: flex; flex-direction: column; gap: 4px;\\">\\n              <div style=\\"height: 12px; background: #dbeafe; border-radius: 2px;\\"></div>\\n              <div style=\\"height: 20px; background: #e2e8f0; border-radius: 2px;\\"></div>\\n              <div style=\\"height: 20px; background: #e2e8f0; border-radius: 2px;\\"></div>\\n            </div>\\n          </div>\\n          <p class=\\"layout-card-desc\\">\\n            Modern 2-column magazine layout: Full blog/post content on the left + Right sidebar with Search, Recent Posts, Popular Posts &amp; Share bar.\\n          </p>\\n        </label>\\n      </div>\\n    </div>\\n\\n\\n    <!-- 2. Social Media & Community Channels -->\\n    <div id=\\"section-social\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4F2}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">2. Social Media &amp; Community Channels</h3>\\n          <p class=\\"settings-group-desc\\">Connect official Telegram, WhatsApp, YouTube, and social media handles.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"telegram_url\\">\u2708\uFE0F Official Telegram Channel Link *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"telegram_url\\" \\n            name=\\"telegram_url\\" \\n            class=\\"form-control\\" \\n            value=\\"")
     ; __append(escapeFn( settings.telegram_url || 'https://t.me/govtexamzoneofficial' 
 ))
     ; __append("\\" \\n            placeholder=\\"https://t.me/govtexamzoneofficial\\"\\n            required\\n          >\\n          <small class=\\"field-hint\\">Connected to top \\"Join Telegram Channel\\" button and mobile drawer.</small>\\n        </div>\\n\\n        <div class=\\"form-group\\">\\n          <label for=\\"whatsapp_url\\">\u{1F4AC} Official WhatsApp Channel Link *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"whatsapp_url\\" \\n            name=\\"whatsapp_url\\" \\n            class=\\"form-control\\" \\n            value=\\"")
@@ -77834,7 +77898,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( settings.header_custom_code || '' ))
     ; __append("</textarea>\\n        <small class=\\"field-hint\\">Code injected right before the closing &lt;/head&gt; tag on all public pages.</small>\\n      </div>\\n\\n      <div class=\\"form-group\\" style=\\"margin-top: 14px;\\">\\n        <label for=\\"footer_custom_code\\">Custom Footer Code (Injected before &lt;/body&gt;)</label>\\n        <textarea \\n          id=\\"footer_custom_code\\" \\n          name=\\"footer_custom_code\\" \\n          class=\\"form-control code-editor\\" \\n          rows=\\"4\\" \\n          placeholder=\\"<!-- e.g. Live chat widget, visitor counter, external tracking script -->\\"\\n        >")
     ; __append(escapeFn( settings.footer_custom_code || '' ))
-    ; __append("</textarea>\\n        <small class=\\"field-hint\\">Code injected right before the closing &lt;/body&gt; tag on all public pages.</small>\\n      </div>\\n    </div>\\n\\n    <!-- Bottom Save Action Bar -->\\n    <div style=\\"background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px 24px; display: flex; justify-content: space-between; align-items: center; margin-top: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); flex-wrap: wrap; gap: 12px;\\">\\n      <div>\\n        <span style=\\"font-weight: 700; color: #0f172a; font-size: 14.5px;\\">Ready to update portal configuration?</span>\\n        <div style=\\"font-size: 12px; color: #64748b; margin-top: 2px;\\">Changes take effect immediately across all desktop and mobile devices.</div>\\n      </div>\\n      <div style=\\"display: flex; gap: 10px;\\">\\n        <a href=\\"/admin\\" class=\\"btn btn-secondary\\">Cancel</a>\\n        <button type=\\"submit\\" class=\\"btn btn-primary\\" style=\\"padding: 10px 28px; font-size: 15px; font-weight: 700;\\">\\n          \u{1F4BE} Save All Settings\\n        </button>\\n      </div>\\n    </div>\\n\\n  </form>\\n</div>\\n\\n<style>\\n  .settings-group-card {\\n    background: #ffffff;\\n    border: 1px solid #e2e8f0;\\n    border-radius: 10px;\\n    padding: 22px 24px;\\n    margin-bottom: 22px;\\n    box-shadow: 0 1px 3px rgba(0,0,0,0.04);\\n    scroll-margin-top: 80px;\\n  }\\n\\n  .settings-group-header {\\n    display: flex;\\n    gap: 12px;\\n    align-items: flex-start;\\n    margin-bottom: 18px;\\n    border-bottom: 1px solid #f1f5f9;\\n    padding-bottom: 14px;\\n  }\\n\\n  .settings-group-icon {\\n    font-size: 24px;\\n    background: #f8fafc;\\n    padding: 8px;\\n    border-radius: 8px;\\n    border: 1px solid #e2e8f0;\\n    line-height: 1;\\n  }\\n\\n  .settings-group-title {\\n    margin: 0;\\n    font-size: 16px;\\n    font-weight: 700;\\n    color: #0f172a;\\n  }\\n\\n  .settings-group-desc {\\n    margin: 4px 0 0 0;\\n    font-size: 12.5px;\\n    color: #64748b;\\n  }\\n\\n  .field-hint {\\n    display: block;\\n    font-size: 11.5px;\\n    color: #64748b;\\n    margin-top: 5px;\\n    line-height: 1.4;\\n  }\\n\\n  .code-editor {\\n    font-family: 'JetBrains Mono', monospace;\\n    font-size: 12.5px;\\n    background: #0f172a !important;\\n    color: #38bdf8 !important;\\n    border: 1px solid #334155 !important;\\n  }\\n\\n  .code-editor::placeholder {\\n    color: #64748b !important;\\n  }\\n\\n  .settings-pill {\\n    text-decoration: none;\\n    font-size: 12.5px;\\n    font-weight: 600;\\n    color: #475569;\\n    background: #f1f5f9;\\n    padding: 6px 14px;\\n    border-radius: 9999px;\\n    transition: all 0.15s ease;\\n  }\\n\\n  .settings-pill:hover, .settings-pill:focus {\\n    background: #ab183d;\\n    color: #ffffff;\\n  }\\n\\n  @media (max-width: 600px) {\\n    .settings-group-card {\\n      padding: 16px 14px;\\n    }\\n    .settings-nav-pills {\\n      gap: 6px;\\n    }\\n    .settings-pill {\\n      font-size: 11.5px;\\n      padding: 5px 10px;\\n    }\\n  }\\n</style>\\n\\n<script>\\n  // Live preview for Logo file input\\n  const logoFileInput = document.getElementById('site_logo_file');\\n  const logoPreviewImg = document.getElementById('logoPreviewImg');\\n  const logoTextInput = document.getElementById('site_logo');\\n  const logoPathText = document.getElementById('logoPathText');\\n  const logoNoLogoText = document.getElementById('logoNoLogoText');\\n  const removeLogoBtn = document.getElementById('removeLogoBtn');\\n\\n  if (logoFileInput && logoPreviewImg) {\\n    logoFileInput.addEventListener('change', function(e) {\\n      const file = e.target.files && e.target.files[0];\\n      if (file) {\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          logoPreviewImg.src = evt.target.result;\\n          logoPreviewImg.style.display = 'block';\\n          if (logoNoLogoText) logoNoLogoText.style.display = 'none';\\n          if (logoPathText) {\\n            logoPathText.style.color = '#0284c7';\\n            logoPathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n          }\\n        };\\n        reader.readAsDataURL(file);\\n      }\\n    });\\n  }\\n\\n  // Live preview for Logo text input\\n  if (logoTextInput && logoPreviewImg) {\\n    logoTextInput.addEventListener('input', function() {\\n      const val = this.value.trim();\\n      if (val) {\\n        logoPreviewImg.src = val;\\n        logoPreviewImg.style.display = 'block';\\n        if (logoNoLogoText) logoNoLogoText.style.display = 'none';\\n        if (logoPathText) {\\n          logoPathText.style.color = '#0284c7';\\n          logoPathText.textContent = val;\\n        }\\n      } else {\\n        logoPreviewImg.src = '';\\n        logoPreviewImg.style.display = 'none';\\n        if (logoNoLogoText) logoNoLogoText.style.display = 'inline-block';\\n        if (logoPathText) {\\n          logoPathText.style.color = '#dc2626';\\n          logoPathText.textContent = 'No logo active (Header displays text title only)';\\n        }\\n      }\\n    });\\n  }\\n\\n  // Live Remove Logo Button\\n  if (removeLogoBtn && logoTextInput) {\\n    removeLogoBtn.addEventListener('click', function() {\\n      logoTextInput.value = '';\\n      if (logoFileInput) logoFileInput.value = '';\\n      if (logoPreviewImg) {\\n        logoPreviewImg.src = '';\\n        logoPreviewImg.style.display = 'none';\\n      }\\n      if (logoNoLogoText) logoNoLogoText.style.display = 'inline-block';\\n      if (logoPathText) {\\n        logoPathText.style.color = '#dc2626';\\n        logoPathText.textContent = 'Logo cleared. Click \\"Save Settings\\" below to apply changes.';\\n      }\\n    });\\n  }\\n\\n  // Live preview for Favicon file input\\n  const faviconFileInput = document.getElementById('site_favicon_file');\\n  const faviconPreviewImg = document.getElementById('faviconPreviewImg');\\n  const faviconTextInput = document.getElementById('site_favicon');\\n  const faviconPathText = document.getElementById('faviconPathText');\\n\\n  if (faviconFileInput && faviconPreviewImg) {\\n    faviconFileInput.addEventListener('change', function(e) {\\n      const file = e.target.files && e.target.files[0];\\n      if (file) {\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          faviconPreviewImg.src = evt.target.result;\\n          if (faviconPathText) faviconPathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n        };\\n        reader.readAsDataURL(file);\\n      }\\n    });\\n  }\\n\\n  // Live preview for Favicon text input\\n  if (faviconTextInput && faviconPreviewImg) {\\n    faviconTextInput.addEventListener('input', function() {\\n      if (this.value.trim()) {\\n        faviconPreviewImg.src = this.value.trim();\\n        if (faviconPathText) faviconPathText.textContent = this.value.trim();\\n      }\\n    });\\n  }\\n</script>\\n\\n")
+    ; __append("</textarea>\\n        <small class=\\"field-hint\\">Code injected right before the closing &lt;/body&gt; tag on all public pages.</small>\\n      </div>\\n    </div>\\n\\n    <!-- Bottom Save Action Bar -->\\n    <div style=\\"background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px 24px; display: flex; justify-content: space-between; align-items: center; margin-top: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); flex-wrap: wrap; gap: 12px;\\">\\n      <div>\\n        <span style=\\"font-weight: 700; color: #0f172a; font-size: 14.5px;\\">Ready to update portal configuration?</span>\\n        <div style=\\"font-size: 12px; color: #64748b; margin-top: 2px;\\">Changes take effect immediately across all desktop and mobile devices.</div>\\n      </div>\\n      <div style=\\"display: flex; gap: 10px;\\">\\n        <a href=\\"/admin\\" class=\\"btn btn-secondary\\">Cancel</a>\\n        <button type=\\"submit\\" class=\\"btn btn-primary\\" style=\\"padding: 10px 28px; font-size: 15px; font-weight: 700;\\">\\n          \u{1F4BE} Save All Settings\\n        </button>\\n      </div>\\n    </div>\\n\\n  </form>\\n</div>\\n\\n<style>\\n  .settings-group-card {\\n    background: #ffffff;\\n    border: 1px solid #e2e8f0;\\n    border-radius: 10px;\\n    padding: 22px 24px;\\n    margin-bottom: 22px;\\n    box-shadow: 0 1px 3px rgba(0,0,0,0.04);\\n    scroll-margin-top: 80px;\\n  }\\n\\n  .settings-group-header {\\n    display: flex;\\n    gap: 12px;\\n    align-items: flex-start;\\n    margin-bottom: 18px;\\n    border-bottom: 1px solid #f1f5f9;\\n    padding-bottom: 14px;\\n  }\\n\\n  .settings-group-icon {\\n    font-size: 24px;\\n    background: #f8fafc;\\n    padding: 8px;\\n    border-radius: 8px;\\n    border: 1px solid #e2e8f0;\\n    line-height: 1;\\n  }\\n\\n  .settings-group-title {\\n    margin: 0;\\n    font-size: 16px;\\n    font-weight: 700;\\n    color: #0f172a;\\n  }\\n\\n  .settings-group-desc {\\n    margin: 4px 0 0 0;\\n    font-size: 12.5px;\\n    color: #64748b;\\n  }\\n\\n  .field-hint {\\n    display: block;\\n    font-size: 11.5px;\\n    color: #64748b;\\n    margin-top: 5px;\\n    line-height: 1.4;\\n  }\\n\\n  .code-editor {\\n    font-family: 'JetBrains Mono', monospace;\\n    font-size: 12.5px;\\n    background: #0f172a !important;\\n    color: #38bdf8 !important;\\n    border: 1px solid #334155 !important;\\n  }\\n\\n  .code-editor::placeholder {\\n    color: #64748b !important;\\n  }\\n\\n  .settings-pill {\\n    text-decoration: none;\\n    font-size: 12.5px;\\n    font-weight: 600;\\n    color: #475569;\\n    background: #f1f5f9;\\n    padding: 6px 14px;\\n    border-radius: 9999px;\\n    transition: all 0.15s ease;\\n  }\\n\\n  .settings-pill:hover, .settings-pill:focus {\\n    background: #ab183d;\\n    color: #ffffff;\\n  }\\n\\n  .layout-option-card {\\n    display: flex;\\n    flex-direction: column;\\n    gap: 10px;\\n    padding: 16px;\\n    border: 2px solid #e2e8f0;\\n    border-radius: 10px;\\n    background: #f8fafc;\\n    cursor: pointer;\\n    transition: all 0.18s ease;\\n    margin: 0;\\n  }\\n\\n  .layout-option-card:hover {\\n    border-color: #94a3b8;\\n    background: #ffffff;\\n  }\\n\\n  .layout-option-card.selected {\\n    border-color: #0066ff;\\n    background: #eff6ff;\\n    box-shadow: 0 4px 12px rgba(0, 102, 255, 0.12);\\n  }\\n\\n  .layout-card-top {\\n    display: flex;\\n    justify-content: space-between;\\n    align-items: center;\\n    gap: 8px;\\n    flex-wrap: wrap;\\n  }\\n\\n  .layout-radio-dot {\\n    width: 16px;\\n    height: 16px;\\n    border-radius: 50%;\\n    border: 2px solid #94a3b8;\\n    background: #ffffff;\\n    display: inline-block;\\n    position: relative;\\n    flex-shrink: 0;\\n  }\\n\\n  .layout-option-card.selected .layout-radio-dot {\\n    border-color: #0066ff;\\n    background: #0066ff;\\n    box-shadow: inset 0 0 0 3px #ffffff;\\n  }\\n\\n  .layout-badge {\\n    font-size: 11px;\\n    font-weight: 700;\\n    padding: 2px 8px;\\n    border-radius: 9999px;\\n  }\\n\\n  .classic-badge {\\n    background: #fee2e2;\\n    color: #991b1b;\\n  }\\n\\n  .blog-badge {\\n    background: #dbeafe;\\n    color: #1e40af;\\n  }\\n\\n  .layout-wireframe {\\n    background: #ffffff;\\n    border: 1px solid #cbd5e1;\\n    border-radius: 6px;\\n    padding: 8px;\\n  }\\n\\n  .layout-card-desc {\\n    margin: 0;\\n    font-size: 12.5px;\\n    color: #475569;\\n    line-height: 1.5;\\n  }\\n\\n  @media (max-width: 600px) {\\n    .settings-group-card {\\n      padding: 16px 14px;\\n    }\\n    .settings-nav-pills {\\n      gap: 6px;\\n    }\\n    .settings-pill {\\n      font-size: 11.5px;\\n      padding: 5px 10px;\\n    }\\n  }\\n</style>\\n\\n<script>\\n  // Live preview for Logo file input\\n  const logoFileInput = document.getElementById('site_logo_file');\\n  const logoPreviewImg = document.getElementById('logoPreviewImg');\\n  const logoTextInput = document.getElementById('site_logo');\\n  const logoPathText = document.getElementById('logoPathText');\\n  const logoNoLogoText = document.getElementById('logoNoLogoText');\\n  const removeLogoBtn = document.getElementById('removeLogoBtn');\\n\\n  if (logoFileInput && logoPreviewImg) {\\n    logoFileInput.addEventListener('change', function(e) {\\n      const file = e.target.files && e.target.files[0];\\n      if (file) {\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          logoPreviewImg.src = evt.target.result;\\n          logoPreviewImg.style.display = 'block';\\n          if (logoNoLogoText) logoNoLogoText.style.display = 'none';\\n          if (logoPathText) {\\n            logoPathText.style.color = '#0284c7';\\n            logoPathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n          }\\n        };\\n        reader.readAsDataURL(file);\\n      }\\n    });\\n  }\\n\\n  // Live preview for Logo text input\\n  if (logoTextInput && logoPreviewImg) {\\n    logoTextInput.addEventListener('input', function() {\\n      const val = this.value.trim();\\n      if (val) {\\n        logoPreviewImg.src = val;\\n        logoPreviewImg.style.display = 'block';\\n        if (logoNoLogoText) logoNoLogoText.style.display = 'none';\\n        if (logoPathText) {\\n          logoPathText.style.color = '#0284c7';\\n          logoPathText.textContent = val;\\n        }\\n      } else {\\n        logoPreviewImg.src = '';\\n        logoPreviewImg.style.display = 'none';\\n        if (logoNoLogoText) logoNoLogoText.style.display = 'inline-block';\\n        if (logoPathText) {\\n          logoPathText.style.color = '#dc2626';\\n          logoPathText.textContent = 'No logo active (Header displays text title only)';\\n        }\\n      }\\n    });\\n  }\\n\\n  // Live Remove Logo Button\\n  if (removeLogoBtn && logoTextInput) {\\n    removeLogoBtn.addEventListener('click', function() {\\n      logoTextInput.value = '';\\n      if (logoFileInput) logoFileInput.value = '';\\n      if (logoPreviewImg) {\\n        logoPreviewImg.src = '';\\n        logoPreviewImg.style.display = 'none';\\n      }\\n      if (logoNoLogoText) logoNoLogoText.style.display = 'inline-block';\\n      if (logoPathText) {\\n        logoPathText.style.color = '#dc2626';\\n        logoPathText.textContent = 'Logo cleared. Click \\"Save Settings\\" below to apply changes.';\\n      }\\n    });\\n  }\\n\\n  // Live preview for Favicon file input\\n  const faviconFileInput = document.getElementById('site_favicon_file');\\n  const faviconPreviewImg = document.getElementById('faviconPreviewImg');\\n  const faviconTextInput = document.getElementById('site_favicon');\\n  const faviconPathText = document.getElementById('faviconPathText');\\n\\n  if (faviconFileInput && faviconPreviewImg) {\\n    faviconFileInput.addEventListener('change', function(e) {\\n      const file = e.target.files && e.target.files[0];\\n      if (file) {\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          faviconPreviewImg.src = evt.target.result;\\n          if (faviconPathText) faviconPathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n        };\\n        reader.readAsDataURL(file);\\n      }\\n    });\\n  }\\n\\n  // Live preview for Favicon text input\\n  if (faviconTextInput && faviconPreviewImg) {\\n    faviconTextInput.addEventListener('input', function() {\\n      if (this.value.trim()) {\\n        faviconPreviewImg.src = this.value.trim();\\n        if (faviconPathText) faviconPathText.textContent = this.value.trim();\\n      }\\n    });\\n  }\\n\\n  // Interactive visual selection for Post Layout cards\\n  document.querySelectorAll('.layout-option-card input[type=\\"radio\\"]').forEach(function(radio) {\\n    radio.addEventListener('change', function() {\\n      document.querySelectorAll('.layout-option-card').forEach(function(card) {\\n        card.classList.remove('selected');\\n      });\\n      if (this.checked) {\\n        this.closest('.layout-option-card').classList.add('selected');\\n      }\\n    });\\n  });\\n</script>\\n\\n")
     ; __append( include('../partials/admin-footer') )
     ; __append("\\n")
   }
@@ -78184,6 +78248,8 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( post ? (post.age_limit || '{}') : '{}' ))
     ; __append("\\">\\n    </div>\\n\\n    <!-- How to Apply -->\\n    <div class=\\"form-group\\">\\n      <label for=\\"how_to_apply\\">How to Apply Steps</label>\\n      <textarea \\n        id=\\"how_to_apply\\" \\n        name=\\"how_to_apply\\" \\n        class=\\"form-control\\" \\n        rows=\\"4\\" \\n      >")
     ; __append(escapeFn( post ? post.how_to_apply : '1. Candidate Can Apply Online From Official Portal.\\n2. Read Notification Carefully Before Filling Form.\\n3. Keep Ready Photo, Sign & ID Proof.\\n4. Pay Exam Fee and Print Final Application Form.' ))
+    ; __append("</textarea>\\n    </div>\\n\\n    <!-- Optional Full Blog Article / Detailed Editorial Content -->\\n    <div style=\\"background: #f0f9ff; border: 1px solid #bae6fd; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"margin-bottom: 8px;\\">\\n        <label for=\\"article_content\\" style=\\"margin: 0; font-size: 15px; font-weight: 700; color: #0369a1;\\">\u{1F4DD} Full Blog Article / Detailed Editorial Content (Optional HTML)</label>\\n        <div style=\\"font-size: 12px; color: #475569; margin-top: 2px;\\">\\n          Write detailed guides, exam pattern analysis, FAQs, or custom HTML tables here. Renders cleanly in both Classic and 2-Column Blog layouts.\\n        </div>\\n      </div>\\n      <textarea \\n        id=\\"article_content\\" \\n        name=\\"article_content\\" \\n        class=\\"form-control\\" \\n        rows=\\"8\\" \\n        placeholder=\\"<h2>1. Exam Overview &amp; Pattern</h2>&#10;<p>Write detailed article content or paste structured HTML here...</p>\\"\\n        style=\\"font-family: 'JetBrains Mono', monospace; font-size: 12.5px;\\"\\n      >")
+    ; __append(escapeFn( post && post.article_content ? post.article_content : '' ))
     ; __append("</textarea>\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Some Useful Important Links -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F517} Some Useful Important Links (Custom Links Table)</h3>\\n          <small style=\\"color: #64748b;\\">Add custom download links, Server 1 / Server 2, answer key, syllabus, etc.</small>\\n        </div>\\n        <button type=\\"button\\" id=\\"btn-add-link\\" class=\\"btn btn-secondary btn-sm\\">+ Add Link Row</button>\\n      </div>\\n      <div id=\\"links-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"links\\" name=\\"links\\" value=\\"")
     ; __append(escapeFn( post ? (post.links || '[]') : '[]' ))
     ; __append("\\">\\n    </div>\\n\\n    <!-- Direct External Links -->\\n    <div class=\\"form-row\\">\\n      <div class=\\"form-group\\">\\n        <label for=\\"apply_online_url\\">Apply Online URL</label>\\n        <input \\n          type=\\"url\\" \\n          id=\\"apply_online_url\\" \\n          name=\\"apply_online_url\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"https://ssc.gov.in\\" \\n          value=\\"")
@@ -78280,6 +78346,8 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( post ? (post.age_limit || '{}') : '{}' ))
     ; __append("\\">\\n    </div>\\n\\n    <!-- How to Apply -->\\n    <div class=\\"form-group\\">\\n      <label for=\\"how_to_apply\\">How to Apply Steps</label>\\n      <textarea \\n        id=\\"how_to_apply\\" \\n        name=\\"how_to_apply\\" \\n        class=\\"form-control\\" \\n        rows=\\"4\\" \\n      >")
     ; __append(escapeFn( post ? post.how_to_apply : '1. Candidate Can Apply Online From Official Portal.\\n2. Read Notification Carefully Before Filling Form.\\n3. Keep Ready Photo, Sign & ID Proof.\\n4. Pay Exam Fee and Print Final Application Form.' ))
+    ; __append("</textarea>\\n    </div>\\n\\n    <!-- Optional Full Blog Article / Detailed Editorial Content -->\\n    <div style=\\"background: #f0f9ff; border: 1px solid #bae6fd; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"margin-bottom: 8px;\\">\\n        <label for=\\"article_content\\" style=\\"margin: 0; font-size: 15px; font-weight: 700; color: #0369a1;\\">\u{1F4DD} Full Blog Article / Detailed Editorial Content (Optional HTML)</label>\\n        <div style=\\"font-size: 12px; color: #475569; margin-top: 2px;\\">\\n          Write detailed guides, exam pattern analysis, FAQs, or custom HTML tables here. Renders cleanly in both Classic and 2-Column Blog layouts.\\n        </div>\\n      </div>\\n      <textarea \\n        id=\\"article_content\\" \\n        name=\\"article_content\\" \\n        class=\\"form-control\\" \\n        rows=\\"8\\" \\n        placeholder=\\"<h2>1. Exam Overview &amp; Pattern</h2>&#10;<p>Write detailed article content or paste structured HTML here...</p>\\"\\n        style=\\"font-family: 'JetBrains Mono', monospace; font-size: 12.5px;\\"\\n      >")
+    ; __append(escapeFn( post && post.article_content ? post.article_content : '' ))
     ; __append("</textarea>\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Some Useful Important Links -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F517} Some Useful Important Links (Custom Links Table)</h3>\\n          <small style=\\"color: #64748b;\\">Add custom download links, Server 1 / Server 2, answer key, syllabus, etc.</small>\\n        </div>\\n        <button type=\\"button\\" id=\\"btn-add-link\\" class=\\"btn btn-secondary btn-sm\\">+ Add Link Row</button>\\n      </div>\\n      <div id=\\"links-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"links\\" name=\\"links\\" value=\\"")
     ; __append(escapeFn( post ? (post.links || '[]') : '[]' ))
     ; __append("\\">\\n    </div>\\n\\n    <!-- Direct External Links -->\\n    <div class=\\"form-row\\">\\n      <div class=\\"form-group\\">\\n        <label for=\\"apply_online_url\\">Apply Online URL</label>\\n        <input \\n          type=\\"url\\" \\n          id=\\"apply_online_url\\" \\n          name=\\"apply_online_url\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"https://ssc.gov.in\\" \\n          value=\\"")
@@ -79330,7 +79398,126 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( post.category ))
     ; __append("\\"\\n    },\\n    {\\n      \\"@type\\": \\"ListItem\\",\\n      \\"position\\": 3,\\n      \\"name\\": \\"")
     ; __append(escapeFn( post.title.replace(/"/g, '\\\\"') ))
-    ; __append("\\"\\n    }\\n  ]\\n}\\n</script>\\n\\n<main class=\\"container detail-page-container\\">\\n  <article class=\\"post-detail-wrapper\\">\\n    <!-- Breadcrumb -->\\n    <div class=\\"detail-breadcrumb\\">\\n      <a href=\\"/\\">Home</a> \xBB \\n      <a href=\\"/category/")
+    ; __append("\\"\\n    }\\n  ]\\n}\\n</script>\\n\\n")
+    ;  const activeDetailLayout = (typeof settings !== 'undefined' && settings.post_detail_layout === 'blog_2col') ? 'blog_2col' : 'classic'; 
+    ; __append("\\n\\n")
+    ;  if (activeDetailLayout === 'blog_2col') { 
+    ; __append("\\n<!-- ============================================================\\n     MODE 2: MODERN 2-COLUMN EDITORIAL BLOG LAYOUT (CBTRank Style)\\n     ============================================================ -->\\n<main class=\\"gez-blog-page-main\\">\\n  <div class=\\"gez-blog-main-container\\">\\n    <div class=\\"gez-blog-layout\\">\\n\\n      <!-- Left Main Article Area -->\\n      <div class=\\"gez-blog-content-area\\">\\n        <article class=\\"gez-article-wrap\\">\\n          <!-- Breadcrumb -->\\n          <div class=\\"detail-breadcrumb\\" style=\\"margin-bottom: 12px;\\">\\n            <a href=\\"/\\">Home</a> \xBB\\n            <a href=\\"/category/")
+    ; __append(escapeFn( post.category ))
+    ; __append("\\">")
+    ; __append(escapeFn( catInfo.name ))
+    ; __append("</a> \xBB\\n            <span>")
+    ; __append(escapeFn( post.title ))
+    ; __append("</span>\\n          </div>\\n\\n          <!-- Editorial Article Header -->\\n          <header class=\\"gez-article-header\\">\\n            <div class=\\"gez-article-cats\\">\\n              <a href=\\"/category/")
+    ; __append(escapeFn( post.category ))
+    ; __append("\\" class=\\"gez-article-cat-tag\\">")
+    ; __append(escapeFn( catInfo.name ))
+    ; __append("</a>\\n            </div>\\n\\n            <h1 class=\\"gez-article-title\\">")
+    ; __append(escapeFn( post.title ))
+    ; __append("</h1>\\n\\n            <div class=\\"gez-article-meta\\">\\n              <span class=\\"gez-meta-byline\\">\\n                by <a href=\\"")
+    ; __append(escapeFn( author.slug ? '/author/' + author.slug : '/authors' ))
+    ; __append("\\">")
+    ; __append(escapeFn( author.name || 'Govt Exam Zone Team' ))
+    ; __append("</a>\\n              </span>\\n              <span class=\\"gez-meta-date\\">\\n                <svg width=\\"14\\" height=\\"14\\" viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2.2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\" aria-hidden=\\"true\\">\\n                  <rect x=\\"3\\" y=\\"4\\" width=\\"18\\" height=\\"18\\" rx=\\"2\\" ry=\\"2\\"/>\\n                  <line x1=\\"16\\" y1=\\"2\\" x2=\\"16\\" y2=\\"6\\"/>\\n                  <line x1=\\"8\\" y1=\\"2\\" x2=\\"8\\" y2=\\"6\\"/>\\n                  <line x1=\\"3\\" y1=\\"10\\" x2=\\"21\\" y2=\\"10\\"/>\\n                </svg>\\n                ")
+    ; __append(escapeFn( post.post_date || formatDate(post.created_at) ))
+    ; __append("\\n              </span>\\n              ")
+    ;  if (post.department) { 
+    ; __append("\\n                <span class=\\"gez-meta-dept\\">\u{1F3DB}\uFE0F ")
+    ; __append(escapeFn( post.department ))
+    ; __append("</span>\\n              ")
+    ;  } 
+    ; __append("\\n            </div>\\n          </header>\\n\\n          <!-- Full Article & Structured Details Body -->\\n          <div class=\\"gez-article-body\\">\\n            ")
+    ; __append( include('../partials/detail-body') )
+    ; __append("\\n          </div>\\n\\n          <!-- Social Share Bar (WhatsApp & Telegram) -->\\n          ")
+    ; 
+            const sharePageUrl = typeof fullUrl !== 'undefined' ? fullUrl : ('https://govtexamzone.com/post/' + post.slug);
+          
+    ; __append("\\n          <div class=\\"gez-share-bar\\">\\n            <span class=\\"gez-share-label\\">Share:</span>\\n            <a\\n              href=\\"https://api.whatsapp.com/send?text=")
+    ; __append(escapeFn( encodeURIComponent(post.title + ' - ' + sharePageUrl) ))
+    ; __append("\\"\\n              target=\\"_blank\\"\\n              rel=\\"noopener noreferrer\\"\\n              class=\\"gez-share-btn gez-share-wa\\"\\n            >\\n              WhatsApp\\n            </a>\\n            <a\\n              href=\\"https://t.me/share/url?url=")
+    ; __append(escapeFn( encodeURIComponent(sharePageUrl) ))
+    ; __append("&text=")
+    ; __append(escapeFn( encodeURIComponent(post.title) ))
+    ; __append("\\"\\n              target=\\"_blank\\"\\n              rel=\\"noopener noreferrer\\"\\n              class=\\"gez-share-btn gez-share-tg\\"\\n            >\\n              Telegram\\n            </a>\\n          </div>\\n\\n          <!-- Join Community Alerts CTA Box -->\\n          <div class=\\"gez-cta-box\\">\\n            <h3>Get Instant Govt Exam &amp; Result Alerts</h3>\\n            <p>Join our official Telegram &amp; WhatsApp channels for fastest job notifications, admit cards, and cutoff updates.</p>\\n            <div style=\\"display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;\\">\\n              <a href=\\"")
+    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.telegram_url) ? settings.telegram_url : 'https://t.me/govtexamzoneofficial' 
+))
+    ; __append("\\" target=\\"_blank\\" rel=\\"noopener noreferrer\\" class=\\"gez-btn-cta\\" style=\\"background: #229ED9;\\">\\n                \u2708\uFE0F Join Telegram Channel\\n              </a>\\n              <a href=\\"")
+    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.whatsapp_url) ? settings.whatsapp_url : 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10' 
+))
+    ; __append("\\" target=\\"_blank\\" rel=\\"noopener noreferrer\\" class=\\"gez-btn-cta\\" style=\\"background: #16a34a;\\">\\n                \u{1F4AC} Join WhatsApp Channel\\n              </a>\\n            </div>\\n          </div>\\n\\n          <!-- Related Category Posts -->\\n          ")
+    ;  if (relatedPosts && relatedPosts.length > 0) { 
+    ; __append("\\n            <div style=\\"margin-top: 28px; border-top: 1px solid #e2e8f0; padding-top: 18px;\\">\\n              <h3 style=\\"color: #0f172a; font-size: 16.5px; font-weight: 800; margin-bottom: 12px;\\">More ")
+    ; __append(escapeFn( catInfo.name ))
+    ; __append(" Updates</h3>\\n              <ul style=\\"list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px;\\">\\n                ")
+    ;  relatedPosts.forEach(rel => { 
+    ; __append("\\n                  <li style=\\"padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;\\">\\n                    <a href=\\"/post/")
+    ; __append(escapeFn( rel.slug ))
+    ; __append("\\" style=\\"font-weight: 700; color: #1d4ed8; font-size: 13.5px; text-decoration: none;\\">")
+    ; __append(escapeFn( rel.title ))
+    ; __append("</a>\\n                    ")
+    ;  if (rel.post_date) { 
+    ; __append("\\n                      <span style=\\"font-size: 11.5px; color: #64748b; white-space: nowrap;\\">")
+    ; __append(escapeFn( rel.post_date ))
+    ; __append("</span>\\n                    ")
+    ;  } 
+    ; __append("\\n                  </li>\\n                ")
+    ;  }) 
+    ; __append("\\n              </ul>\\n            </div>\\n          ")
+    ;  } 
+    ; __append("\\n        </article>\\n      </div>\\n\\n      <!-- Right Sidebar (320px) -->\\n      <aside class=\\"gez-blog-sidebar\\">\\n        <!-- Search Widget -->\\n        <div class=\\"gez-widget\\">\\n          <h3 class=\\"gez-widget-title\\">Search</h3>\\n          <form action=\\"/search\\" method=\\"GET\\" class=\\"gez-sidebar-search-form\\">\\n            <input\\n              type=\\"search\\"\\n              name=\\"q\\"\\n              class=\\"gez-sidebar-search-input\\"\\n              placeholder=\\"Search jobs, admit card, results...\\"\\n              required\\n            >\\n            <button type=\\"submit\\" class=\\"gez-sidebar-search-btn\\" aria-label=\\"Submit Search\\">\\n              <svg width=\\"16\\" height=\\"16\\" viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"#fff\\" stroke-width=\\"2.2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\" aria-hidden=\\"true\\">\\n                <circle cx=\\"11\\" cy=\\"11\\" r=\\"8\\"/>\\n                <line x1=\\"21\\" y1=\\"21\\" x2=\\"16.65\\" y2=\\"16.65\\"/>\\n              </svg>\\n            </button>\\n          </form>\\n        </div>\\n\\n        <!-- Recent Posts Widget -->\\n        ")
+    ;  if (typeof recentPosts !== 'undefined' && recentPosts && recentPosts.length > 0) { 
+    ; __append("\\n        <div class=\\"gez-widget\\">\\n          <h3 class=\\"gez-widget-title\\">Recent Posts</h3>\\n          <ul class=\\"gez-sidebar-posts-list\\">\\n            ")
+    ;  recentPosts.forEach(p => { 
+    ; __append("\\n              <li class=\\"gez-sidebar-post-item\\">\\n                <div class=\\"gez-sidebar-post-badge\\">\\n                  ")
+    ; __append(escapeFn( (categories[p.category] && categories[p.category].name) ? categories[p.category].name : p.category ))
+    ; __append("\\n                </div>\\n                <a href=\\"/post/")
+    ; __append(escapeFn( p.slug ))
+    ; __append("\\" class=\\"gez-sidebar-post-title\\">")
+    ; __append(escapeFn( p.title ))
+    ; __append("</a>\\n                <span class=\\"gez-sidebar-post-date\\">")
+    ; __append(escapeFn( p.post_date || formatDate(p.created_at) ))
+    ; __append("</span>\\n              </li>\\n            ")
+    ;  }) 
+    ; __append("\\n          </ul>\\n        </div>\\n        ")
+    ;  } 
+    ; __append("\\n\\n        <!-- Popular Posts Widget -->\\n        ")
+    ;  if (typeof popularPosts !== 'undefined' && popularPosts && popularPosts.length > 0) { 
+    ; __append("\\n        <div class=\\"gez-widget\\">\\n          <h3 class=\\"gez-widget-title\\">Popular Posts</h3>\\n          <ul class=\\"gez-sidebar-posts-list\\">\\n            ")
+    ;  popularPosts.forEach(p => { 
+    ; __append("\\n              <li class=\\"gez-sidebar-post-item\\">\\n                <div style=\\"display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 3px;\\">\\n                  <span class=\\"gez-sidebar-post-badge\\" style=\\"margin-bottom: 0;\\">\\n                    ")
+    ; __append(escapeFn( (categories[p.category] && categories[p.category].name) ? categories[p.category].name : p.category ))
+    ; __append("\\n                  </span>\\n                  <span style=\\"font-size: 11px; color: #64748b; font-weight: 600;\\">\u{1F441}\uFE0F ")
+    ; __append(escapeFn( p.views || 0 ))
+    ; __append("</span>\\n                </div>\\n                <a href=\\"/post/")
+    ; __append(escapeFn( p.slug ))
+    ; __append("\\" class=\\"gez-sidebar-post-title\\">")
+    ; __append(escapeFn( p.title ))
+    ; __append("</a>\\n                <span class=\\"gez-sidebar-post-date\\">")
+    ; __append(escapeFn( p.post_date || formatDate(p.created_at) ))
+    ; __append("</span>\\n              </li>\\n            ")
+    ;  }) 
+    ; __append("\\n          </ul>\\n        </div>\\n        ")
+    ;  } 
+    ; __append("\\n\\n        <!-- Categories Widget -->\\n        <div class=\\"gez-widget\\">\\n          <h3 class=\\"gez-widget-title\\">Categories</h3>\\n          <ul class=\\"gez-sidebar-cat-list\\">\\n            ")
+    ; 
+              const countMap = {};
+              if (typeof categoryCounts !== 'undefined' && Array.isArray(categoryCounts)) {
+                categoryCounts.forEach(c => { countMap[c.category] = c.count; });
+              }
+            
+    ; __append("\\n            ")
+    ;  Object.keys(categories).forEach(catKey => { 
+    ; __append("\\n              <li class=\\"gez-sidebar-cat-item\\">\\n                <a href=\\"/category/")
+    ; __append(escapeFn( catKey ))
+    ; __append("\\" class=\\"gez-sidebar-cat-link\\">")
+    ; __append(escapeFn( categories[catKey].name ))
+    ; __append("</a>\\n                <span class=\\"gez-sidebar-cat-count\\">")
+    ; __append(escapeFn( countMap[catKey] || 0 ))
+    ; __append("</span>\\n              </li>\\n            ")
+    ;  }) 
+    ; __append("\\n          </ul>\\n        </div>\\n      </aside>\\n\\n    </div>\\n  </div>\\n</main>\\n\\n")
+    ;  } else { 
+    ; __append("\\n<!-- ============================================================\\n     MODE 1: CLASSIC SARKARI SINGLE-COLUMN LAYOUT (Default)\\n     ============================================================ -->\\n<main class=\\"container detail-page-container\\">\\n  <article class=\\"post-detail-wrapper\\">\\n    <!-- Breadcrumb -->\\n    <div class=\\"detail-breadcrumb\\">\\n      <a href=\\"/\\">Home</a> \xBB \\n      <a href=\\"/category/")
     ; __append(escapeFn( post.category ))
     ; __append("\\">")
     ; __append(escapeFn( catInfo.name ))
@@ -79352,178 +79539,9 @@ var require_templateEngine = __commonJS({
     ; __append("\\" target=\\"_blank\\" rel=\\"noopener noreferrer\\" class=\\"social-btn telegram\\">Join Telegram Channel</a>\\n      <a href=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.whatsapp_url) ? settings.whatsapp_url : 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10' 
 ))
-    ; __append("\\" target=\\"_blank\\" rel=\\"noopener noreferrer\\" class=\\"social-btn whatsapp\\">WhatsApp Channel</a>\\n    </div>\\n\\n    <!-- Short Information -->\\n    ")
-    ;  if (post.short_desc) { 
-    ; __append("\\n      <div class=\\"detail-short-info\\">\\n        ")
-    ; __append(escapeFn( post.short_desc ))
-    ; __append("\\n      </div>\\n    ")
-    ;  } 
-    ; __append("\\n\\n    <!-- 2-Column Info Grid: Important Dates & Application Fee -->\\n    <div class=\\"detail-info-grid\\">\\n      <!-- Important Dates -->\\n      <div class=\\"info-card\\" id=\\"dates\\">\\n        <div class=\\"info-card-header\\">")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Important Exam & Syllabus Dates' : (post.category === 'admit-card' ? 'Important Dates & Exam Schedule' : (post.category === 'result' ? 'Important Dates & Result Schedule' : 'Important Dates')) ))
-    ; __append("</div>\\n        <div class=\\"info-card-body\\">\\n          ")
-    ;  if (importantDates && importantDates.length > 0) { 
-    ; __append("\\n            <ul>\\n              ")
-    ;  importantDates.forEach(item => { 
-    ; __append("\\n                <li>\\n                  <span class=\\"info-label\\">")
-    ; __append(escapeFn( item.event ))
-    ; __append(" : </span>\\n                  <b class=\\"important-val-date\\">")
-    ; __append(escapeFn( item.date ))
-    ; __append("</b>\\n                </li>\\n              ")
-    ;  }) 
-    ; __append("\\n            </ul>\\n          ")
-    ;  } else { 
-    ; __append("\\n            <p style=\\"color:#666;\\">No date schedule available.</p>\\n          ")
-    ;  } 
-    ; __append("\\n        </div>\\n      </div>\\n\\n      <!-- Application Fee -->\\n      <div class=\\"info-card\\" id=\\"fees\\">\\n        <div class=\\"info-card-header red\\">")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Application / Download Fee' : (post.category === 'admit-card' ? 'Admit Card / Download Fee' : (post.category === 'result' ? 'Result Checking Fee' : 'Application Fee')) ))
-    ; __append("</div>\\n        <div class=\\"info-card-body\\">\\n          ")
-    ;  if (applicationFee && applicationFee.length > 0) { 
-    ; __append("\\n            <ul>\\n              ")
-    ;  applicationFee.forEach(item => { 
-    ; __append("\\n                <li>\\n                  <span class=\\"info-label\\">")
-    ; __append(escapeFn( item.category ))
-    ; __append(" : </span>\\n                  <b class=\\"important-val-fee\\">")
-    ; __append(escapeFn( item.fee ))
-    ; __append("</b>\\n                </li>\\n              ")
-    ;  }) 
-    ; __append("\\n            </ul>\\n          ")
-    ;  } else { 
-    ; __append("\\n            <p style=\\"color:#666;\\">No fee details available.</p>\\n          ")
-    ;  } 
-    ; __append("\\n        </div>\\n      </div>\\n    </div>\\n\\n    <!-- Age Limit Details -->\\n    ")
-    ;  if (ageLimit && (ageLimit.min_age || ageLimit.max_age || ageLimit.relaxation)) { 
-    ; __append("\\n      <div class=\\"info-card\\" style=\\"margin-bottom: 20px;\\" id=\\"agelimit\\">\\n        <div class=\\"info-card-header\\" style=\\"background: #006400;\\">\\n          ")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Age Limit & Eligibility Overview ' : (post.category === 'admit-card' ? 'Age Limit & Eligibility Criteria ' : 'Age Limit Details ') ))
-    ; __append(escapeFn( ageLimit.as_on ? \`(as on \${ageLimit.as_on})\` : '' ))
-    ; __append("\\n        </div>\\n        <div class=\\"info-card-body\\">\\n          <ul>\\n            ")
-    ;  if (ageLimit.min_age) { 
-    ; __append("\\n              <li><span class=\\"info-label\\">Minimum Age : </span><b class=\\"important-val-text\\">")
-    ; __append(escapeFn( ageLimit.min_age ))
-    ; __append("</b></li>\\n            ")
-    ;  } 
-    ; __append("\\n            ")
-    ;  if (ageLimit.max_age) { 
-    ; __append("\\n              <li><span class=\\"info-label\\">Maximum Age : </span><b class=\\"important-val-text\\">")
-    ; __append(escapeFn( ageLimit.max_age ))
-    ; __append("</b></li>\\n            ")
-    ;  } 
-    ; __append("\\n            ")
-    ;  if (ageLimit.relaxation) { 
-    ; __append("\\n              <li><span class=\\"info-label\\">Age Relaxation : </span><b class=\\"important-val-text\\">")
-    ; __append(escapeFn( ageLimit.relaxation ))
-    ; __append("</b></li>\\n            ")
-    ;  } 
-    ; __append("\\n            ")
-    ;  if (false) { /* Hidden for now as requested */ 
-    ; __append("\\n            <li style=\\"margin-top: 5px;\\">\\n              <a href=\\"/tools/age-calculator\\" target=\\"_blank\\" style=\\"color: #0000a0; font-weight: bold;\\">\\n                \u{1F449} Calculate Your Exact Age Using Online Age Calculator\\n              </a>\\n            </li>\\n            ")
-    ;  } 
-    ; __append("\\n          </ul>\\n        </div>\\n      </div>\\n    ")
-    ;  } 
-    ; __append("\\n\\n    <!-- Vacancy Details Table -->\\n    <div id=\\"vacancies\\">\\n    ")
-    ;  if (vacancyDetails && vacancyDetails.length > 0) { 
-    ; __append("\\n      <div style=\\"text-align: center; margin: 15px 0 5px 0;\\">\\n        <h2 style=\\"color: var(--primary-red); font-size: 20px;\\">\\n          ")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Selection Process & Exam Pattern Details' : (post.category === 'admit-card' ? 'Exam Scheme & Selection Details' : (post.category === 'result' ? 'Result & Post Overview' : ('Vacancy Details : ' + (post.total_vacancy ? post.total_vacancy : '')))) ))
-    ; __append("\\n        </h2>\\n      </div>\\n\\n      <div class=\\"table-responsive\\">\\n        <table class=\\"detail-table\\">\\n          <thead>\\n            <tr>\\n              <th style=\\"width: 30%;\\">")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Exam Stage / Paper' : (post.category === 'admit-card' ? 'Post / Exam Stage' : 'Post Name') ))
-    ; __append("</th>\\n              <th style=\\"width: 20%;\\">")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Pattern & Duration' : (post.category === 'admit-card' ? 'Exam Pattern' : 'Total Post') ))
-    ; __append("</th>\\n              <th style=\\"width: 50%;\\">")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Syllabus & Subject Scheme' : (post.category === 'admit-card' ? 'Eligibility & Selection Criteria' : 'Eligibility Criteria') ))
-    ; __append("</th>\\n            </tr>\\n          </thead>\\n          <tbody>\\n            ")
-    ;  vacancyDetails.forEach(v => { 
-    ; __append("\\n              <tr>\\n                <td><b class=\\"important-val-text\\">")
-    ; __append(escapeFn( v.post_name ))
-    ; __append("</b></td>\\n                <td style=\\"text-align: center; font-weight: 800; font-size: 16.5px; color: #0000a0;\\">")
-    ; __append(escapeFn( v.total_post ))
-    ; __append("</td>\\n                <td>")
-    ; __append(escapeFn( v.eligibility ))
-    ; __append("</td>\\n              </tr>\\n            ")
-    ;  }) 
-    ; __append("\\n          </tbody>\\n        </table>\\n      </div>\\n    ")
-    ;  } 
-    ; __append("\\n    </div>\\n\\n    <!-- Category-wise Vacancy Distribution Table -->\\n    ")
-    ;  if (categoryDetails && categoryDetails.length > 0) { 
-    ; __append("\\n      <div style=\\"text-align: center; margin: 15px 0 5px 0;\\">\\n        <h3 style=\\"color: #2b547e; font-size: 18px;\\">\\n          ")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Category-Wise Minimum Qualifying Marks Standards' : 'Category Wise Vacancy Details' ))
-    ; __append("\\n        </h3>\\n      </div>\\n      <div class=\\"table-responsive\\">\\n        <table class=\\"detail-table table-wide\\">\\n          <thead>\\n            <tr style=\\"background: #2b547e;\\">\\n              <th>")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Stage / Paper' : 'Post Name' ))
-    ; __append("</th>\\n              <th>UR / Gen</th>\\n              <th>EWS</th>\\n              <th>OBC</th>\\n              <th>SC</th>\\n              <th>ST</th>\\n              <th>")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Standard' : 'Total' ))
-    ; __append("</th>\\n            </tr>\\n          </thead>\\n          <tbody>\\n            ")
-    ;  categoryDetails.forEach(c => { 
-    ; __append("\\n              <tr style=\\"text-align: center;\\">\\n                <td style=\\"text-align: left; font-weight: bold;\\">")
-    ; __append(escapeFn( c.post_name ))
-    ; __append("</td>\\n                <td>")
-    ; __append(escapeFn( c.ur || '-' ))
-    ; __append("</td>\\n                <td>")
-    ; __append(escapeFn( c.ews || '-' ))
-    ; __append("</td>\\n                <td>")
-    ; __append(escapeFn( c.obc || '-' ))
-    ; __append("</td>\\n                <td>")
-    ; __append(escapeFn( c.sc || '-' ))
-    ; __append("</td>\\n                <td>")
-    ; __append(escapeFn( c.st || '-' ))
-    ; __append("</td>\\n                <td style=\\"font-weight: bold; color: var(--primary-red);\\">")
-    ; __append(escapeFn( c.total || '-' ))
-    ; __append("</td>\\n              </tr>\\n            ")
-    ;  }) 
-    ; __append("\\n          </tbody>\\n        </table>\\n      </div>\\n    ")
-    ;  } 
-    ; __append("\\n\\n    <!-- How to Apply Instructions -->\\n    <div id=\\"howto\\">\\n    ")
-    ;  if (post.how_to_apply) { 
-    ; __append("\\n      <div style=\\"margin: 20px 0;\\">\\n        <h3 style=\\"color: var(--primary-red); font-size: 18px; margin-bottom: 8px;\\">\\n          ")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'How to Check & Download ' + post.title + ' :' : (post.category === 'admit-card' ? 'How to Download ' + post.title + ' :' : (post.category === 'result' ? 'How to Check ' + post.title + ' :' : 'How to Fill ' + post.title + ' Online Form:')) ))
-    ; __append("\\n        </h3>\\n        <div class=\\"how-to-apply-box\\">\\n          ")
-    ; __append(escapeFn( post.how_to_apply ))
-    ; __append("\\n        </div>\\n      </div>\\n    ")
-    ;  } 
-    ; __append("\\n    </div>\\n\\n    <div style=\\"text-align: center; margin: 16px 0; color: #c62828; font-weight: bold; font-size: 16px;\\">\\n      ")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Candidates Can Download the Complete Syllabus & Exam Pattern PDF Below' : (post.category === 'admit-card' ? 'Candidates Can Download Admit Card / Hall Ticket from the Links Below' : (post.category === 'result' ? 'Candidates Can Check Result / Scorecard from the Links Below' : 'Interested Candidates Can Read the Full Notification Before Apply Online')) ))
-    ; __append("\\n    </div>\\n\\n    <!-- Useful Important Links Table -->\\n    <div id=\\"links\\" style=\\"text-align: center; margin: 25px 0 10px 0;\\">\\n      <h2 class=\\"useful-links-heading\\">Some Useful Important Links</h2>\\n    </div>\\n\\n    <div class=\\"table-responsive links-table-responsive\\">\\n      <table class=\\"detail-table links-table\\">\\n        <tbody>\\n          <!-- Apply Online -->\\n          ")
-    ;  if (post.apply_online_url) { 
-    ; __append("\\n            <tr>\\n              <td style=\\"font-weight: bold; color: #006400;\\">Apply Online</td>\\n              <td style=\\"text-align: center;\\">\\n                <a href=\\"")
-    ; __append(escapeFn( post.apply_online_url ))
-    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n              </td>\\n            </tr>\\n          ")
-    ;  } 
-    ; __append("\\n\\n          <!-- Download Official Notification -->\\n          ")
-    ;  if (post.notification_pdf) { 
-    ; __append("\\n            <tr>\\n              <td style=\\"font-weight: bold; color: #b71c1c;\\">Download Notification (PDF)</td>\\n              <td style=\\"text-align: center;\\">\\n                <a href=\\"")
-    ; __append(escapeFn( post.notification_pdf ))
-    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n              </td>\\n            </tr>\\n          ")
-    ;  } 
-    ; __append("\\n\\n          <!-- Admit Card Link -->\\n          ")
-    ;  if (post.admit_card_url) { 
-    ; __append("\\n            <tr>\\n              <td style=\\"font-weight: bold; color: #0000a0;\\">Download Admit Card</td>\\n              <td style=\\"text-align: center;\\">\\n                <a href=\\"")
-    ; __append(escapeFn( post.admit_card_url ))
-    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n              </td>\\n            </tr>\\n          ")
-    ;  } 
-    ; __append("\\n\\n          <!-- Result Link -->\\n          ")
-    ;  if (post.result_url) { 
-    ; __append("\\n            <tr>\\n              <td style=\\"font-weight: bold; color: #0000a0;\\">Download Result</td>\\n              <td style=\\"text-align: center;\\">\\n                <a href=\\"")
-    ; __append(escapeFn( post.result_url ))
-    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n              </td>\\n            </tr>\\n          ")
-    ;  } 
-    ; __append("\\n\\n          <!-- Custom Additional Links -->\\n          ")
-    ;  if (links && links.length > 0) { 
-    ; __append("\\n            ")
-    ;  links.forEach(link => { 
-    ; __append("\\n              <tr>\\n                <td style=\\"font-weight: bold;\\">")
-    ; __append(escapeFn( link.label ))
-    ; __append("</td>\\n                <td style=\\"text-align: center;\\">\\n                  <a href=\\"")
-    ; __append(escapeFn( link.url ))
-    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">")
-    ; __append(escapeFn( link.btn_text || 'Click Here' ))
-    ; __append("</a>\\n                </td>\\n              </tr>\\n            ")
-    ;  }) 
-    ; __append("\\n          ")
-    ;  } 
-    ; __append("\\n\\n          <!-- Photo Resizer Specs Tool Link -->\\n          <tr>\\n            <td style=\\"font-weight: bold;\\">Check Photo &amp; Signature Upload Specs</td>\\n            <td style=\\"text-align: center;\\">\\n              <a href=\\"/tools/photo-resizer\\" target=\\"_blank\\" class=\\"useful-link-text\\">View Guide</a>\\n            </td>\\n          </tr>\\n\\n          <!-- Official Website -->\\n          ")
-    ;  if (post.official_website_url) { 
-    ; __append("\\n            <tr>\\n              <td style=\\"font-weight: bold;\\">Official Website</td>\\n              <td style=\\"text-align: center;\\">\\n                <a href=\\"")
-    ; __append(escapeFn( post.official_website_url ))
-    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n              </td>\\n            </tr>\\n          ")
-    ;  } 
-    ; __append("\\n        </tbody>\\n      </table>\\n\\n    <!-- Related Posts -->\\n    ")
+    ; __append("\\" target=\\"_blank\\" rel=\\"noopener noreferrer\\" class=\\"social-btn whatsapp\\">WhatsApp Channel</a>\\n    </div>\\n\\n    ")
+    ; __append( include('../partials/detail-body') )
+    ; __append("\\n\\n    <!-- Related Posts -->\\n    ")
     ;  if (relatedPosts && relatedPosts.length > 0) { 
     ; __append("\\n      <div style=\\"margin-top: 30px; border-top: 2px solid #ddd; padding-top: 15px;\\">\\n        <h3 style=\\"color: var(--primary-red); margin-bottom: 10px;\\">More ")
     ; __append(escapeFn( catInfo.name ))
@@ -79543,7 +79561,9 @@ var require_templateEngine = __commonJS({
     ;  }) 
     ; __append("\\n        </ul>\\n      </div>\\n    ")
     ;  } 
-    ; __append("\\n  </article>\\n</main>\\n\\n")
+    ; __append("\\n  </article>\\n</main>\\n")
+    ;  } 
+    ; __append("\\n\\n")
     ; __append( include('../partials/footer') )
     ; __append("\\n")
   }
@@ -79601,7 +79621,126 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( post.category ))
     ; __append("\\"\\n    },\\n    {\\n      \\"@type\\": \\"ListItem\\",\\n      \\"position\\": 3,\\n      \\"name\\": \\"")
     ; __append(escapeFn( post.title.replace(/"/g, '\\\\"') ))
-    ; __append("\\"\\n    }\\n  ]\\n}\\n</script>\\n\\n<main class=\\"container detail-page-container\\">\\n  <article class=\\"post-detail-wrapper\\">\\n    <!-- Breadcrumb -->\\n    <div class=\\"detail-breadcrumb\\">\\n      <a href=\\"/\\">Home</a> \xBB \\n      <a href=\\"/category/")
+    ; __append("\\"\\n    }\\n  ]\\n}\\n</script>\\n\\n")
+    ;  const activeDetailLayout = (typeof settings !== 'undefined' && settings.post_detail_layout === 'blog_2col') ? 'blog_2col' : 'classic'; 
+    ; __append("\\n\\n")
+    ;  if (activeDetailLayout === 'blog_2col') { 
+    ; __append("\\n<!-- ============================================================\\n     MODE 2: MODERN 2-COLUMN EDITORIAL BLOG LAYOUT (CBTRank Style)\\n     ============================================================ -->\\n<main class=\\"gez-blog-page-main\\">\\n  <div class=\\"gez-blog-main-container\\">\\n    <div class=\\"gez-blog-layout\\">\\n\\n      <!-- Left Main Article Area -->\\n      <div class=\\"gez-blog-content-area\\">\\n        <article class=\\"gez-article-wrap\\">\\n          <!-- Breadcrumb -->\\n          <div class=\\"detail-breadcrumb\\" style=\\"margin-bottom: 12px;\\">\\n            <a href=\\"/\\">Home</a> \xBB\\n            <a href=\\"/category/")
+    ; __append(escapeFn( post.category ))
+    ; __append("\\">")
+    ; __append(escapeFn( catInfo.name ))
+    ; __append("</a> \xBB\\n            <span>")
+    ; __append(escapeFn( post.title ))
+    ; __append("</span>\\n          </div>\\n\\n          <!-- Editorial Article Header -->\\n          <header class=\\"gez-article-header\\">\\n            <div class=\\"gez-article-cats\\">\\n              <a href=\\"/category/")
+    ; __append(escapeFn( post.category ))
+    ; __append("\\" class=\\"gez-article-cat-tag\\">")
+    ; __append(escapeFn( catInfo.name ))
+    ; __append("</a>\\n            </div>\\n\\n            <h1 class=\\"gez-article-title\\">")
+    ; __append(escapeFn( post.title ))
+    ; __append("</h1>\\n\\n            <div class=\\"gez-article-meta\\">\\n              <span class=\\"gez-meta-byline\\">\\n                by <a href=\\"")
+    ; __append(escapeFn( author.slug ? '/author/' + author.slug : '/authors' ))
+    ; __append("\\">")
+    ; __append(escapeFn( author.name || 'Govt Exam Zone Team' ))
+    ; __append("</a>\\n              </span>\\n              <span class=\\"gez-meta-date\\">\\n                <svg width=\\"14\\" height=\\"14\\" viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2.2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\" aria-hidden=\\"true\\">\\n                  <rect x=\\"3\\" y=\\"4\\" width=\\"18\\" height=\\"18\\" rx=\\"2\\" ry=\\"2\\"/>\\n                  <line x1=\\"16\\" y1=\\"2\\" x2=\\"16\\" y2=\\"6\\"/>\\n                  <line x1=\\"8\\" y1=\\"2\\" x2=\\"8\\" y2=\\"6\\"/>\\n                  <line x1=\\"3\\" y1=\\"10\\" x2=\\"21\\" y2=\\"10\\"/>\\n                </svg>\\n                ")
+    ; __append(escapeFn( post.post_date || formatDate(post.created_at) ))
+    ; __append("\\n              </span>\\n              ")
+    ;  if (post.department) { 
+    ; __append("\\n                <span class=\\"gez-meta-dept\\">\u{1F3DB}\uFE0F ")
+    ; __append(escapeFn( post.department ))
+    ; __append("</span>\\n              ")
+    ;  } 
+    ; __append("\\n            </div>\\n          </header>\\n\\n          <!-- Full Article & Structured Details Body -->\\n          <div class=\\"gez-article-body\\">\\n            ")
+    ; __append( include('../partials/detail-body') )
+    ; __append("\\n          </div>\\n\\n          <!-- Social Share Bar (WhatsApp & Telegram) -->\\n          ")
+    ; 
+            const sharePageUrl = typeof fullUrl !== 'undefined' ? fullUrl : ('https://govtexamzone.com/post/' + post.slug);
+          
+    ; __append("\\n          <div class=\\"gez-share-bar\\">\\n            <span class=\\"gez-share-label\\">Share:</span>\\n            <a\\n              href=\\"https://api.whatsapp.com/send?text=")
+    ; __append(escapeFn( encodeURIComponent(post.title + ' - ' + sharePageUrl) ))
+    ; __append("\\"\\n              target=\\"_blank\\"\\n              rel=\\"noopener noreferrer\\"\\n              class=\\"gez-share-btn gez-share-wa\\"\\n            >\\n              WhatsApp\\n            </a>\\n            <a\\n              href=\\"https://t.me/share/url?url=")
+    ; __append(escapeFn( encodeURIComponent(sharePageUrl) ))
+    ; __append("&text=")
+    ; __append(escapeFn( encodeURIComponent(post.title) ))
+    ; __append("\\"\\n              target=\\"_blank\\"\\n              rel=\\"noopener noreferrer\\"\\n              class=\\"gez-share-btn gez-share-tg\\"\\n            >\\n              Telegram\\n            </a>\\n          </div>\\n\\n          <!-- Join Community Alerts CTA Box -->\\n          <div class=\\"gez-cta-box\\">\\n            <h3>Get Instant Govt Exam &amp; Result Alerts</h3>\\n            <p>Join our official Telegram &amp; WhatsApp channels for fastest job notifications, admit cards, and cutoff updates.</p>\\n            <div style=\\"display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;\\">\\n              <a href=\\"")
+    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.telegram_url) ? settings.telegram_url : 'https://t.me/govtexamzoneofficial' 
+))
+    ; __append("\\" target=\\"_blank\\" rel=\\"noopener noreferrer\\" class=\\"gez-btn-cta\\" style=\\"background: #229ED9;\\">\\n                \u2708\uFE0F Join Telegram Channel\\n              </a>\\n              <a href=\\"")
+    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.whatsapp_url) ? settings.whatsapp_url : 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10' 
+))
+    ; __append("\\" target=\\"_blank\\" rel=\\"noopener noreferrer\\" class=\\"gez-btn-cta\\" style=\\"background: #16a34a;\\">\\n                \u{1F4AC} Join WhatsApp Channel\\n              </a>\\n            </div>\\n          </div>\\n\\n          <!-- Related Category Posts -->\\n          ")
+    ;  if (relatedPosts && relatedPosts.length > 0) { 
+    ; __append("\\n            <div style=\\"margin-top: 28px; border-top: 1px solid #e2e8f0; padding-top: 18px;\\">\\n              <h3 style=\\"color: #0f172a; font-size: 16.5px; font-weight: 800; margin-bottom: 12px;\\">More ")
+    ; __append(escapeFn( catInfo.name ))
+    ; __append(" Updates</h3>\\n              <ul style=\\"list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px;\\">\\n                ")
+    ;  relatedPosts.forEach(rel => { 
+    ; __append("\\n                  <li style=\\"padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;\\">\\n                    <a href=\\"/post/")
+    ; __append(escapeFn( rel.slug ))
+    ; __append("\\" style=\\"font-weight: 700; color: #1d4ed8; font-size: 13.5px; text-decoration: none;\\">")
+    ; __append(escapeFn( rel.title ))
+    ; __append("</a>\\n                    ")
+    ;  if (rel.post_date) { 
+    ; __append("\\n                      <span style=\\"font-size: 11.5px; color: #64748b; white-space: nowrap;\\">")
+    ; __append(escapeFn( rel.post_date ))
+    ; __append("</span>\\n                    ")
+    ;  } 
+    ; __append("\\n                  </li>\\n                ")
+    ;  }) 
+    ; __append("\\n              </ul>\\n            </div>\\n          ")
+    ;  } 
+    ; __append("\\n        </article>\\n      </div>\\n\\n      <!-- Right Sidebar (320px) -->\\n      <aside class=\\"gez-blog-sidebar\\">\\n        <!-- Search Widget -->\\n        <div class=\\"gez-widget\\">\\n          <h3 class=\\"gez-widget-title\\">Search</h3>\\n          <form action=\\"/search\\" method=\\"GET\\" class=\\"gez-sidebar-search-form\\">\\n            <input\\n              type=\\"search\\"\\n              name=\\"q\\"\\n              class=\\"gez-sidebar-search-input\\"\\n              placeholder=\\"Search jobs, admit card, results...\\"\\n              required\\n            >\\n            <button type=\\"submit\\" class=\\"gez-sidebar-search-btn\\" aria-label=\\"Submit Search\\">\\n              <svg width=\\"16\\" height=\\"16\\" viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"#fff\\" stroke-width=\\"2.2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\" aria-hidden=\\"true\\">\\n                <circle cx=\\"11\\" cy=\\"11\\" r=\\"8\\"/>\\n                <line x1=\\"21\\" y1=\\"21\\" x2=\\"16.65\\" y2=\\"16.65\\"/>\\n              </svg>\\n            </button>\\n          </form>\\n        </div>\\n\\n        <!-- Recent Posts Widget -->\\n        ")
+    ;  if (typeof recentPosts !== 'undefined' && recentPosts && recentPosts.length > 0) { 
+    ; __append("\\n        <div class=\\"gez-widget\\">\\n          <h3 class=\\"gez-widget-title\\">Recent Posts</h3>\\n          <ul class=\\"gez-sidebar-posts-list\\">\\n            ")
+    ;  recentPosts.forEach(p => { 
+    ; __append("\\n              <li class=\\"gez-sidebar-post-item\\">\\n                <div class=\\"gez-sidebar-post-badge\\">\\n                  ")
+    ; __append(escapeFn( (categories[p.category] && categories[p.category].name) ? categories[p.category].name : p.category ))
+    ; __append("\\n                </div>\\n                <a href=\\"/post/")
+    ; __append(escapeFn( p.slug ))
+    ; __append("\\" class=\\"gez-sidebar-post-title\\">")
+    ; __append(escapeFn( p.title ))
+    ; __append("</a>\\n                <span class=\\"gez-sidebar-post-date\\">")
+    ; __append(escapeFn( p.post_date || formatDate(p.created_at) ))
+    ; __append("</span>\\n              </li>\\n            ")
+    ;  }) 
+    ; __append("\\n          </ul>\\n        </div>\\n        ")
+    ;  } 
+    ; __append("\\n\\n        <!-- Popular Posts Widget -->\\n        ")
+    ;  if (typeof popularPosts !== 'undefined' && popularPosts && popularPosts.length > 0) { 
+    ; __append("\\n        <div class=\\"gez-widget\\">\\n          <h3 class=\\"gez-widget-title\\">Popular Posts</h3>\\n          <ul class=\\"gez-sidebar-posts-list\\">\\n            ")
+    ;  popularPosts.forEach(p => { 
+    ; __append("\\n              <li class=\\"gez-sidebar-post-item\\">\\n                <div style=\\"display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 3px;\\">\\n                  <span class=\\"gez-sidebar-post-badge\\" style=\\"margin-bottom: 0;\\">\\n                    ")
+    ; __append(escapeFn( (categories[p.category] && categories[p.category].name) ? categories[p.category].name : p.category ))
+    ; __append("\\n                  </span>\\n                  <span style=\\"font-size: 11px; color: #64748b; font-weight: 600;\\">\u{1F441}\uFE0F ")
+    ; __append(escapeFn( p.views || 0 ))
+    ; __append("</span>\\n                </div>\\n                <a href=\\"/post/")
+    ; __append(escapeFn( p.slug ))
+    ; __append("\\" class=\\"gez-sidebar-post-title\\">")
+    ; __append(escapeFn( p.title ))
+    ; __append("</a>\\n                <span class=\\"gez-sidebar-post-date\\">")
+    ; __append(escapeFn( p.post_date || formatDate(p.created_at) ))
+    ; __append("</span>\\n              </li>\\n            ")
+    ;  }) 
+    ; __append("\\n          </ul>\\n        </div>\\n        ")
+    ;  } 
+    ; __append("\\n\\n        <!-- Categories Widget -->\\n        <div class=\\"gez-widget\\">\\n          <h3 class=\\"gez-widget-title\\">Categories</h3>\\n          <ul class=\\"gez-sidebar-cat-list\\">\\n            ")
+    ; 
+              const countMap = {};
+              if (typeof categoryCounts !== 'undefined' && Array.isArray(categoryCounts)) {
+                categoryCounts.forEach(c => { countMap[c.category] = c.count; });
+              }
+            
+    ; __append("\\n            ")
+    ;  Object.keys(categories).forEach(catKey => { 
+    ; __append("\\n              <li class=\\"gez-sidebar-cat-item\\">\\n                <a href=\\"/category/")
+    ; __append(escapeFn( catKey ))
+    ; __append("\\" class=\\"gez-sidebar-cat-link\\">")
+    ; __append(escapeFn( categories[catKey].name ))
+    ; __append("</a>\\n                <span class=\\"gez-sidebar-cat-count\\">")
+    ; __append(escapeFn( countMap[catKey] || 0 ))
+    ; __append("</span>\\n              </li>\\n            ")
+    ;  }) 
+    ; __append("\\n          </ul>\\n        </div>\\n      </aside>\\n\\n    </div>\\n  </div>\\n</main>\\n\\n")
+    ;  } else { 
+    ; __append("\\n<!-- ============================================================\\n     MODE 1: CLASSIC SARKARI SINGLE-COLUMN LAYOUT (Default)\\n     ============================================================ -->\\n<main class=\\"container detail-page-container\\">\\n  <article class=\\"post-detail-wrapper\\">\\n    <!-- Breadcrumb -->\\n    <div class=\\"detail-breadcrumb\\">\\n      <a href=\\"/\\">Home</a> \xBB \\n      <a href=\\"/category/")
     ; __append(escapeFn( post.category ))
     ; __append("\\">")
     ; __append(escapeFn( catInfo.name ))
@@ -79623,178 +79762,9 @@ var require_templateEngine = __commonJS({
     ; __append("\\" target=\\"_blank\\" rel=\\"noopener noreferrer\\" class=\\"social-btn telegram\\">Join Telegram Channel</a>\\n      <a href=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.whatsapp_url) ? settings.whatsapp_url : 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10' 
 ))
-    ; __append("\\" target=\\"_blank\\" rel=\\"noopener noreferrer\\" class=\\"social-btn whatsapp\\">WhatsApp Channel</a>\\n    </div>\\n\\n    <!-- Short Information -->\\n    ")
-    ;  if (post.short_desc) { 
-    ; __append("\\n      <div class=\\"detail-short-info\\">\\n        ")
-    ; __append(escapeFn( post.short_desc ))
-    ; __append("\\n      </div>\\n    ")
-    ;  } 
-    ; __append("\\n\\n    <!-- 2-Column Info Grid: Important Dates & Application Fee -->\\n    <div class=\\"detail-info-grid\\">\\n      <!-- Important Dates -->\\n      <div class=\\"info-card\\" id=\\"dates\\">\\n        <div class=\\"info-card-header\\">")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Important Exam & Syllabus Dates' : (post.category === 'admit-card' ? 'Important Dates & Exam Schedule' : (post.category === 'result' ? 'Important Dates & Result Schedule' : 'Important Dates')) ))
-    ; __append("</div>\\n        <div class=\\"info-card-body\\">\\n          ")
-    ;  if (importantDates && importantDates.length > 0) { 
-    ; __append("\\n            <ul>\\n              ")
-    ;  importantDates.forEach(item => { 
-    ; __append("\\n                <li>\\n                  <span class=\\"info-label\\">")
-    ; __append(escapeFn( item.event ))
-    ; __append(" : </span>\\n                  <b class=\\"important-val-date\\">")
-    ; __append(escapeFn( item.date ))
-    ; __append("</b>\\n                </li>\\n              ")
-    ;  }) 
-    ; __append("\\n            </ul>\\n          ")
-    ;  } else { 
-    ; __append("\\n            <p style=\\"color:#666;\\">No date schedule available.</p>\\n          ")
-    ;  } 
-    ; __append("\\n        </div>\\n      </div>\\n\\n      <!-- Application Fee -->\\n      <div class=\\"info-card\\" id=\\"fees\\">\\n        <div class=\\"info-card-header red\\">")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Application / Download Fee' : (post.category === 'admit-card' ? 'Admit Card / Download Fee' : (post.category === 'result' ? 'Result Checking Fee' : 'Application Fee')) ))
-    ; __append("</div>\\n        <div class=\\"info-card-body\\">\\n          ")
-    ;  if (applicationFee && applicationFee.length > 0) { 
-    ; __append("\\n            <ul>\\n              ")
-    ;  applicationFee.forEach(item => { 
-    ; __append("\\n                <li>\\n                  <span class=\\"info-label\\">")
-    ; __append(escapeFn( item.category ))
-    ; __append(" : </span>\\n                  <b class=\\"important-val-fee\\">")
-    ; __append(escapeFn( item.fee ))
-    ; __append("</b>\\n                </li>\\n              ")
-    ;  }) 
-    ; __append("\\n            </ul>\\n          ")
-    ;  } else { 
-    ; __append("\\n            <p style=\\"color:#666;\\">No fee details available.</p>\\n          ")
-    ;  } 
-    ; __append("\\n        </div>\\n      </div>\\n    </div>\\n\\n    <!-- Age Limit Details -->\\n    ")
-    ;  if (ageLimit && (ageLimit.min_age || ageLimit.max_age || ageLimit.relaxation)) { 
-    ; __append("\\n      <div class=\\"info-card\\" style=\\"margin-bottom: 20px;\\" id=\\"agelimit\\">\\n        <div class=\\"info-card-header\\" style=\\"background: #006400;\\">\\n          ")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Age Limit & Eligibility Overview ' : (post.category === 'admit-card' ? 'Age Limit & Eligibility Criteria ' : 'Age Limit Details ') ))
-    ; __append(escapeFn( ageLimit.as_on ? \`(as on \${ageLimit.as_on})\` : '' ))
-    ; __append("\\n        </div>\\n        <div class=\\"info-card-body\\">\\n          <ul>\\n            ")
-    ;  if (ageLimit.min_age) { 
-    ; __append("\\n              <li><span class=\\"info-label\\">Minimum Age : </span><b class=\\"important-val-text\\">")
-    ; __append(escapeFn( ageLimit.min_age ))
-    ; __append("</b></li>\\n            ")
-    ;  } 
-    ; __append("\\n            ")
-    ;  if (ageLimit.max_age) { 
-    ; __append("\\n              <li><span class=\\"info-label\\">Maximum Age : </span><b class=\\"important-val-text\\">")
-    ; __append(escapeFn( ageLimit.max_age ))
-    ; __append("</b></li>\\n            ")
-    ;  } 
-    ; __append("\\n            ")
-    ;  if (ageLimit.relaxation) { 
-    ; __append("\\n              <li><span class=\\"info-label\\">Age Relaxation : </span><b class=\\"important-val-text\\">")
-    ; __append(escapeFn( ageLimit.relaxation ))
-    ; __append("</b></li>\\n            ")
-    ;  } 
-    ; __append("\\n            ")
-    ;  if (false) { /* Hidden for now as requested */ 
-    ; __append("\\n            <li style=\\"margin-top: 5px;\\">\\n              <a href=\\"/tools/age-calculator\\" target=\\"_blank\\" style=\\"color: #0000a0; font-weight: bold;\\">\\n                \u{1F449} Calculate Your Exact Age Using Online Age Calculator\\n              </a>\\n            </li>\\n            ")
-    ;  } 
-    ; __append("\\n          </ul>\\n        </div>\\n      </div>\\n    ")
-    ;  } 
-    ; __append("\\n\\n    <!-- Vacancy Details Table -->\\n    <div id=\\"vacancies\\">\\n    ")
-    ;  if (vacancyDetails && vacancyDetails.length > 0) { 
-    ; __append("\\n      <div style=\\"text-align: center; margin: 15px 0 5px 0;\\">\\n        <h2 style=\\"color: var(--primary-red); font-size: 20px;\\">\\n          ")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Selection Process & Exam Pattern Details' : (post.category === 'admit-card' ? 'Exam Scheme & Selection Details' : (post.category === 'result' ? 'Result & Post Overview' : ('Vacancy Details : ' + (post.total_vacancy ? post.total_vacancy : '')))) ))
-    ; __append("\\n        </h2>\\n      </div>\\n\\n      <div class=\\"table-responsive\\">\\n        <table class=\\"detail-table\\">\\n          <thead>\\n            <tr>\\n              <th style=\\"width: 30%;\\">")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Exam Stage / Paper' : (post.category === 'admit-card' ? 'Post / Exam Stage' : 'Post Name') ))
-    ; __append("</th>\\n              <th style=\\"width: 20%;\\">")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Pattern & Duration' : (post.category === 'admit-card' ? 'Exam Pattern' : 'Total Post') ))
-    ; __append("</th>\\n              <th style=\\"width: 50%;\\">")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Syllabus & Subject Scheme' : (post.category === 'admit-card' ? 'Eligibility & Selection Criteria' : 'Eligibility Criteria') ))
-    ; __append("</th>\\n            </tr>\\n          </thead>\\n          <tbody>\\n            ")
-    ;  vacancyDetails.forEach(v => { 
-    ; __append("\\n              <tr>\\n                <td><b class=\\"important-val-text\\">")
-    ; __append(escapeFn( v.post_name ))
-    ; __append("</b></td>\\n                <td style=\\"text-align: center; font-weight: 800; font-size: 16.5px; color: #0000a0;\\">")
-    ; __append(escapeFn( v.total_post ))
-    ; __append("</td>\\n                <td>")
-    ; __append(escapeFn( v.eligibility ))
-    ; __append("</td>\\n              </tr>\\n            ")
-    ;  }) 
-    ; __append("\\n          </tbody>\\n        </table>\\n      </div>\\n    ")
-    ;  } 
-    ; __append("\\n    </div>\\n\\n    <!-- Category-wise Vacancy Distribution Table -->\\n    ")
-    ;  if (categoryDetails && categoryDetails.length > 0) { 
-    ; __append("\\n      <div style=\\"text-align: center; margin: 15px 0 5px 0;\\">\\n        <h3 style=\\"color: #2b547e; font-size: 18px;\\">\\n          ")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Category-Wise Minimum Qualifying Marks Standards' : 'Category Wise Vacancy Details' ))
-    ; __append("\\n        </h3>\\n      </div>\\n      <div class=\\"table-responsive\\">\\n        <table class=\\"detail-table table-wide\\">\\n          <thead>\\n            <tr style=\\"background: #2b547e;\\">\\n              <th>")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Stage / Paper' : 'Post Name' ))
-    ; __append("</th>\\n              <th>UR / Gen</th>\\n              <th>EWS</th>\\n              <th>OBC</th>\\n              <th>SC</th>\\n              <th>ST</th>\\n              <th>")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Standard' : 'Total' ))
-    ; __append("</th>\\n            </tr>\\n          </thead>\\n          <tbody>\\n            ")
-    ;  categoryDetails.forEach(c => { 
-    ; __append("\\n              <tr style=\\"text-align: center;\\">\\n                <td style=\\"text-align: left; font-weight: bold;\\">")
-    ; __append(escapeFn( c.post_name ))
-    ; __append("</td>\\n                <td>")
-    ; __append(escapeFn( c.ur || '-' ))
-    ; __append("</td>\\n                <td>")
-    ; __append(escapeFn( c.ews || '-' ))
-    ; __append("</td>\\n                <td>")
-    ; __append(escapeFn( c.obc || '-' ))
-    ; __append("</td>\\n                <td>")
-    ; __append(escapeFn( c.sc || '-' ))
-    ; __append("</td>\\n                <td>")
-    ; __append(escapeFn( c.st || '-' ))
-    ; __append("</td>\\n                <td style=\\"font-weight: bold; color: var(--primary-red);\\">")
-    ; __append(escapeFn( c.total || '-' ))
-    ; __append("</td>\\n              </tr>\\n            ")
-    ;  }) 
-    ; __append("\\n          </tbody>\\n        </table>\\n      </div>\\n    ")
-    ;  } 
-    ; __append("\\n\\n    <!-- How to Apply Instructions -->\\n    <div id=\\"howto\\">\\n    ")
-    ;  if (post.how_to_apply) { 
-    ; __append("\\n      <div style=\\"margin: 20px 0;\\">\\n        <h3 style=\\"color: var(--primary-red); font-size: 18px; margin-bottom: 8px;\\">\\n          ")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'How to Check & Download ' + post.title + ' :' : (post.category === 'admit-card' ? 'How to Download ' + post.title + ' :' : (post.category === 'result' ? 'How to Check ' + post.title + ' :' : 'How to Fill ' + post.title + ' Online Form:')) ))
-    ; __append("\\n        </h3>\\n        <div class=\\"how-to-apply-box\\">\\n          ")
-    ; __append(escapeFn( post.how_to_apply ))
-    ; __append("\\n        </div>\\n      </div>\\n    ")
-    ;  } 
-    ; __append("\\n    </div>\\n\\n    <div style=\\"text-align: center; margin: 16px 0; color: #c62828; font-weight: bold; font-size: 16px;\\">\\n      ")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Candidates Can Download the Complete Syllabus & Exam Pattern PDF Below' : (post.category === 'admit-card' ? 'Candidates Can Download Admit Card / Hall Ticket from the Links Below' : (post.category === 'result' ? 'Candidates Can Check Result / Scorecard from the Links Below' : 'Interested Candidates Can Read the Full Notification Before Apply Online')) ))
-    ; __append("\\n    </div>\\n\\n    <!-- Useful Important Links Table -->\\n    <div id=\\"links\\" style=\\"text-align: center; margin: 25px 0 10px 0;\\">\\n      <h2 class=\\"useful-links-heading\\">Some Useful Important Links</h2>\\n    </div>\\n\\n    <div class=\\"table-responsive links-table-responsive\\">\\n      <table class=\\"detail-table links-table\\">\\n        <tbody>\\n          <!-- Apply Online -->\\n          ")
-    ;  if (post.apply_online_url) { 
-    ; __append("\\n            <tr>\\n              <td style=\\"font-weight: bold; color: #006400;\\">Apply Online</td>\\n              <td style=\\"text-align: center;\\">\\n                <a href=\\"")
-    ; __append(escapeFn( post.apply_online_url ))
-    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n              </td>\\n            </tr>\\n          ")
-    ;  } 
-    ; __append("\\n\\n          <!-- Download Official Notification -->\\n          ")
-    ;  if (post.notification_pdf) { 
-    ; __append("\\n            <tr>\\n              <td style=\\"font-weight: bold; color: #b71c1c;\\">Download Notification (PDF)</td>\\n              <td style=\\"text-align: center;\\">\\n                <a href=\\"")
-    ; __append(escapeFn( post.notification_pdf ))
-    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n              </td>\\n            </tr>\\n          ")
-    ;  } 
-    ; __append("\\n\\n          <!-- Admit Card Link -->\\n          ")
-    ;  if (post.admit_card_url) { 
-    ; __append("\\n            <tr>\\n              <td style=\\"font-weight: bold; color: #0000a0;\\">Download Admit Card</td>\\n              <td style=\\"text-align: center;\\">\\n                <a href=\\"")
-    ; __append(escapeFn( post.admit_card_url ))
-    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n              </td>\\n            </tr>\\n          ")
-    ;  } 
-    ; __append("\\n\\n          <!-- Result Link -->\\n          ")
-    ;  if (post.result_url) { 
-    ; __append("\\n            <tr>\\n              <td style=\\"font-weight: bold; color: #0000a0;\\">Download Result</td>\\n              <td style=\\"text-align: center;\\">\\n                <a href=\\"")
-    ; __append(escapeFn( post.result_url ))
-    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n              </td>\\n            </tr>\\n          ")
-    ;  } 
-    ; __append("\\n\\n          <!-- Custom Additional Links -->\\n          ")
-    ;  if (links && links.length > 0) { 
-    ; __append("\\n            ")
-    ;  links.forEach(link => { 
-    ; __append("\\n              <tr>\\n                <td style=\\"font-weight: bold;\\">")
-    ; __append(escapeFn( link.label ))
-    ; __append("</td>\\n                <td style=\\"text-align: center;\\">\\n                  <a href=\\"")
-    ; __append(escapeFn( link.url ))
-    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">")
-    ; __append(escapeFn( link.btn_text || 'Click Here' ))
-    ; __append("</a>\\n                </td>\\n              </tr>\\n            ")
-    ;  }) 
-    ; __append("\\n          ")
-    ;  } 
-    ; __append("\\n\\n          <!-- Photo Resizer Specs Tool Link -->\\n          <tr>\\n            <td style=\\"font-weight: bold;\\">Check Photo &amp; Signature Upload Specs</td>\\n            <td style=\\"text-align: center;\\">\\n              <a href=\\"/tools/photo-resizer\\" target=\\"_blank\\" class=\\"useful-link-text\\">View Guide</a>\\n            </td>\\n          </tr>\\n\\n          <!-- Official Website -->\\n          ")
-    ;  if (post.official_website_url) { 
-    ; __append("\\n            <tr>\\n              <td style=\\"font-weight: bold;\\">Official Website</td>\\n              <td style=\\"text-align: center;\\">\\n                <a href=\\"")
-    ; __append(escapeFn( post.official_website_url ))
-    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n              </td>\\n            </tr>\\n          ")
-    ;  } 
-    ; __append("\\n        </tbody>\\n      </table>\\n\\n    <!-- Related Posts -->\\n    ")
+    ; __append("\\" target=\\"_blank\\" rel=\\"noopener noreferrer\\" class=\\"social-btn whatsapp\\">WhatsApp Channel</a>\\n    </div>\\n\\n    ")
+    ; __append( include('../partials/detail-body') )
+    ; __append("\\n\\n    <!-- Related Posts -->\\n    ")
     ;  if (relatedPosts && relatedPosts.length > 0) { 
     ; __append("\\n      <div style=\\"margin-top: 30px; border-top: 2px solid #ddd; padding-top: 15px;\\">\\n        <h3 style=\\"color: var(--primary-red); margin-bottom: 10px;\\">More ")
     ; __append(escapeFn( catInfo.name ))
@@ -79814,7 +79784,9 @@ var require_templateEngine = __commonJS({
     ;  }) 
     ; __append("\\n        </ul>\\n      </div>\\n    ")
     ;  } 
-    ; __append("\\n  </article>\\n</main>\\n\\n")
+    ; __append("\\n  </article>\\n</main>\\n")
+    ;  } 
+    ; __append("\\n\\n")
     ; __append( include('../partials/footer') )
     ; __append("\\n")
   }
@@ -80969,6 +80941,446 @@ var require_templateEngine = __commonJS({
     ; __append("\\">\\n            <span>")
     ; __append(escapeFn( (typeof isEditor !== 'undefined' && isEditor) ? '\u{1F6E1}\uFE0F Senior Editor' : '\u270D\uFE0F Verified Author' ))
     ; __append("</span>\\n          </span>\\n          <a href=\\"/\\" target=\\"_blank\\" class=\\"topbar-action-btn view-site-btn\\" style=\\"text-decoration: none;\\">\\n            <span>\u{1F310} View Site</span>\\n          </a>\\n          <a href=\\"/author-portal/logout\\" class=\\"topbar-action-btn\\" title=\\"Logout\\" style=\\"text-decoration: none; color: #ef4444;\\">\\n            <span>\u{1F6AA} Logout</span>\\n          </a>\\n        </div>\\n      </div>\\n    </header>\\n\\n    <!-- Main Content Container -->\\n    <div class=\\"admin-container\\">\\n")
+  }
+  return __output;
+`,
+      "partials/detail-body.ejs": `  var __output = "";
+  function __append(s) { if (s !== undefined && s !== null) __output += s }
+  with (locals || {}) {
+    ; 
+  const _isBlogMode = (typeof settings !== 'undefined' && settings.post_detail_layout === 'blog_2col');
+  const _hasRichArticle = Boolean(post.article_content && post.article_content.trim());
+  const _hasDates = Boolean(importantDates && importantDates.length > 0);
+  const _hasFees = Boolean(applicationFee && applicationFee.length > 0);
+  const _hasAnyLink = Boolean(
+    post.apply_online_url ||
+    post.notification_pdf ||
+    post.admit_card_url ||
+    post.result_url ||
+    post.official_website_url ||
+    (links && links.length > 0)
+  );
+
+    ; __append("\\n\\n<!-- Short Information -->\\n")
+    ;  if (post.short_desc) { 
+    ; __append("\\n  ")
+    ;  if (_isBlogMode) { 
+    ; __append("\\n    <div class=\\"gez-summary-box\\">\\n      <div class=\\"gez-summary-badge\\">")
+    ; __append(escapeFn( catInfo.name ))
+    ; __append(" Overview</div>\\n      <p style=\\"margin: 0;\\">")
+    ; __append(escapeFn( post.short_desc ))
+    ; __append("</p>\\n    </div>\\n  ")
+    ;  } else { 
+    ; __append("\\n    <div class=\\"detail-short-info\\">\\n      ")
+    ; __append(escapeFn( post.short_desc ))
+    ; __append("\\n    </div>\\n  ")
+    ;  } 
+    ; __append("\\n")
+    ;  } 
+    ; __append("\\n\\n<!-- Optional Full Blog Article / Detailed Editorial Content -->\\n")
+    ;  if (_hasRichArticle) { 
+    ; __append("\\n  <div class=\\"gez-article-content\\" id=\\"article-content\\">\\n    ")
+    ; __append( post.article_content )
+    ; __append("\\n  </div>\\n")
+    ;  } 
+    ; __append("\\n\\n<!-- 2-Column Info Grid: Important Dates & Application Fee -->\\n")
+    ;  if (!_isBlogMode || _hasDates || _hasFees || !_hasRichArticle) { 
+    ; __append("\\n<div class=\\"detail-info-grid\\">\\n  <!-- Important Dates -->\\n  <div class=\\"info-card\\" id=\\"dates\\">\\n    <div class=\\"info-card-header\\">")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Important Exam & Syllabus Dates' : (post.category === 'admit-card' ? 'Important Dates & Exam Schedule' : (post.category === 'result' ? 'Important Dates & Result Schedule' : 'Important Dates')) ))
+    ; __append("</div>\\n    <div class=\\"info-card-body\\">\\n      ")
+    ;  if (_hasDates) { 
+    ; __append("\\n        <ul>\\n          ")
+    ;  importantDates.forEach(item => { 
+    ; __append("\\n            <li>\\n              <span class=\\"info-label\\">")
+    ; __append(escapeFn( item.event ))
+    ; __append(" : </span>\\n              <b class=\\"important-val-date\\">")
+    ; __append(escapeFn( item.date ))
+    ; __append("</b>\\n            </li>\\n          ")
+    ;  }) 
+    ; __append("\\n        </ul>\\n      ")
+    ;  } else { 
+    ; __append("\\n        <p style=\\"color:#666;\\">No date schedule available.</p>\\n      ")
+    ;  } 
+    ; __append("\\n    </div>\\n  </div>\\n\\n  <!-- Application Fee -->\\n  <div class=\\"info-card\\" id=\\"fees\\">\\n    <div class=\\"info-card-header red\\">")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Application / Download Fee' : (post.category === 'admit-card' ? 'Admit Card / Download Fee' : (post.category === 'result' ? 'Result Checking Fee' : 'Application Fee')) ))
+    ; __append("</div>\\n    <div class=\\"info-card-body\\">\\n      ")
+    ;  if (_hasFees) { 
+    ; __append("\\n        <ul>\\n          ")
+    ;  applicationFee.forEach(item => { 
+    ; __append("\\n            <li>\\n              <span class=\\"info-label\\">")
+    ; __append(escapeFn( item.category ))
+    ; __append(" : </span>\\n              <b class=\\"important-val-fee\\">")
+    ; __append(escapeFn( item.fee ))
+    ; __append("</b>\\n            </li>\\n          ")
+    ;  }) 
+    ; __append("\\n        </ul>\\n      ")
+    ;  } else { 
+    ; __append("\\n        <p style=\\"color:#666;\\">No fee details available.</p>\\n      ")
+    ;  } 
+    ; __append("\\n    </div>\\n  </div>\\n</div>\\n")
+    ;  } 
+    ; __append("\\n\\n<!-- Age Limit Details -->\\n")
+    ;  if (ageLimit && (ageLimit.min_age || ageLimit.max_age || ageLimit.relaxation)) { 
+    ; __append("\\n  <div class=\\"info-card\\" style=\\"margin-bottom: 20px;\\" id=\\"agelimit\\">\\n    <div class=\\"info-card-header\\" style=\\"background: #006400;\\">\\n      ")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Age Limit & Eligibility Overview ' : (post.category === 'admit-card' ? 'Age Limit & Eligibility Criteria ' : 'Age Limit Details ') ))
+    ; __append(escapeFn( ageLimit.as_on ? \`(as on \${ageLimit.as_on})\` : '' ))
+    ; __append("\\n    </div>\\n    <div class=\\"info-card-body\\">\\n      <ul>\\n        ")
+    ;  if (ageLimit.min_age) { 
+    ; __append("\\n          <li><span class=\\"info-label\\">Minimum Age : </span><b class=\\"important-val-text\\">")
+    ; __append(escapeFn( ageLimit.min_age ))
+    ; __append("</b></li>\\n        ")
+    ;  } 
+    ; __append("\\n        ")
+    ;  if (ageLimit.max_age) { 
+    ; __append("\\n          <li><span class=\\"info-label\\">Maximum Age : </span><b class=\\"important-val-text\\">")
+    ; __append(escapeFn( ageLimit.max_age ))
+    ; __append("</b></li>\\n        ")
+    ;  } 
+    ; __append("\\n        ")
+    ;  if (ageLimit.relaxation) { 
+    ; __append("\\n          <li><span class=\\"info-label\\">Age Relaxation : </span><b class=\\"important-val-text\\">")
+    ; __append(escapeFn( ageLimit.relaxation ))
+    ; __append("</b></li>\\n        ")
+    ;  } 
+    ; __append("\\n        ")
+    ;  if (false) { /* Hidden for now as requested */ 
+    ; __append("\\n        <li style=\\"margin-top: 5px;\\">\\n          <a href=\\"/tools/age-calculator\\" target=\\"_blank\\" style=\\"color: #0000a0; font-weight: bold;\\">\\n            \u{1F449} Calculate Your Exact Age Using Online Age Calculator\\n          </a>\\n        </li>\\n        ")
+    ;  } 
+    ; __append("\\n      </ul>\\n    </div>\\n  </div>\\n")
+    ;  } 
+    ; __append("\\n\\n<!-- Vacancy Details Table -->\\n<div id=\\"vacancies\\">\\n")
+    ;  if (vacancyDetails && vacancyDetails.length > 0) { 
+    ; __append("\\n  <div style=\\"text-align: center; margin: 15px 0 5px 0;\\">\\n    <h2 style=\\"color: var(--primary-red); font-size: 20px;\\">\\n      ")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Selection Process & Exam Pattern Details' : (post.category === 'admit-card' ? 'Exam Scheme & Selection Details' : (post.category === 'result' ? 'Result & Post Overview' : ('Vacancy Details : ' + (post.total_vacancy ? post.total_vacancy : '')))) ))
+    ; __append("\\n    </h2>\\n  </div>\\n\\n  <div class=\\"table-responsive\\">\\n    <table class=\\"detail-table\\">\\n      <thead>\\n        <tr>\\n          <th style=\\"width: 30%;\\">")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Exam Stage / Paper' : (post.category === 'admit-card' ? 'Post / Exam Stage' : 'Post Name') ))
+    ; __append("</th>\\n          <th style=\\"width: 20%;\\">")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Pattern & Duration' : (post.category === 'admit-card' ? 'Exam Pattern' : 'Total Post') ))
+    ; __append("</th>\\n          <th style=\\"width: 50%;\\">")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Syllabus & Subject Scheme' : (post.category === 'admit-card' ? 'Eligibility & Selection Criteria' : 'Eligibility Criteria') ))
+    ; __append("</th>\\n        </tr>\\n      </thead>\\n      <tbody>\\n        ")
+    ;  vacancyDetails.forEach(v => { 
+    ; __append("\\n          <tr>\\n            <td><b class=\\"important-val-text\\">")
+    ; __append(escapeFn( v.post_name ))
+    ; __append("</b></td>\\n            <td style=\\"text-align: center; font-weight: 800; font-size: 16.5px; color: #0000a0;\\">")
+    ; __append(escapeFn( v.total_post ))
+    ; __append("</td>\\n            <td>")
+    ; __append(escapeFn( v.eligibility ))
+    ; __append("</td>\\n          </tr>\\n        ")
+    ;  }) 
+    ; __append("\\n      </tbody>\\n    </table>\\n  </div>\\n")
+    ;  } 
+    ; __append("\\n</div>\\n\\n<!-- Category-wise Vacancy Distribution Table -->\\n")
+    ;  if (categoryDetails && categoryDetails.length > 0) { 
+    ; __append("\\n  <div style=\\"text-align: center; margin: 15px 0 5px 0;\\">\\n    <h3 style=\\"color: #2b547e; font-size: 18px;\\">\\n      ")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Category-Wise Minimum Qualifying Marks Standards' : 'Category Wise Vacancy Details' ))
+    ; __append("\\n    </h3>\\n  </div>\\n  <div class=\\"table-responsive\\">\\n    <table class=\\"detail-table table-wide\\">\\n      <thead>\\n        <tr style=\\"background: #2b547e;\\">\\n          <th>")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Stage / Paper' : 'Post Name' ))
+    ; __append("</th>\\n          <th>UR / Gen</th>\\n          <th>EWS</th>\\n          <th>OBC</th>\\n          <th>SC</th>\\n          <th>ST</th>\\n          <th>")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Standard' : 'Total' ))
+    ; __append("</th>\\n        </tr>\\n      </thead>\\n      <tbody>\\n        ")
+    ;  categoryDetails.forEach(c => { 
+    ; __append("\\n          <tr style=\\"text-align: center;\\">\\n            <td style=\\"text-align: left; font-weight: bold;\\">")
+    ; __append(escapeFn( c.post_name ))
+    ; __append("</td>\\n            <td>")
+    ; __append(escapeFn( c.ur || '-' ))
+    ; __append("</td>\\n            <td>")
+    ; __append(escapeFn( c.ews || '-' ))
+    ; __append("</td>\\n            <td>")
+    ; __append(escapeFn( c.obc || '-' ))
+    ; __append("</td>\\n            <td>")
+    ; __append(escapeFn( c.sc || '-' ))
+    ; __append("</td>\\n            <td>")
+    ; __append(escapeFn( c.st || '-' ))
+    ; __append("</td>\\n            <td style=\\"font-weight: bold; color: var(--primary-red);\\">")
+    ; __append(escapeFn( c.total || '-' ))
+    ; __append("</td>\\n          </tr>\\n        ")
+    ;  }) 
+    ; __append("\\n      </tbody>\\n    </table>\\n  </div>\\n")
+    ;  } 
+    ; __append("\\n\\n<!-- How to Apply Instructions -->\\n<div id=\\"howto\\">\\n")
+    ;  if (post.how_to_apply && post.how_to_apply.trim()) { 
+    ; __append("\\n  <div style=\\"margin: 20px 0;\\">\\n    <h3 style=\\"color: var(--primary-red); font-size: 18px; margin-bottom: 8px;\\">\\n      ")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'How to Check & Download ' + post.title + ' :' : (post.category === 'admit-card' ? 'How to Download ' + post.title + ' :' : (post.category === 'result' ? 'How to Check ' + post.title + ' :' : 'How to Fill ' + post.title + ' Online Form:')) ))
+    ; __append("\\n    </h3>\\n    <div class=\\"how-to-apply-box\\">\\n      ")
+    ; __append(escapeFn( post.how_to_apply ))
+    ; __append("\\n    </div>\\n  </div>\\n")
+    ;  } 
+    ; __append("\\n</div>\\n\\n<!-- Useful Important Links Table -->\\n")
+    ;  if (!_isBlogMode || _hasAnyLink || !_hasRichArticle) { 
+    ; __append("\\n<div style=\\"text-align: center; margin: 16px 0; color: #c62828; font-weight: bold; font-size: 16px;\\">\\n  ")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Candidates Can Download the Complete Syllabus & Exam Pattern PDF Below' : (post.category === 'admit-card' ? 'Candidates Can Download Admit Card / Hall Ticket from the Links Below' : (post.category === 'result' ? 'Candidates Can Check Result / Scorecard from the Links Below' : 'Interested Candidates Can Read the Full Notification Before Apply Online')) ))
+    ; __append("\\n</div>\\n\\n<div id=\\"links\\" style=\\"text-align: center; margin: 25px 0 10px 0;\\">\\n  <h2 class=\\"useful-links-heading\\">Some Useful Important Links</h2>\\n</div>\\n\\n<div class=\\"table-responsive links-table-responsive\\">\\n  <table class=\\"detail-table links-table\\">\\n    <tbody>\\n      <!-- Apply Online -->\\n      ")
+    ;  if (post.apply_online_url) { 
+    ; __append("\\n        <tr>\\n          <td style=\\"font-weight: bold; color: #006400;\\">Apply Online</td>\\n          <td style=\\"text-align: center;\\">\\n            <a href=\\"")
+    ; __append(escapeFn( post.apply_online_url ))
+    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n          </td>\\n        </tr>\\n      ")
+    ;  } 
+    ; __append("\\n\\n      <!-- Download Official Notification -->\\n      ")
+    ;  if (post.notification_pdf) { 
+    ; __append("\\n        <tr>\\n          <td style=\\"font-weight: bold; color: #b71c1c;\\">Download Notification (PDF)</td>\\n          <td style=\\"text-align: center;\\">\\n            <a href=\\"")
+    ; __append(escapeFn( post.notification_pdf ))
+    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n          </td>\\n        </tr>\\n      ")
+    ;  } 
+    ; __append("\\n\\n      <!-- Admit Card Link -->\\n      ")
+    ;  if (post.admit_card_url) { 
+    ; __append("\\n        <tr>\\n          <td style=\\"font-weight: bold; color: #0000a0;\\">Download Admit Card</td>\\n          <td style=\\"text-align: center;\\">\\n            <a href=\\"")
+    ; __append(escapeFn( post.admit_card_url ))
+    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n          </td>\\n        </tr>\\n      ")
+    ;  } 
+    ; __append("\\n\\n      <!-- Result Link -->\\n      ")
+    ;  if (post.result_url) { 
+    ; __append("\\n        <tr>\\n          <td style=\\"font-weight: bold; color: #0000a0;\\">Download Result</td>\\n          <td style=\\"text-align: center;\\">\\n            <a href=\\"")
+    ; __append(escapeFn( post.result_url ))
+    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n          </td>\\n        </tr>\\n      ")
+    ;  } 
+    ; __append("\\n\\n      <!-- Custom Additional Links -->\\n      ")
+    ;  if (links && links.length > 0) { 
+    ; __append("\\n        ")
+    ;  links.forEach(link => { 
+    ; __append("\\n          <tr>\\n            <td style=\\"font-weight: bold;\\">")
+    ; __append(escapeFn( link.label ))
+    ; __append("</td>\\n            <td style=\\"text-align: center;\\">\\n              <a href=\\"")
+    ; __append(escapeFn( link.url ))
+    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">")
+    ; __append(escapeFn( link.btn_text || 'Click Here' ))
+    ; __append("</a>\\n            </td>\\n          </tr>\\n        ")
+    ;  }) 
+    ; __append("\\n      ")
+    ;  } 
+    ; __append("\\n\\n      ")
+    ;  if (!_isBlogMode) { 
+    ; __append("\\n      <!-- Photo Resizer Specs Tool Link -->\\n      <tr>\\n        <td style=\\"font-weight: bold;\\">Check Photo &amp; Signature Upload Specs</td>\\n        <td style=\\"text-align: center;\\">\\n          <a href=\\"/tools/photo-resizer\\" target=\\"_blank\\" class=\\"useful-link-text\\">View Guide</a>\\n        </td>\\n      </tr>\\n      ")
+    ;  } 
+    ; __append("\\n\\n      <!-- Official Website -->\\n      ")
+    ;  if (post.official_website_url) { 
+    ; __append("\\n        <tr>\\n          <td style=\\"font-weight: bold;\\">Official Website</td>\\n          <td style=\\"text-align: center;\\">\\n            <a href=\\"")
+    ; __append(escapeFn( post.official_website_url ))
+    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n          </td>\\n        </tr>\\n      ")
+    ;  } 
+    ; __append("\\n    </tbody>\\n  </table>\\n</div>\\n")
+    ;  } 
+    ; __append("\\n")
+  }
+  return __output;
+`,
+      "views/partials/detail-body.ejs": `  var __output = "";
+  function __append(s) { if (s !== undefined && s !== null) __output += s }
+  with (locals || {}) {
+    ; 
+  const _isBlogMode = (typeof settings !== 'undefined' && settings.post_detail_layout === 'blog_2col');
+  const _hasRichArticle = Boolean(post.article_content && post.article_content.trim());
+  const _hasDates = Boolean(importantDates && importantDates.length > 0);
+  const _hasFees = Boolean(applicationFee && applicationFee.length > 0);
+  const _hasAnyLink = Boolean(
+    post.apply_online_url ||
+    post.notification_pdf ||
+    post.admit_card_url ||
+    post.result_url ||
+    post.official_website_url ||
+    (links && links.length > 0)
+  );
+
+    ; __append("\\n\\n<!-- Short Information -->\\n")
+    ;  if (post.short_desc) { 
+    ; __append("\\n  ")
+    ;  if (_isBlogMode) { 
+    ; __append("\\n    <div class=\\"gez-summary-box\\">\\n      <div class=\\"gez-summary-badge\\">")
+    ; __append(escapeFn( catInfo.name ))
+    ; __append(" Overview</div>\\n      <p style=\\"margin: 0;\\">")
+    ; __append(escapeFn( post.short_desc ))
+    ; __append("</p>\\n    </div>\\n  ")
+    ;  } else { 
+    ; __append("\\n    <div class=\\"detail-short-info\\">\\n      ")
+    ; __append(escapeFn( post.short_desc ))
+    ; __append("\\n    </div>\\n  ")
+    ;  } 
+    ; __append("\\n")
+    ;  } 
+    ; __append("\\n\\n<!-- Optional Full Blog Article / Detailed Editorial Content -->\\n")
+    ;  if (_hasRichArticle) { 
+    ; __append("\\n  <div class=\\"gez-article-content\\" id=\\"article-content\\">\\n    ")
+    ; __append( post.article_content )
+    ; __append("\\n  </div>\\n")
+    ;  } 
+    ; __append("\\n\\n<!-- 2-Column Info Grid: Important Dates & Application Fee -->\\n")
+    ;  if (!_isBlogMode || _hasDates || _hasFees || !_hasRichArticle) { 
+    ; __append("\\n<div class=\\"detail-info-grid\\">\\n  <!-- Important Dates -->\\n  <div class=\\"info-card\\" id=\\"dates\\">\\n    <div class=\\"info-card-header\\">")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Important Exam & Syllabus Dates' : (post.category === 'admit-card' ? 'Important Dates & Exam Schedule' : (post.category === 'result' ? 'Important Dates & Result Schedule' : 'Important Dates')) ))
+    ; __append("</div>\\n    <div class=\\"info-card-body\\">\\n      ")
+    ;  if (_hasDates) { 
+    ; __append("\\n        <ul>\\n          ")
+    ;  importantDates.forEach(item => { 
+    ; __append("\\n            <li>\\n              <span class=\\"info-label\\">")
+    ; __append(escapeFn( item.event ))
+    ; __append(" : </span>\\n              <b class=\\"important-val-date\\">")
+    ; __append(escapeFn( item.date ))
+    ; __append("</b>\\n            </li>\\n          ")
+    ;  }) 
+    ; __append("\\n        </ul>\\n      ")
+    ;  } else { 
+    ; __append("\\n        <p style=\\"color:#666;\\">No date schedule available.</p>\\n      ")
+    ;  } 
+    ; __append("\\n    </div>\\n  </div>\\n\\n  <!-- Application Fee -->\\n  <div class=\\"info-card\\" id=\\"fees\\">\\n    <div class=\\"info-card-header red\\">")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Application / Download Fee' : (post.category === 'admit-card' ? 'Admit Card / Download Fee' : (post.category === 'result' ? 'Result Checking Fee' : 'Application Fee')) ))
+    ; __append("</div>\\n    <div class=\\"info-card-body\\">\\n      ")
+    ;  if (_hasFees) { 
+    ; __append("\\n        <ul>\\n          ")
+    ;  applicationFee.forEach(item => { 
+    ; __append("\\n            <li>\\n              <span class=\\"info-label\\">")
+    ; __append(escapeFn( item.category ))
+    ; __append(" : </span>\\n              <b class=\\"important-val-fee\\">")
+    ; __append(escapeFn( item.fee ))
+    ; __append("</b>\\n            </li>\\n          ")
+    ;  }) 
+    ; __append("\\n        </ul>\\n      ")
+    ;  } else { 
+    ; __append("\\n        <p style=\\"color:#666;\\">No fee details available.</p>\\n      ")
+    ;  } 
+    ; __append("\\n    </div>\\n  </div>\\n</div>\\n")
+    ;  } 
+    ; __append("\\n\\n<!-- Age Limit Details -->\\n")
+    ;  if (ageLimit && (ageLimit.min_age || ageLimit.max_age || ageLimit.relaxation)) { 
+    ; __append("\\n  <div class=\\"info-card\\" style=\\"margin-bottom: 20px;\\" id=\\"agelimit\\">\\n    <div class=\\"info-card-header\\" style=\\"background: #006400;\\">\\n      ")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Age Limit & Eligibility Overview ' : (post.category === 'admit-card' ? 'Age Limit & Eligibility Criteria ' : 'Age Limit Details ') ))
+    ; __append(escapeFn( ageLimit.as_on ? \`(as on \${ageLimit.as_on})\` : '' ))
+    ; __append("\\n    </div>\\n    <div class=\\"info-card-body\\">\\n      <ul>\\n        ")
+    ;  if (ageLimit.min_age) { 
+    ; __append("\\n          <li><span class=\\"info-label\\">Minimum Age : </span><b class=\\"important-val-text\\">")
+    ; __append(escapeFn( ageLimit.min_age ))
+    ; __append("</b></li>\\n        ")
+    ;  } 
+    ; __append("\\n        ")
+    ;  if (ageLimit.max_age) { 
+    ; __append("\\n          <li><span class=\\"info-label\\">Maximum Age : </span><b class=\\"important-val-text\\">")
+    ; __append(escapeFn( ageLimit.max_age ))
+    ; __append("</b></li>\\n        ")
+    ;  } 
+    ; __append("\\n        ")
+    ;  if (ageLimit.relaxation) { 
+    ; __append("\\n          <li><span class=\\"info-label\\">Age Relaxation : </span><b class=\\"important-val-text\\">")
+    ; __append(escapeFn( ageLimit.relaxation ))
+    ; __append("</b></li>\\n        ")
+    ;  } 
+    ; __append("\\n        ")
+    ;  if (false) { /* Hidden for now as requested */ 
+    ; __append("\\n        <li style=\\"margin-top: 5px;\\">\\n          <a href=\\"/tools/age-calculator\\" target=\\"_blank\\" style=\\"color: #0000a0; font-weight: bold;\\">\\n            \u{1F449} Calculate Your Exact Age Using Online Age Calculator\\n          </a>\\n        </li>\\n        ")
+    ;  } 
+    ; __append("\\n      </ul>\\n    </div>\\n  </div>\\n")
+    ;  } 
+    ; __append("\\n\\n<!-- Vacancy Details Table -->\\n<div id=\\"vacancies\\">\\n")
+    ;  if (vacancyDetails && vacancyDetails.length > 0) { 
+    ; __append("\\n  <div style=\\"text-align: center; margin: 15px 0 5px 0;\\">\\n    <h2 style=\\"color: var(--primary-red); font-size: 20px;\\">\\n      ")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Selection Process & Exam Pattern Details' : (post.category === 'admit-card' ? 'Exam Scheme & Selection Details' : (post.category === 'result' ? 'Result & Post Overview' : ('Vacancy Details : ' + (post.total_vacancy ? post.total_vacancy : '')))) ))
+    ; __append("\\n    </h2>\\n  </div>\\n\\n  <div class=\\"table-responsive\\">\\n    <table class=\\"detail-table\\">\\n      <thead>\\n        <tr>\\n          <th style=\\"width: 30%;\\">")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Exam Stage / Paper' : (post.category === 'admit-card' ? 'Post / Exam Stage' : 'Post Name') ))
+    ; __append("</th>\\n          <th style=\\"width: 20%;\\">")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Pattern & Duration' : (post.category === 'admit-card' ? 'Exam Pattern' : 'Total Post') ))
+    ; __append("</th>\\n          <th style=\\"width: 50%;\\">")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Syllabus & Subject Scheme' : (post.category === 'admit-card' ? 'Eligibility & Selection Criteria' : 'Eligibility Criteria') ))
+    ; __append("</th>\\n        </tr>\\n      </thead>\\n      <tbody>\\n        ")
+    ;  vacancyDetails.forEach(v => { 
+    ; __append("\\n          <tr>\\n            <td><b class=\\"important-val-text\\">")
+    ; __append(escapeFn( v.post_name ))
+    ; __append("</b></td>\\n            <td style=\\"text-align: center; font-weight: 800; font-size: 16.5px; color: #0000a0;\\">")
+    ; __append(escapeFn( v.total_post ))
+    ; __append("</td>\\n            <td>")
+    ; __append(escapeFn( v.eligibility ))
+    ; __append("</td>\\n          </tr>\\n        ")
+    ;  }) 
+    ; __append("\\n      </tbody>\\n    </table>\\n  </div>\\n")
+    ;  } 
+    ; __append("\\n</div>\\n\\n<!-- Category-wise Vacancy Distribution Table -->\\n")
+    ;  if (categoryDetails && categoryDetails.length > 0) { 
+    ; __append("\\n  <div style=\\"text-align: center; margin: 15px 0 5px 0;\\">\\n    <h3 style=\\"color: #2b547e; font-size: 18px;\\">\\n      ")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Category-Wise Minimum Qualifying Marks Standards' : 'Category Wise Vacancy Details' ))
+    ; __append("\\n    </h3>\\n  </div>\\n  <div class=\\"table-responsive\\">\\n    <table class=\\"detail-table table-wide\\">\\n      <thead>\\n        <tr style=\\"background: #2b547e;\\">\\n          <th>")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Stage / Paper' : 'Post Name' ))
+    ; __append("</th>\\n          <th>UR / Gen</th>\\n          <th>EWS</th>\\n          <th>OBC</th>\\n          <th>SC</th>\\n          <th>ST</th>\\n          <th>")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Standard' : 'Total' ))
+    ; __append("</th>\\n        </tr>\\n      </thead>\\n      <tbody>\\n        ")
+    ;  categoryDetails.forEach(c => { 
+    ; __append("\\n          <tr style=\\"text-align: center;\\">\\n            <td style=\\"text-align: left; font-weight: bold;\\">")
+    ; __append(escapeFn( c.post_name ))
+    ; __append("</td>\\n            <td>")
+    ; __append(escapeFn( c.ur || '-' ))
+    ; __append("</td>\\n            <td>")
+    ; __append(escapeFn( c.ews || '-' ))
+    ; __append("</td>\\n            <td>")
+    ; __append(escapeFn( c.obc || '-' ))
+    ; __append("</td>\\n            <td>")
+    ; __append(escapeFn( c.sc || '-' ))
+    ; __append("</td>\\n            <td>")
+    ; __append(escapeFn( c.st || '-' ))
+    ; __append("</td>\\n            <td style=\\"font-weight: bold; color: var(--primary-red);\\">")
+    ; __append(escapeFn( c.total || '-' ))
+    ; __append("</td>\\n          </tr>\\n        ")
+    ;  }) 
+    ; __append("\\n      </tbody>\\n    </table>\\n  </div>\\n")
+    ;  } 
+    ; __append("\\n\\n<!-- How to Apply Instructions -->\\n<div id=\\"howto\\">\\n")
+    ;  if (post.how_to_apply && post.how_to_apply.trim()) { 
+    ; __append("\\n  <div style=\\"margin: 20px 0;\\">\\n    <h3 style=\\"color: var(--primary-red); font-size: 18px; margin-bottom: 8px;\\">\\n      ")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'How to Check & Download ' + post.title + ' :' : (post.category === 'admit-card' ? 'How to Download ' + post.title + ' :' : (post.category === 'result' ? 'How to Check ' + post.title + ' :' : 'How to Fill ' + post.title + ' Online Form:')) ))
+    ; __append("\\n    </h3>\\n    <div class=\\"how-to-apply-box\\">\\n      ")
+    ; __append(escapeFn( post.how_to_apply ))
+    ; __append("\\n    </div>\\n  </div>\\n")
+    ;  } 
+    ; __append("\\n</div>\\n\\n<!-- Useful Important Links Table -->\\n")
+    ;  if (!_isBlogMode || _hasAnyLink || !_hasRichArticle) { 
+    ; __append("\\n<div style=\\"text-align: center; margin: 16px 0; color: #c62828; font-weight: bold; font-size: 16px;\\">\\n  ")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Candidates Can Download the Complete Syllabus & Exam Pattern PDF Below' : (post.category === 'admit-card' ? 'Candidates Can Download Admit Card / Hall Ticket from the Links Below' : (post.category === 'result' ? 'Candidates Can Check Result / Scorecard from the Links Below' : 'Interested Candidates Can Read the Full Notification Before Apply Online')) ))
+    ; __append("\\n</div>\\n\\n<div id=\\"links\\" style=\\"text-align: center; margin: 25px 0 10px 0;\\">\\n  <h2 class=\\"useful-links-heading\\">Some Useful Important Links</h2>\\n</div>\\n\\n<div class=\\"table-responsive links-table-responsive\\">\\n  <table class=\\"detail-table links-table\\">\\n    <tbody>\\n      <!-- Apply Online -->\\n      ")
+    ;  if (post.apply_online_url) { 
+    ; __append("\\n        <tr>\\n          <td style=\\"font-weight: bold; color: #006400;\\">Apply Online</td>\\n          <td style=\\"text-align: center;\\">\\n            <a href=\\"")
+    ; __append(escapeFn( post.apply_online_url ))
+    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n          </td>\\n        </tr>\\n      ")
+    ;  } 
+    ; __append("\\n\\n      <!-- Download Official Notification -->\\n      ")
+    ;  if (post.notification_pdf) { 
+    ; __append("\\n        <tr>\\n          <td style=\\"font-weight: bold; color: #b71c1c;\\">Download Notification (PDF)</td>\\n          <td style=\\"text-align: center;\\">\\n            <a href=\\"")
+    ; __append(escapeFn( post.notification_pdf ))
+    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n          </td>\\n        </tr>\\n      ")
+    ;  } 
+    ; __append("\\n\\n      <!-- Admit Card Link -->\\n      ")
+    ;  if (post.admit_card_url) { 
+    ; __append("\\n        <tr>\\n          <td style=\\"font-weight: bold; color: #0000a0;\\">Download Admit Card</td>\\n          <td style=\\"text-align: center;\\">\\n            <a href=\\"")
+    ; __append(escapeFn( post.admit_card_url ))
+    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n          </td>\\n        </tr>\\n      ")
+    ;  } 
+    ; __append("\\n\\n      <!-- Result Link -->\\n      ")
+    ;  if (post.result_url) { 
+    ; __append("\\n        <tr>\\n          <td style=\\"font-weight: bold; color: #0000a0;\\">Download Result</td>\\n          <td style=\\"text-align: center;\\">\\n            <a href=\\"")
+    ; __append(escapeFn( post.result_url ))
+    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n          </td>\\n        </tr>\\n      ")
+    ;  } 
+    ; __append("\\n\\n      <!-- Custom Additional Links -->\\n      ")
+    ;  if (links && links.length > 0) { 
+    ; __append("\\n        ")
+    ;  links.forEach(link => { 
+    ; __append("\\n          <tr>\\n            <td style=\\"font-weight: bold;\\">")
+    ; __append(escapeFn( link.label ))
+    ; __append("</td>\\n            <td style=\\"text-align: center;\\">\\n              <a href=\\"")
+    ; __append(escapeFn( link.url ))
+    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">")
+    ; __append(escapeFn( link.btn_text || 'Click Here' ))
+    ; __append("</a>\\n            </td>\\n          </tr>\\n        ")
+    ;  }) 
+    ; __append("\\n      ")
+    ;  } 
+    ; __append("\\n\\n      ")
+    ;  if (!_isBlogMode) { 
+    ; __append("\\n      <!-- Photo Resizer Specs Tool Link -->\\n      <tr>\\n        <td style=\\"font-weight: bold;\\">Check Photo &amp; Signature Upload Specs</td>\\n        <td style=\\"text-align: center;\\">\\n          <a href=\\"/tools/photo-resizer\\" target=\\"_blank\\" class=\\"useful-link-text\\">View Guide</a>\\n        </td>\\n      </tr>\\n      ")
+    ;  } 
+    ; __append("\\n\\n      <!-- Official Website -->\\n      ")
+    ;  if (post.official_website_url) { 
+    ; __append("\\n        <tr>\\n          <td style=\\"font-weight: bold;\\">Official Website</td>\\n          <td style=\\"text-align: center;\\">\\n            <a href=\\"")
+    ; __append(escapeFn( post.official_website_url ))
+    ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n          </td>\\n        </tr>\\n      ")
+    ;  } 
+    ; __append("\\n    </tbody>\\n  </table>\\n</div>\\n")
+    ;  } 
+    ; __append("\\n")
   }
   return __output;
 `,
