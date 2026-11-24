@@ -11,6 +11,8 @@ compatibility_flags = [
 [vars]
 NODE_ENV = "production"
 ADMIN_USERNAME = "admin"
+ADMIN_SUBDOMAIN = "setup.govtexamzone.com"
+PUBLIC_SITE_URL = "https://govtexamzone.com"
 
 [[d1_databases]]
 binding = "DB"

@@ -8,7 +8,7 @@
         These colorful cards appear prominently on the homepage above the 3-column categories.
       </div>
     </div>
-    <a href="/" target="_blank" class="btn btn-secondary btn-sm">👁️ View on Homepage</a>
+    <a href="<%= (typeof publicBase !== 'undefined' ? publicBase : '') %>/" target="_blank" class="btn btn-secondary btn-sm">👁️ View on Homepage</a>
   </div>
 
   <% if (typeof saved !== 'undefined' && saved) { %>
@@ -28,7 +28,7 @@
     <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 15px; color: #1e293b;">
       ➕ Add New Quick Badge
     </h3>
-    <form action="/admin/badges/save" method="POST">
+    <form action="<%= (typeof adminBase !== 'undefined' ? adminBase : '/admin') %>/badges/save" method="POST">
       <div class="form-row">
         <div class="form-group">
           <label style="font-size: 12.5px; font-weight: 600;">Badge Title *</label>
@@ -69,7 +69,7 @@
               <small id="preview-sub-<%= b.id %>" style="opacity: 0.9; font-size: 11.5px; font-weight: normal;"><%= b.subtitle || '' %></small>
             </div>
 
-            <form action="/admin/badges/save" method="POST" id="form-badge-<%= b.id %>">
+            <form action="<%= (typeof adminBase !== 'undefined' ? adminBase : '/admin') %>/badges/save" method="POST" id="form-badge-<%= b.id %>">
               <input type="hidden" name="id" value="<%= b.id %>">
               
               <div class="form-group" style="margin-bottom: 10px;">
@@ -126,7 +126,7 @@
           </div>
 
           <div style="margin-top: 10px; border-top: 1px solid #f1f5f9; padding-top: 10px; text-align: right;">
-            <form action="/admin/badges/delete/<%= b.id %>" method="POST" style="display: inline-block;" onsubmit="return confirm('Are you sure you want to delete badge &quot;<%= b.title %>&quot;?');">
+            <form action="<%= (typeof adminBase !== 'undefined' ? adminBase : '/admin') %>/badges/delete/<%= b.id %>" method="POST" style="display: inline-block;" onsubmit="return confirm('Are you sure you want to delete badge &quot;<%= b.title %>&quot;?');">
               <button type="submit" class="btn btn-danger btn-sm" style="padding: 4px 10px; font-size: 11.5px;">
                 🗑️ Delete
               </button>

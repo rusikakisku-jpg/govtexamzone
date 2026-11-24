@@ -69,7 +69,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Interactive Table Row Builders for Post Form
 document.addEventListener('DOMContentLoaded', function() {
-  const postForm = document.querySelector('form[action*="/admin/posts/"], form[action*="/author-portal/posts/"]');
+  const postForm = document.querySelector('form[action*="/posts/"]');
   if (!postForm) return;
 
   // 1. Important Dates Builder

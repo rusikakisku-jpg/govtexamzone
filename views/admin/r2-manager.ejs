@@ -24,7 +24,7 @@
   <!-- Direct File Upload Form -->
   <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 18px; margin-bottom: 25px;">
     <h3 style="margin-top: 0; font-size: 15px;">Upload Document / PDF to Storage</h3>
-    <form action="/admin/r2/upload" method="POST" enctype="multipart/form-data" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+    <form action="<%= (typeof adminBase !== 'undefined' ? adminBase : '/admin') %>/r2/upload" method="POST" enctype="multipart/form-data" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
       <input type="file" name="file" class="form-control" style="max-width: 380px;" required accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp">
       <button type="submit" class="btn btn-primary">Upload to Storage</button>
     </form>
@@ -64,7 +64,7 @@
             <td><%= u.created_at %></td>
             <td style="text-align: right; white-space: nowrap;">
               <button type="button" class="btn btn-sm btn-secondary" onclick="copyToClipboard('<%= u.file_url %>')">Copy URL</button>
-              <form action="/admin/r2/delete" method="POST" style="display: inline-block;" onsubmit="return confirm('Delete this file from storage?');">
+              <form action="<%= (typeof adminBase !== 'undefined' ? adminBase : '/admin') %>/r2/delete" method="POST" style="display: inline-block;" onsubmit="return confirm('Delete this file from storage?');">
                 <input type="hidden" name="id" value="<%= u.id %>">
                 <input type="hidden" name="file_key" value="<%= u.file_key %>">
                 <button type="submit" class="btn btn-danger btn-sm">Delete</button>

@@ -3,7 +3,7 @@
 <div class="admin-card">
   <div class="admin-card-header">
     <h2><%= post ? 'Edit Notification: ' + post.title : 'Create New Govt Exam Zone Notification' %></h2>
-    <a href="/admin/posts" class="btn btn-secondary btn-sm">← Back to Posts</a>
+    <a href="<%= (typeof adminBase !== 'undefined' ? adminBase : '/admin') %>/posts" class="btn btn-secondary btn-sm">← Back to Posts</a>
   </div>
 
   <form action="<%= action %>" method="POST" enctype="multipart/form-data">
@@ -274,7 +274,7 @@
       <textarea 
         id="article_content" 
         name="article_content" 
-        data-upload-url="/admin/r2/upload-json"
+        data-upload-url="<%= (typeof adminBase !== 'undefined' ? adminBase : '/admin') %>/r2/upload-json"
         class="form-control" 
         rows="12" 
         placeholder="Write full blog article content here..."
@@ -361,7 +361,7 @@
       <button type="submit" class="btn btn-primary" style="font-size: 16px; padding: 10px 25px;">
         💾 <%= post ? 'Update Notification' : 'Publish Notification' %>
       </button>
-      <a href="/admin/posts" class="btn btn-secondary" style="margin-left: 10px;">Cancel</a>
+      <a href="<%= (typeof adminBase !== 'undefined' ? adminBase : '/admin') %>/posts" class="btn btn-secondary" style="margin-left: 10px;">Cancel</a>
     </div>
   </form>
 </div>

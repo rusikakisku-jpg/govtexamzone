@@ -34,7 +34,7 @@
   <!-- SQL Query Runner -->
   <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 18px; margin-bottom: 20px;">
     <h3 style="margin-top: 0; font-size: 15px;">Run SQL Query against D1 Database</h3>
-    <form action="/admin/d1/query" method="POST">
+    <form action="<%= (typeof adminBase !== 'undefined' ? adminBase : '/admin') %>/d1/query" method="POST">
       <div class="form-group">
         <textarea name="sql_query" class="form-control" rows="3" style="font-family: monospace; font-size: 13.5px;" placeholder="SELECT id, title, category, views FROM posts ORDER BY id DESC LIMIT 10;"><%= typeof sqlQuery !== 'undefined' ? sqlQuery : 'SELECT id, title, category, views FROM posts ORDER BY id DESC LIMIT 5;' %></textarea>
       </div>

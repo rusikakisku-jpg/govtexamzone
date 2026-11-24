@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const config = require('../config/env');
+const { getAdminUrl, isHttpsRequest } = require('../utils/adminHost');
 
 function getAllValidTokens() {
   const secret = config.server.sessionSecret;
@@ -37,21 +38,27 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Unauthorized: Admin authentication required' });
   }
 
-  res.redirect('/admin/login');
+  res.redirect(getAdminUrl(req, '/login'));
 }
 
-function setAuthCookie(res) {
+function setAuthCookie(res, req) {
   const token = getExpectedToken();
   res.cookie('sr_admin_token', token, {
     httpOnly: true,
+    secure: isHttpsRequest(req),
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     sameSite: 'lax',
     path: '/'
   });
 }
 
-function clearAuthCookie(res) {
-  res.clearCookie('sr_admin_token', { path: '/' });
+function clearAuthCookie(res, req) {
+  res.clearCookie('sr_admin_token', {
+    httpOnly: true,
+    secure: isHttpsRequest(req),
+    sameSite: 'lax',
+    path: '/'
+  });
 }
 
 module.exports = {

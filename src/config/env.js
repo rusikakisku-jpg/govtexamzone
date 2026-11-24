@@ -15,7 +15,9 @@ const config = {
   },
   admin: {
     username: process.env.ADMIN_USERNAME || cfEnv.ADMIN_USERNAME || 'admin',
-    password: process.env.ADMIN_PASSWORD || cfEnv.ADMIN_PASSWORD || 'govtexamzone@2026'
+    password: process.env.ADMIN_PASSWORD || cfEnv.ADMIN_PASSWORD || 'govtexamzone@2026',
+    subdomain: (process.env.ADMIN_SUBDOMAIN || cfEnv.ADMIN_SUBDOMAIN || 'setup.govtexamzone.com').trim().toLowerCase(),
+    publicSiteUrl: (process.env.PUBLIC_SITE_URL || cfEnv.PUBLIC_SITE_URL || 'https://govtexamzone.com').trim().replace(/\/+$/, '')
   },
   cloudflare: {
     d1: {

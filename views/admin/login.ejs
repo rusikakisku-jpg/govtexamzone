@@ -327,7 +327,7 @@
     
     <!-- Brand Header -->
     <div class="brand-header">
-      <a href="/" class="brand-emblem" title="Back to Homepage">
+      <a href="<%= (typeof publicBase !== 'undefined' ? publicBase : '') %>/" class="brand-emblem" title="Back to Homepage">
         <img src="<%= (typeof settings !== 'undefined' && settings.site_logo) ? settings.site_logo : '/images/gez-logo.svg' %>" alt="Logo">
       </a>
       <h1 class="brand-title">Admin Console</h1>
@@ -343,7 +343,7 @@
     <% } %>
 
     <!-- Sign In Form -->
-    <form id="adminLoginForm" action="/admin/login" method="POST">
+    <form id="adminLoginForm" action="<%= (typeof adminBase !== 'undefined' ? adminBase : '/admin') %>/login" method="POST">
       
       <!-- Username -->
       <div class="form-group">
@@ -406,7 +406,7 @@
 
     <!-- Footer Links -->
     <div class="card-footer">
-      <a href="/">← Return to Homepage</a>
+      <a href="<%= (typeof publicBase !== 'undefined' ? publicBase : '') %>/">← Return to Homepage</a>
       <div class="security-note">
         <span>🔒 256-Bit SSL Encrypted • D1 &amp; R2 Protected</span>
       </div>

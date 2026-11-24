@@ -20,6 +20,12 @@ async function handleExpressRequest(app, request) {
   req.url = url.pathname + url.search;
   req.method = request.method;
   req.headers = Object.fromEntries(request.headers.entries());
+  if (!req.headers.host && url.host) {
+    req.headers.host = url.host;
+  }
+  if (!req.headers["x-forwarded-proto"] && url.protocol) {
+    req.headers["x-forwarded-proto"] = url.protocol.replace(":", "");
+  }
   req.connection = { remoteAddress: request.headers.get("cf-connecting-ip") || "127.0.0.1" };
   req.socket = req.connection;
   req.ip = req.connection.remoteAddress;
@@ -114,6 +120,10 @@ export default {
       }
 
       const url = new URL(request.url);
+      const reqHost = (request.headers.get("x-forwarded-host") || request.headers.get("host") || url.hostname || "")
+        .split(",")[0].split(":")[0].trim().toLowerCase();
+      const adminSubdomain = (env?.ADMIN_SUBDOMAIN || "setup.govtexamzone.com").trim().toLowerCase();
+      const isSetupSubdomain = Boolean(reqHost && reqHost === adminSubdomain);
 
       // 1. Serve uploaded media / documents directly from Cloudflare R2 bucket if requested
       if (url.pathname.startsWith('/uploads/')) {
@@ -136,15 +146,17 @@ export default {
       }
 
       // 2. Check if this request can be served as a static asset via env.ASSETS (Pages / Workers Assets)
-      const isAsset = /\.[a-zA-Z0-9]+$/.test(url.pathname) ||
+      // On setup.govtexamzone.com, never serve public static robots.txt or sitemap.xml from ASSETS
+      const isSeoPublicFile = url.pathname === '/robots.txt' || url.pathname === '/sitemap.xml';
+      const isAsset = (!isSetupSubdomain || !isSeoPublicFile) && (
+                      /\.[a-zA-Z0-9]+$/.test(url.pathname) ||
                       url.pathname.startsWith('/css/') ||
                       url.pathname.startsWith('/js/') ||
                       url.pathname.startsWith('/images/') ||
-                      url.pathname === '/robots.txt' ||
-                      url.pathname === '/sitemap.xml' ||
+                      isSeoPublicFile ||
                       url.pathname === '/manifest.json' ||
                       url.pathname === '/favicon.ico' ||
-                      url.pathname === '/favicon.svg';
+                      url.pathname === '/favicon.svg');
 
       if (isAsset && env && env.ASSETS) {
         try {

@@ -6,6 +6,7 @@ const r2 = require('../storage/r2Client');
 const config = require('../config/env');
 const { requireAuth, setAuthCookie, clearAuthCookie } = require('../middleware/auth');
 const { hashPassword } = require('../middleware/authorAuth');
+const { getAdminBase, getPublicBase, getAdminUrl, isAdminSubdomainRequest } = require('../utils/adminHost');
 const { slugify, CATEGORIES, safeJsonParse, formatDate } = require('../utils/helpers');
 
 // Multer memory storage for direct R2 streaming
@@ -17,7 +18,11 @@ const upload = multer({
 // Middleware to inject site settings & active path into all admin views
 router.use(async (req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-  res.locals.currentPath = (req.originalUrl || '/admin').split('?')[0].replace(/\/$/, '') || '/admin';
+  res.locals.isAdminSubdomain = isAdminSubdomainRequest(req);
+  res.locals.adminBase = getAdminBase(req);
+  res.locals.publicBase = getPublicBase(req);
+  const subPath = (req.path || '/').split('?')[0].replace(/\/$/, '') || '/';
+  res.locals.currentPath = subPath === '/' ? '/admin' : `/admin${subPath}`;
   try {
     const sRows = await d1.prepare('SELECT * FROM settings').all();
     const siteSettings = {
@@ -86,8 +91,8 @@ router.post('/login', (req, res) => {
 
   if (isUserValid && isPassValid) {
     console.log(`[AUTH] Admin successfully authenticated: user="${inputUser}"`);
-    setAuthCookie(res);
-    return res.redirect('/admin');
+    setAuthCookie(res, req);
+    return res.redirect(getAdminUrl(req, '/'));
   }
 
   console.warn(`[AUTH] Failed login attempt: user="${req.body?.username}"`);
@@ -99,8 +104,8 @@ router.post('/login', (req, res) => {
 
 // Admin Logout Handler
 router.get('/logout', (req, res) => {
-  clearAuthCookie(res);
-  res.redirect('/admin/login');
+  clearAuthCookie(res, req);
+  res.redirect(getAdminUrl(req, '/login'));
 });
 
 // Apply auth protection to all routes below
@@ -181,7 +186,7 @@ router.get('/posts/new', async (req, res, next) => {
       post: null,
       authors: authors || [],
       categories: CATEGORIES,
-      action: '/admin/posts/new'
+      action: getAdminUrl(req, '/posts/new')
     });
   } catch (err) {
     next(err);
@@ -280,7 +285,7 @@ router.post('/posts/new', upload.fields([
       authorId
     ).run();
 
-    res.redirect('/admin/posts?success=created');
+    res.redirect(getAdminUrl(req, '/posts?success=created'));
   } catch (err) {
     next(err);
   }
@@ -301,7 +306,7 @@ router.get('/posts/edit/:id', async (req, res, next) => {
       post,
       authors: authors || [],
       categories: CATEGORIES,
-      action: `/admin/posts/edit/${post.id}`
+      action: getAdminUrl(req, `/posts/edit/${post.id}`)
     });
   } catch (err) {
     next(err);
@@ -401,7 +406,7 @@ router.post('/posts/edit/:id', upload.fields([
       postId
     ).run();
 
-    res.redirect('/admin/posts?success=updated');
+    res.redirect(getAdminUrl(req, '/posts?success=updated'));
   } catch (err) {
     next(err);
   }
@@ -411,7 +416,7 @@ router.post('/posts/edit/:id', upload.fields([
 router.post('/posts/delete/:id', async (req, res, next) => {
   try {
     await d1.prepare('DELETE FROM posts WHERE id = ?').bind(req.params.id).run();
-    res.redirect('/admin/posts?success=deleted');
+    res.redirect(getAdminUrl(req, '/posts?success=deleted'));
   } catch (err) {
     next(err);
   }
@@ -480,7 +485,7 @@ router.post('/authors/new', async (req, res, next) => {
       is_active ? 1 : 0
     ).run();
 
-    res.redirect('/admin/authors?success=created');
+    res.redirect(getAdminUrl(req, '/authors?success=created'));
   } catch (err) {
     next(err);
   }
@@ -530,7 +535,7 @@ router.post('/authors/edit/:id', async (req, res, next) => {
       authorId
     ).run();
 
-    res.redirect('/admin/authors?success=updated');
+    res.redirect(getAdminUrl(req, '/authors?success=updated'));
   } catch (err) {
     next(err);
   }
@@ -571,7 +576,7 @@ router.post('/badges/save', async (req, res, next) => {
         VALUES (?, ?, ?, ?, ?, 1)
       `).bind(finalTitle, finalSubtitle, finalUrl, finalColor, finalOrder).run();
     }
-    res.redirect('/admin/badges?saved=1');
+    res.redirect(getAdminUrl(req, '/badges?saved=1'));
   } catch (err) {
     next(err);
   }
@@ -580,7 +585,7 @@ router.post('/badges/save', async (req, res, next) => {
 router.post('/badges/delete/:id', async (req, res, next) => {
   try {
     await d1.prepare('DELETE FROM badges WHERE id = ?').bind(req.params.id).run();
-    res.redirect('/admin/badges?deleted=1');
+    res.redirect(getAdminUrl(req, '/badges?deleted=1'));
   } catch (err) {
     next(err);
   }
@@ -618,7 +623,7 @@ router.post('/marquees/save', async (req, res, next) => {
         VALUES (?, ?, ?, 1)
       `).bind(finalTitle, finalUrl, finalOrder).run();
     }
-    res.redirect('/admin/marquees?saved=1');
+    res.redirect(getAdminUrl(req, '/marquees?saved=1'));
   } catch (err) {
     next(err);
   }
@@ -627,7 +632,7 @@ router.post('/marquees/save', async (req, res, next) => {
 router.post('/marquees/delete/:id', async (req, res, next) => {
   try {
     await d1.prepare('DELETE FROM marquees WHERE id = ?').bind(req.params.id).run();
-    res.redirect('/admin/marquees?deleted=1');
+    res.redirect(getAdminUrl(req, '/marquees?deleted=1'));
   } catch (err) {
     next(err);
   }
@@ -656,7 +661,7 @@ router.get('/r2', async (req, res, next) => {
 router.post('/r2/upload', upload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) {
-      return res.redirect('/admin/r2');
+      return res.redirect(getAdminUrl(req, '/r2'));
     }
     const uploadRes = await r2.uploadFile(req.file.buffer, req.file.originalname, req.file.mimetype);
     await d1.prepare(`
@@ -664,7 +669,7 @@ router.post('/r2/upload', upload.single('file'), async (req, res, next) => {
       VALUES (?, ?, ?, ?, ?, ?)
     `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
 
-    res.redirect('/admin/r2');
+    res.redirect(getAdminUrl(req, '/r2'));
   } catch (err) {
     next(err);
   }
@@ -698,7 +703,7 @@ router.post('/r2/delete', async (req, res, next) => {
     if (id) {
       await d1.prepare('DELETE FROM uploads WHERE id = ?').bind(id).run();
     }
-    res.redirect('/admin/r2');
+    res.redirect(getAdminUrl(req, '/r2'));
   } catch (err) {
     next(err);
   }
@@ -868,7 +873,7 @@ router.post('/settings/save', upload.fields([
     }
     // Invalidate cached settings so changes apply immediately
     globalThis.__invalidateSettingsCache?.();
-    res.redirect('/admin/settings?saved=1');
+    res.redirect(getAdminUrl(req, '/settings?saved=1'));
   } catch (err) {
     next(err);
   }

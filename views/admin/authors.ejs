@@ -9,7 +9,7 @@
       </div>
     </div>
     <div style="display: flex; gap: 8px;">
-      <a href="/author-portal/login" target="_blank" class="btn btn-secondary btn-sm">🛡️ Open Author/Editor Portal</a>
+      <a href="<%= (typeof publicBase !== 'undefined' ? publicBase : '') %>/author-portal/login" target="_blank" class="btn btn-secondary btn-sm">🛡️ Open Author/Editor Portal</a>
     </div>
   </div>
 
@@ -24,7 +24,7 @@
     <h3 style="margin-top: 0; margin-bottom: 14px; font-size: 15px; color: #1e293b; display: flex; align-items: center; gap: 6px;">
       <span>➕</span> Add New Author / Editorial Member
     </h3>
-    <form action="/admin/authors/new" method="POST">
+    <form action="<%= (typeof adminBase !== 'undefined' ? adminBase : '/admin') %>/authors/new" method="POST">
       <div class="form-row">
         <div class="form-group">
           <label style="font-size: 12.5px; font-weight: 600;">Full Name *</label>
@@ -152,7 +152,7 @@
             <!-- Inline Edit Form Row -->
             <tr id="edit-row-<%= a.id %>" style="display: none; background: #fdfefe;">
               <td colspan="6" style="padding: 16px 20px; border-top: 1px dashed #cbd5e1; border-bottom: 2px solid #cbd5e1;">
-                <form action="/admin/authors/edit/<%= a.id %>" method="POST">
+                <form action="<%= (typeof adminBase !== 'undefined' ? adminBase : '/admin') %>/authors/edit/<%= a.id %>" method="POST">
                   <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #1e293b;">✏️ Edit Profile: <%= a.name %></h4>
                   <div class="form-row">
                     <div class="form-group">
