@@ -76836,7 +76836,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( queryResult.length ))
     ; __append(" row(s))</h3>\\n    <div style=\\"overflow-x: auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;\\">\\n      ")
     ;  if (queryResult.length > 0 && typeof queryResult[0] === 'object') { 
-    ; __append("\\n        <table class=\\"admin-table\\">\\n          <thead>\\n            <tr>\\n              ")
+    ; __append("\\n        <table class=\\"admin-table d1-sql-table\\">\\n          <thead>\\n            <tr>\\n              ")
     ;  Object.keys(queryResult[0]).forEach(k => { 
     ; __append("\\n                <th>")
     ; __append(escapeFn( k ))
@@ -76854,7 +76854,7 @@ var require_templateEngine = __commonJS({
     ;  }) 
     ; __append("\\n          </tbody>\\n        </table>\\n      ")
     ;  } else { 
-    ; __append("\\n        <pre style=\\"margin: 0; font-size: 13px;\\">")
+    ; __append("\\n        <pre style=\\"margin: 0; font-size: 13px; white-space: pre-wrap; word-break: break-word;\\">")
     ; __append(escapeFn( JSON.stringify(queryResult, null, 2) ))
     ; __append("</pre>\\n      ")
     ;  } 
@@ -76908,7 +76908,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( queryResult.length ))
     ; __append(" row(s))</h3>\\n    <div style=\\"overflow-x: auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;\\">\\n      ")
     ;  if (queryResult.length > 0 && typeof queryResult[0] === 'object') { 
-    ; __append("\\n        <table class=\\"admin-table\\">\\n          <thead>\\n            <tr>\\n              ")
+    ; __append("\\n        <table class=\\"admin-table d1-sql-table\\">\\n          <thead>\\n            <tr>\\n              ")
     ;  Object.keys(queryResult[0]).forEach(k => { 
     ; __append("\\n                <th>")
     ; __append(escapeFn( k ))
@@ -76926,7 +76926,7 @@ var require_templateEngine = __commonJS({
     ;  }) 
     ; __append("\\n          </tbody>\\n        </table>\\n      ")
     ;  } else { 
-    ; __append("\\n        <pre style=\\"margin: 0; font-size: 13px;\\">")
+    ; __append("\\n        <pre style=\\"margin: 0; font-size: 13px; white-space: pre-wrap; word-break: break-word;\\">")
     ; __append(escapeFn( JSON.stringify(queryResult, null, 2) ))
     ; __append("</pre>\\n      ")
     ;  } 
@@ -80757,7 +80757,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( isNewPostActive ? 'active' : '' ))
     ; __append("\\">\\n    <span class=\\"bottom-nav-fab\\">\uFF0B</span>\\n    <span class=\\"bottom-nav-label\\">New Post</span>\\n  </a>\\n\\n  <a href=\\"/admin/settings\\" class=\\"bottom-nav-item ")
     ; __append(escapeFn( isSettingsActive ? 'active' : '' ))
-    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u2699\uFE0F</span>\\n    <span class=\\"bottom-nav-label\\">Settings</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261124c\\"></script>\\n</body>\\n</html>\\n")
+    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u2699\uFE0F</span>\\n    <span class=\\"bottom-nav-label\\">Settings</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261124d\\"></script>\\n</body>\\n</html>\\n")
   }
   return __output;
 `,
@@ -80780,7 +80780,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( isNewPostActive ? 'active' : '' ))
     ; __append("\\">\\n    <span class=\\"bottom-nav-fab\\">\uFF0B</span>\\n    <span class=\\"bottom-nav-label\\">New Post</span>\\n  </a>\\n\\n  <a href=\\"/admin/settings\\" class=\\"bottom-nav-item ")
     ; __append(escapeFn( isSettingsActive ? 'active' : '' ))
-    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u2699\uFE0F</span>\\n    <span class=\\"bottom-nav-label\\">Settings</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261124c\\"></script>\\n</body>\\n</html>\\n")
+    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u2699\uFE0F</span>\\n    <span class=\\"bottom-nav-label\\">Settings</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261124d\\"></script>\\n</body>\\n</html>\\n")
   }
   return __output;
 `,
@@ -80789,7 +80789,7 @@ var require_templateEngine = __commonJS({
   with (locals || {}) {
     ; __append("<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0, viewport-fit=cover\\">\\n  <meta name=\\"theme-color\\" content=\\"#0f172a\\">\\n  <title>")
     ; __append(escapeFn( title || 'Govt Exam Zone - Professional Admin Console' ))
-    ; __append("</title>\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link href=\\"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap\\" rel=\\"stylesheet\\">\\n  <link rel=\\"stylesheet\\" href=\\"/css/admin.css?v=20261124c\\">\\n  <link rel=\\"icon\\" href=\\"")
+    ; __append("</title>\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link href=\\"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap\\" rel=\\"stylesheet\\">\\n  <link rel=\\"stylesheet\\" href=\\"/css/admin.css?v=20261124d\\">\\n  <link rel=\\"icon\\" href=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_favicon) ? settings.site_favicon : '/images/gez-logo.svg' ))
     ; __append("\\">\\n</head>\\n<body class=\\"admin-body\\">\\n\\n<div class=\\"admin-app-layout\\">\\n  <!-- Mobile Sidebar Overlay Backdrop -->\\n  <div class=\\"sidebar-backdrop\\" id=\\"sidebarBackdrop\\"></div>\\n\\n  <!-- Professional Dark Sidebar -->\\n  <aside class=\\"admin-sidebar\\" id=\\"adminSidebar\\">\\n    <!-- Brand Header -->\\n    <div class=\\"sidebar-brand\\">\\n      <a href=\\"/admin\\" class=\\"brand-link\\">\\n        <img src=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_logo) ? settings.site_logo : '/images/gez-logo.svg' ))
@@ -80848,7 +80848,7 @@ var require_templateEngine = __commonJS({
   with (locals || {}) {
     ; __append("<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0, viewport-fit=cover\\">\\n  <meta name=\\"theme-color\\" content=\\"#0f172a\\">\\n  <title>")
     ; __append(escapeFn( title || 'Govt Exam Zone - Professional Admin Console' ))
-    ; __append("</title>\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link href=\\"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap\\" rel=\\"stylesheet\\">\\n  <link rel=\\"stylesheet\\" href=\\"/css/admin.css?v=20261124c\\">\\n  <link rel=\\"icon\\" href=\\"")
+    ; __append("</title>\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link href=\\"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap\\" rel=\\"stylesheet\\">\\n  <link rel=\\"stylesheet\\" href=\\"/css/admin.css?v=20261124d\\">\\n  <link rel=\\"icon\\" href=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_favicon) ? settings.site_favicon : '/images/gez-logo.svg' ))
     ; __append("\\">\\n</head>\\n<body class=\\"admin-body\\">\\n\\n<div class=\\"admin-app-layout\\">\\n  <!-- Mobile Sidebar Overlay Backdrop -->\\n  <div class=\\"sidebar-backdrop\\" id=\\"sidebarBackdrop\\"></div>\\n\\n  <!-- Professional Dark Sidebar -->\\n  <aside class=\\"admin-sidebar\\" id=\\"adminSidebar\\">\\n    <!-- Brand Header -->\\n    <div class=\\"sidebar-brand\\">\\n      <a href=\\"/admin\\" class=\\"brand-link\\">\\n        <img src=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_logo) ? settings.site_logo : '/images/gez-logo.svg' ))
@@ -80921,7 +80921,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( isAuthNew ? 'active' : '' ))
     ; __append("\\">\\n    <span class=\\"bottom-nav-fab\\" style=\\"background: linear-gradient(135deg, #2563eb, #1d4ed8); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);\\">\uFF0B</span>\\n    <span class=\\"bottom-nav-label\\">Write</span>\\n  </a>\\n\\n  <a href=\\"/author-portal/profile\\" class=\\"bottom-nav-item ")
     ; __append(escapeFn( isAuthProfile ? 'active' : '' ))
-    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u{1F464}</span>\\n    <span class=\\"bottom-nav-label\\">Profile</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261124c\\"></script>\\n</body>\\n</html>\\n")
+    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u{1F464}</span>\\n    <span class=\\"bottom-nav-label\\">Profile</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261124d\\"></script>\\n</body>\\n</html>\\n")
   }
   return __output;
 `,
@@ -80944,7 +80944,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( isAuthNew ? 'active' : '' ))
     ; __append("\\">\\n    <span class=\\"bottom-nav-fab\\" style=\\"background: linear-gradient(135deg, #2563eb, #1d4ed8); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);\\">\uFF0B</span>\\n    <span class=\\"bottom-nav-label\\">Write</span>\\n  </a>\\n\\n  <a href=\\"/author-portal/profile\\" class=\\"bottom-nav-item ")
     ; __append(escapeFn( isAuthProfile ? 'active' : '' ))
-    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u{1F464}</span>\\n    <span class=\\"bottom-nav-label\\">Profile</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261124c\\"></script>\\n</body>\\n</html>\\n")
+    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u{1F464}</span>\\n    <span class=\\"bottom-nav-label\\">Profile</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261124d\\"></script>\\n</body>\\n</html>\\n")
   }
   return __output;
 `,
@@ -80953,7 +80953,7 @@ var require_templateEngine = __commonJS({
   with (locals || {}) {
     ; __append("<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0, viewport-fit=cover\\">\\n  <meta name=\\"theme-color\\" content=\\"#0f172a\\">\\n  <title>")
     ; __append(escapeFn( typeof title !== 'undefined' ? title : 'Author Workspace - Govt Exam Zone' ))
-    ; __append("</title>\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link href=\\"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap\\" rel=\\"stylesheet\\">\\n  <link rel=\\"stylesheet\\" href=\\"/css/admin.css?v=20261124c\\">\\n  <link rel=\\"icon\\" href=\\"")
+    ; __append("</title>\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link href=\\"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap\\" rel=\\"stylesheet\\">\\n  <link rel=\\"stylesheet\\" href=\\"/css/admin.css?v=20261124d\\">\\n  <link rel=\\"icon\\" href=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_favicon) ? settings.site_favicon : '/images/gez-logo.svg' ))
     ; __append("\\">\\n  <style>\\n    /* Author Portal Dedicated Accents */\\n    .author-badge-strip {\\n      background: #eff6ff;\\n      border: 1px solid #bfdbfe;\\n      color: #1e40af;\\n      padding: 3px 8px;\\n      border-radius: 999px;\\n      font-size: 11px;\\n      font-weight: 700;\\n      display: inline-flex;\\n      align-items: center;\\n      gap: 4px;\\n    }\\n  </style>\\n</head>\\n<body class=\\"admin-body\\">\\n\\n<div class=\\"admin-app-layout\\">\\n  <!-- Mobile Sidebar Overlay Backdrop -->\\n  <div class=\\"sidebar-backdrop\\" id=\\"sidebarBackdrop\\"></div>\\n\\n  <!-- Author Workspace Sidebar -->\\n  <aside class=\\"admin-sidebar\\" id=\\"adminSidebar\\">\\n    <!-- Brand Header -->\\n    <div class=\\"sidebar-brand\\">\\n      <a href=\\"/author-portal\\" class=\\"brand-link\\">\\n        <img src=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_logo) ? settings.site_logo : '/images/gez-logo.svg' ))
@@ -81018,7 +81018,7 @@ var require_templateEngine = __commonJS({
   with (locals || {}) {
     ; __append("<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0, viewport-fit=cover\\">\\n  <meta name=\\"theme-color\\" content=\\"#0f172a\\">\\n  <title>")
     ; __append(escapeFn( typeof title !== 'undefined' ? title : 'Author Workspace - Govt Exam Zone' ))
-    ; __append("</title>\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link href=\\"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap\\" rel=\\"stylesheet\\">\\n  <link rel=\\"stylesheet\\" href=\\"/css/admin.css?v=20261124c\\">\\n  <link rel=\\"icon\\" href=\\"")
+    ; __append("</title>\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link href=\\"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap\\" rel=\\"stylesheet\\">\\n  <link rel=\\"stylesheet\\" href=\\"/css/admin.css?v=20261124d\\">\\n  <link rel=\\"icon\\" href=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_favicon) ? settings.site_favicon : '/images/gez-logo.svg' ))
     ; __append("\\">\\n  <style>\\n    /* Author Portal Dedicated Accents */\\n    .author-badge-strip {\\n      background: #eff6ff;\\n      border: 1px solid #bfdbfe;\\n      color: #1e40af;\\n      padding: 3px 8px;\\n      border-radius: 999px;\\n      font-size: 11px;\\n      font-weight: 700;\\n      display: inline-flex;\\n      align-items: center;\\n      gap: 4px;\\n    }\\n  </style>\\n</head>\\n<body class=\\"admin-body\\">\\n\\n<div class=\\"admin-app-layout\\">\\n  <!-- Mobile Sidebar Overlay Backdrop -->\\n  <div class=\\"sidebar-backdrop\\" id=\\"sidebarBackdrop\\"></div>\\n\\n  <!-- Author Workspace Sidebar -->\\n  <aside class=\\"admin-sidebar\\" id=\\"adminSidebar\\">\\n    <!-- Brand Header -->\\n    <div class=\\"sidebar-brand\\">\\n      <a href=\\"/author-portal\\" class=\\"brand-link\\">\\n        <img src=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_logo) ? settings.site_logo : '/images/gez-logo.svg' ))

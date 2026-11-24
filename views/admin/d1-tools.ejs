@@ -53,7 +53,7 @@
     <h3 style="font-size: 15px; margin-bottom: 10px;">Query Result (<%= queryResult.length %> row(s))</h3>
     <div style="overflow-x: auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
       <% if (queryResult.length > 0 && typeof queryResult[0] === 'object') { %>
-        <table class="admin-table">
+        <table class="admin-table d1-sql-table">
           <thead>
             <tr>
               <% Object.keys(queryResult[0]).forEach(k => { %>
@@ -72,7 +72,7 @@
           </tbody>
         </table>
       <% } else { %>
-        <pre style="margin: 0; font-size: 13px;"><%= JSON.stringify(queryResult, null, 2) %></pre>
+        <pre style="margin: 0; font-size: 13px; white-space: pre-wrap; word-break: break-word;"><%= JSON.stringify(queryResult, null, 2) %></pre>
       <% } %>
     </div>
   <% } %>

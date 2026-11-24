@@ -104,7 +104,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   function addDateRow(eventVal = '', dateVal = '') {
     const row = document.createElement('div');
-    row.className = 'dynamic-row';
+    row.className = 'dynamic-row dynamic-row-dates';
     row.style.cssText = 'display: flex; gap: 8px; margin-bottom: 8px; align-items: center; min-width: 320px;';
     row.innerHTML = `
       <input type="text" placeholder="Event (e.g. Application Begin)" value="${eventVal || ''}" class="form-control date-event" style="flex: 1;">
@@ -142,7 +142,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   function addFeeRow(catVal = '', feeVal = '') {
     const row = document.createElement('div');
-    row.className = 'dynamic-row';
+    row.className = 'dynamic-row dynamic-row-fees';
     row.style.cssText = 'display: flex; gap: 8px; margin-bottom: 8px; align-items: center; min-width: 320px;';
     row.innerHTML = `
       <input type="text" placeholder="Category (e.g. General / OBC)" value="${catVal || ''}" class="form-control fee-category" style="flex: 1;">
@@ -176,7 +176,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   function addVacRow(nameVal = '', totalVal = '', eligVal = '') {
     const row = document.createElement('div');
-    row.className = 'dynamic-row';
+    row.className = 'dynamic-row dynamic-row-vac';
     row.style.cssText = 'display: grid; grid-template-columns: 2fr 1fr 3fr auto; gap: 8px; margin-bottom: 8px; align-items: center; min-width: 520px;';
     row.innerHTML = `
       <input type="text" placeholder="Post Name" value="${nameVal || ''}" class="form-control vac-name">
@@ -211,7 +211,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   function addCatRow(nameVal = '', urVal = '', ewsVal = '', obcVal = '', scVal = '', stVal = '', totalVal = '') {
     const row = document.createElement('div');
-    row.className = 'dynamic-row';
+    row.className = 'dynamic-row dynamic-row-cat';
     row.style.cssText = 'display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 1fr auto; gap: 6px; margin-bottom: 8px; align-items: center; min-width: 580px;';
     row.innerHTML = `
       <input type="text" placeholder="Post / Group Name" value="${nameVal || ''}" class="form-control cat-name">
@@ -268,7 +268,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   function addLinkRow(labelVal = '', urlVal = '', btnVal = 'Click Here') {
     const row = document.createElement('div');
-    row.className = 'dynamic-row';
+    row.className = 'dynamic-row dynamic-row-links';
     row.style.cssText = 'display: grid; grid-template-columns: 2fr 3fr 1fr auto; gap: 8px; margin-bottom: 8px; align-items: center; min-width: 480px;';
     row.innerHTML = `
       <input type="text" placeholder="Link Title (e.g. Apply Online)" value="${labelVal || ''}" class="form-control link-label">

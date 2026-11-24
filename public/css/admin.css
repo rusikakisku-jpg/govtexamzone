@@ -910,16 +910,38 @@ body.admin-body {
 @media screen and (max-width: 992px) {
   html,
   body.admin-body {
-    max-width: 100%;
-    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: clip !important;
     -webkit-tap-highlight-color: transparent;
   }
 
   .admin-app-layout,
   .admin-main-viewport,
   .admin-container {
+    width: 100%;
     max-width: 100%;
-    overflow-x: hidden;
+    min-width: 0;
+    overflow-x: clip !important;
+    box-sizing: border-box;
+  }
+
+  .admin-card,
+  .settings-group-card {
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-wrap: break-word;
+  }
+
+  .admin-card [style*="min-width"] {
+    min-width: 0 !important;
+  }
+
+  .admin-card code,
+  .admin-card a {
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .admin-main-viewport {
@@ -1060,6 +1082,121 @@ body.admin-body {
     max-width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media screen and (max-width: 768px) {
+  /* Stack Dynamic Post Form Builders into Zero-Scroll Mobile Cards */
+  .dynamic-row {
+    min-width: 0 !important;
+    width: 100% !important;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 10px !important;
+    margin-bottom: 10px !important;
+    box-sizing: border-box;
+  }
+
+  .dynamic-row-dates,
+  .dynamic-row-fees {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .dynamic-row-vac,
+  .dynamic-row-links {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dynamic-row-cat {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dynamic-row-cat .cat-name {
+    grid-column: 1 / -1;
+  }
+
+  .dynamic-row-cat button,
+  .dynamic-row-dates button,
+  .dynamic-row-fees button,
+  .dynamic-row-vac button,
+  .dynamic-row-links button {
+    grid-column: 1 / -1;
+    width: 100%;
+    padding: 8px 12px !important;
+  }
+
+  /* Transform Admin Tables into Zero-Scroll Mobile App Cards */
+  .admin-table:not(.d1-sql-table) {
+    display: block;
+    width: 100%;
+  }
+
+  .admin-table:not(.d1-sql-table) thead {
+    display: none;
+  }
+
+  .admin-table:not(.d1-sql-table) tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .admin-table:not(.d1-sql-table) tr {
+    display: block;
+    width: 100%;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+    box-sizing: border-box;
+  }
+
+  .admin-table:not(.d1-sql-table) td {
+    display: block;
+    width: 100%;
+    padding: 5px 0 !important;
+    border-bottom: 1px solid #f1f5f9;
+    text-align: left !important;
+    white-space: normal !important;
+    word-break: break-word;
+    box-sizing: border-box;
+  }
+
+  .admin-table:not(.d1-sql-table) td:last-child {
+    border-bottom: none;
+    padding-top: 10px !important;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+    align-items: center;
+  }
+
+  .admin-table:not(.d1-sql-table) td[colspan] {
+    display: block;
+    text-align: center !important;
+    border-bottom: none;
+  }
+
+  .admin-table:not(.d1-sql-table) tr[id^="row-edit-"],
+  .admin-table:not(.d1-sql-table) tr[id^="edit-row-"] {
+    background: #fffbeb !important;
+    border-color: #fde68a;
+  }
+
+  .admin-table:not(.d1-sql-table) tr[id^="row-edit-"] td,
+  .admin-table:not(.d1-sql-table) tr[id^="edit-row-"] td {
+    text-align: left !important;
+    display: block;
   }
 }
 
