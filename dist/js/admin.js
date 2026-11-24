@@ -352,11 +352,121 @@ document.addEventListener('DOMContentLoaded', function() {
       });
       linksJsonInput.value = JSON.stringify(linkArr);
     }
+
+    // Sync TinyMCE content to underlying textarea before submit
+    if (typeof tinymce !== 'undefined' && !window.__isArticleRawHtmlMode) {
+      const ed = tinymce.get('article_content');
+      if (ed) {
+        try {
+          document.getElementById('article_content').value = ed.getContent();
+        } catch (e) {}
+      }
+    }
   }
 
   postForm.addEventListener('submit', syncAllBuilders);
   const submitBtn = postForm.querySelector('button[type="submit"]');
   if (submitBtn) {
     submitBtn.addEventListener('click', syncAllBuilders);
+  }
+});
+
+// TinyMCE 6 WYSIWYG Rich Text Editor Initialization for #article_content
+document.addEventListener('DOMContentLoaded', function() {
+  const articleEl = document.getElementById('article_content');
+  if (!articleEl) return;
+
+  window.__isArticleRawHtmlMode = false;
+  let isTinyMceReady = false;
+  let tinyMceRetries = 0;
+  const uploadEndpoint = articleEl.getAttribute('data-upload-url') || '/admin/r2/upload-json';
+
+  function initArticleTinyMce() {
+    if (typeof tinymce === 'undefined') {
+      if (tinyMceRetries < 20) {
+        tinyMceRetries++;
+        setTimeout(initArticleTinyMce, 400);
+      }
+      return;
+    }
+
+    try {
+      if (tinymce.get('article_content')) {
+        tinymce.get('article_content').remove();
+      }
+      tinymce.init({
+        selector: '#article_content',
+        height: (window.innerWidth <= 768 ? 320 : 450),
+        menubar: false,
+        toolbar_mode: 'sliding',
+        plugins: 'advlist autolink lists link image charmap preview anchor searchreplace visualblocks code fullscreen insertdatetime media table help wordcount',
+        toolbar: 'undo redo | blocks | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | table link image code | removeformat preview fullscreen',
+        content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 15px; color: #334155; line-height: 1.7; padding: 14px; } h2, h3 { color: #0f172a; margin-top: 18px; margin-bottom: 8px; } table { width: 100%; border-collapse: collapse; margin: 14px 0; } th, td { border: 1px solid #93c5fd; padding: 8px 12px; } th { background: #f0f7ff; color: #1e40af; } blockquote { border-left: 4px solid #0066ff; padding-left: 14px; color: #334155; background: #f8fafc; padding: 10px 14px; } a { color: #0066ff; }',
+        automatic_uploads: true,
+        images_upload_handler: function(blobInfo) {
+          return new Promise(function(resolve, reject) {
+            const formData = new FormData();
+            formData.append('file', blobInfo.blob(), blobInfo.filename());
+
+            fetch(uploadEndpoint, {
+              method: 'POST',
+              body: formData
+            })
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+              if (data && data.url) {
+                resolve(data.url);
+              } else if (data && data.location) {
+                resolve(data.location);
+              } else {
+                reject((data && data.error) || 'Image upload failed');
+              }
+            })
+            .catch(function(err) {
+              reject('Upload error: ' + err.message);
+            });
+          });
+        },
+        setup: function(editor) {
+          editor.on('init', function() {
+            isTinyMceReady = true;
+            if (articleEl.value) {
+              try { editor.setContent(articleEl.value); } catch (e) {}
+            }
+          });
+          editor.on('change keyup input', function() {
+            articleEl.value = editor.getContent();
+          });
+        }
+      });
+    } catch (e) {
+      console.warn('TinyMCE init skipped:', e);
+    }
+  }
+
+  initArticleTinyMce();
+
+  const toggleBtn = document.getElementById('toggleArticleModeBtn');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', function() {
+      if (!isTinyMceReady || typeof tinymce === 'undefined') return;
+      const ed = tinymce.get('article_content');
+      if (!ed) return;
+
+      if (!window.__isArticleRawHtmlMode) {
+        const html = ed.getContent();
+        ed.hide();
+        articleEl.style.display = 'block';
+        articleEl.value = html;
+        toggleBtn.innerHTML = '🎨 Visual Editor';
+        window.__isArticleRawHtmlMode = true;
+      } else {
+        const html = articleEl.value;
+        ed.show();
+        ed.setContent(html);
+        toggleBtn.innerHTML = '💻 HTML Code';
+        window.__isArticleRawHtmlMode = false;
+      }
+    });
   }
 });

@@ -261,23 +261,30 @@
       ><%= post ? post.how_to_apply : '1. Candidate Can Apply Online From Official Portal.\n2. Read Notification Carefully Before Filling Form.\n3. Keep Ready Photo, Sign & ID Proof.\n4. Pay Exam Fee and Print Final Application Form.' %></textarea>
     </div>
 
-    <!-- Optional Full Blog Article / Detailed Editorial Content -->
+    <!-- Optional Full Blog Article / Detailed Editorial Content (TinyMCE 6 Rich Text Editor) -->
     <div style="background: #f0f9ff; border: 1px solid #bae6fd; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
-      <div style="margin-bottom: 8px;">
-        <label for="article_content" style="margin: 0; font-size: 15px; font-weight: 700; color: #0369a1;">📝 Full Blog Article / Detailed Editorial Content (Optional HTML)</label>
-        <div style="font-size: 12px; color: #475569; margin-top: 2px;">
-          Write detailed guides, exam pattern analysis, FAQs, or custom HTML tables here. Renders cleanly in both Classic and 2-Column Blog layouts.
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
+        <div>
+          <label for="article_content" style="margin: 0; font-size: 15px; font-weight: 700; color: #0369a1;">📝 Full Blog Article / TinyMCE Editor (Optional)</label>
+          <div style="font-size: 12px; color: #475569; margin-top: 2px;">
+            Write your full blog post visually with tables, headings, links, images &amp; FAQs — renders cleanly in both Classic and 2-Column Blog layouts.
+          </div>
         </div>
+        <button type="button" id="toggleArticleModeBtn" class="btn btn-secondary btn-sm" style="white-space: nowrap;">
+          💻 HTML Code
+        </button>
       </div>
       <textarea 
         id="article_content" 
         name="article_content" 
+        data-upload-url="/author-portal/r2/upload-json"
         class="form-control" 
-        rows="8" 
-        placeholder="<h2>1. Exam Overview &amp; Pattern</h2>&#10;<p>Write detailed article content or paste structured HTML here...</p>"
+        rows="12" 
+        placeholder="Write full blog article content here..."
         style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px;"
       ><%= post && post.article_content ? post.article_content : '' %></textarea>
     </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.8.2/tinymce.min.js" referrerpolicy="origin"></script>
 
     <!-- Visual Interactive Builder: Some Useful Important Links -->
     <div style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;">

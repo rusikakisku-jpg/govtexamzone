@@ -603,4 +603,22 @@ router.post('/profile', async (req, res, next) => {
   }
 });
 
+// JSON Image Upload Endpoint for TinyMCE Editor
+router.post('/r2/upload-json', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+    const uploadRes = await r2.uploadFile(req.file.buffer, req.file.originalname, req.file.mimetype);
+    await d1.prepare(`
+      INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
+
+    res.json({ success: true, location: uploadRes.fileUrl, url: uploadRes.fileUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Image upload failed' });
+  }
+});
+
 module.exports = router;
