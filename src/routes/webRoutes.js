@@ -43,6 +43,13 @@ router.use(async (req, res, next) => {
     if (sRows && Array.isArray(sRows)) {
       sRows.forEach(r => { siteSettings[r.key] = r.value; });
     }
+    // Remove previous demo/uploaded logo so header displays clean text by default
+    if (siteSettings.site_logo && (siteSettings.site_logo.includes('photo_2026') || siteSettings.site_logo.includes('gez-logo.svg'))) {
+      siteSettings.site_logo = '';
+      try {
+        await d1.prepare("UPDATE settings SET value = '' WHERE key = 'site_logo'").run();
+      } catch (err) {}
+    }
     cachedSettings = siteSettings;
     settingsCacheTime = now;
     res.locals.settings = siteSettings;
