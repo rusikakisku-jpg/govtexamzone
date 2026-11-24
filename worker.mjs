@@ -150,7 +150,16 @@ export default {
         try {
           const assetRes = await env.ASSETS.fetch(request);
           if (assetRes && assetRes.status !== 404) {
-            return assetRes;
+            const h = new Headers(assetRes.headers);
+            // Cache static assets (CSS, JS, images, fonts) so page transitions are instantaneous
+            if (!h.has('cache-control') || h.get('cache-control').includes('max-age=0')) {
+              h.set('cache-control', 'public, max-age=86400, stale-while-revalidate=604800');
+            }
+            return new Response(assetRes.body, {
+              status: assetRes.status,
+              statusText: assetRes.statusText,
+              headers: h
+            });
           }
         } catch (assetErr) {}
       }

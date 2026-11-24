@@ -28687,6 +28687,9 @@ var require_webRoutes = __commonJS({
     var router = express.Router();
     var d1 = require_d1Client();
     var { CATEGORIES, safeJsonParse, formatDate, formatPrettyDate } = require_helpers();
+    var cachedSettings = null;
+    var settingsCacheTime = 0;
+    var SETTINGS_CACHE_TTL = 60 * 1e3;
     router.use(async (req, res, next) => {
       try {
         await d1.init();
@@ -28697,6 +28700,11 @@ var require_webRoutes = __commonJS({
       res.locals.formatPrettyDate = formatPrettyDate;
       res.locals.safeJsonParse = safeJsonParse;
       res.locals.currentPath = req.path;
+      const now = Date.now();
+      if (cachedSettings && now - settingsCacheTime < SETTINGS_CACHE_TTL) {
+        res.locals.settings = cachedSettings;
+        return next();
+      }
       try {
         const sRows = await d1.prepare("SELECT * FROM settings").all();
         const siteSettings = {
@@ -28712,9 +28720,11 @@ var require_webRoutes = __commonJS({
             siteSettings[r.key] = r.value;
           });
         }
+        cachedSettings = siteSettings;
+        settingsCacheTime = now;
         res.locals.settings = siteSettings;
       } catch (e) {
-        res.locals.settings = {
+        res.locals.settings = cachedSettings || {
           telegram_url: "https://t.me/govtexamzoneofficial",
           whatsapp_url: "https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10",
           contact_email: "contact.govtexamzone@gmail.com",
@@ -28727,36 +28737,30 @@ var require_webRoutes = __commonJS({
     });
     router.get("/", async (req, res, next) => {
       try {
-        const marquees = await d1.prepare(
-          "SELECT * FROM marquees WHERE is_active = 1 ORDER BY display_order ASC, id DESC"
-        ).all();
-        const badges = await d1.prepare(
-          "SELECT * FROM badges WHERE is_active = 1 ORDER BY display_order ASC, id ASC LIMIT 8"
-        ).all();
-        const results = await d1.prepare(
-          "SELECT * FROM posts WHERE category = 'result' AND status = 'active' ORDER BY id DESC LIMIT 15"
-        ).all();
-        const admitCards = await d1.prepare(
-          "SELECT * FROM posts WHERE category = 'admit-card' AND status = 'active' ORDER BY id DESC LIMIT 15"
-        ).all();
-        const latestJobs = await d1.prepare(
-          "SELECT * FROM posts WHERE category = 'latest-jobs' AND status = 'active' ORDER BY id DESC LIMIT 15"
-        ).all();
-        const answerKeys = await d1.prepare(
-          "SELECT * FROM posts WHERE category = 'answer-key' AND status = 'active' ORDER BY id DESC LIMIT 8"
-        ).all();
-        const syllabi = await d1.prepare(
-          "SELECT * FROM posts WHERE category = 'syllabus' AND status = 'active' ORDER BY id DESC LIMIT 8"
-        ).all();
-        const admissions = await d1.prepare(
-          "SELECT * FROM posts WHERE category = 'admission' AND status = 'active' ORDER BY id DESC LIMIT 8"
-        ).all();
-        const verifications = await d1.prepare(
-          "SELECT * FROM posts WHERE category = 'certificate-verification' AND status = 'active' ORDER BY id DESC LIMIT 8"
-        ).all();
-        const importants = await d1.prepare(
-          "SELECT * FROM posts WHERE category = 'important' AND status = 'active' ORDER BY id DESC LIMIT 8"
-        ).all();
+        res.set("Cache-Control", "public, max-age=60, s-maxage=180, stale-while-revalidate=600");
+        const [
+          marquees,
+          badges,
+          results,
+          admitCards,
+          latestJobs,
+          answerKeys,
+          syllabi,
+          admissions,
+          verifications,
+          importants
+        ] = await Promise.all([
+          d1.prepare("SELECT * FROM marquees WHERE is_active = 1 ORDER BY display_order ASC, id DESC").all(),
+          d1.prepare("SELECT * FROM badges WHERE is_active = 1 ORDER BY display_order ASC, id ASC LIMIT 8").all(),
+          d1.prepare("SELECT * FROM posts WHERE category = 'result' AND status = 'active' ORDER BY id DESC LIMIT 15").all(),
+          d1.prepare("SELECT * FROM posts WHERE category = 'admit-card' AND status = 'active' ORDER BY id DESC LIMIT 15").all(),
+          d1.prepare("SELECT * FROM posts WHERE category = 'latest-jobs' AND status = 'active' ORDER BY id DESC LIMIT 15").all(),
+          d1.prepare("SELECT * FROM posts WHERE category = 'answer-key' AND status = 'active' ORDER BY id DESC LIMIT 8").all(),
+          d1.prepare("SELECT * FROM posts WHERE category = 'syllabus' AND status = 'active' ORDER BY id DESC LIMIT 8").all(),
+          d1.prepare("SELECT * FROM posts WHERE category = 'admission' AND status = 'active' ORDER BY id DESC LIMIT 8").all(),
+          d1.prepare("SELECT * FROM posts WHERE category = 'certificate-verification' AND status = 'active' ORDER BY id DESC LIMIT 8").all(),
+          d1.prepare("SELECT * FROM posts WHERE category = 'important' AND status = 'active' ORDER BY id DESC LIMIT 8").all()
+        ]);
         res.render("pages/index", {
           title: `${res.locals.settings?.site_title || "Govt Exam Zone"} : ${res.locals.settings?.site_tagline || "Latest Govt Jobs, Admit Card, Results 2026"} | ${res.locals.settings?.header_subtitle || "WWW.GOVTEXAMZONE.COM"}`,
           marquees,
@@ -28784,17 +28788,16 @@ var require_webRoutes = __commonJS({
             message: "The requested category does not exist."
           });
         }
+        res.set("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600");
         const page = parseInt(req.query.page || "1", 10);
         const limit = 30;
         const offset = (page - 1) * limit;
-        const countRow = await d1.prepare(
-          'SELECT COUNT(*) as total FROM posts WHERE category = ? AND status = "active"'
-        ).bind(categorySlug).first();
+        const [countRow, posts] = await Promise.all([
+          d1.prepare('SELECT COUNT(*) as total FROM posts WHERE category = ? AND status = "active"').bind(categorySlug).first(),
+          d1.prepare('SELECT * FROM posts WHERE category = ? AND status = "active" ORDER BY id DESC LIMIT ? OFFSET ?').bind(categorySlug, limit, offset).all()
+        ]);
         const totalPosts = countRow?.total || 0;
         const totalPages = Math.ceil(totalPosts / limit) || 1;
-        const posts = await d1.prepare(
-          'SELECT * FROM posts WHERE category = ? AND status = "active" ORDER BY id DESC LIMIT ? OFFSET ?'
-        ).bind(categorySlug, limit, offset).all();
         res.render("pages/category", {
           title: `${catInfo.name} - Govt Exam Zone 2026 | WWW.GOVTEXAMZONE.COM`,
           metaDescription: `Find latest ${catInfo.name} 2026 notifications, online application forms, official exam dates, eligibility criteria, and results at Govt Exam Zone.`,
@@ -28843,6 +28846,7 @@ var require_webRoutes = __commonJS({
           avatar_url: "/images/default-avatar.svg",
           bio: "The official editorial and verification desk of Govt Exam Zone."
         };
+        res.set("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600");
         res.render("pages/detail", {
           title: `${post.title} - Govt Exam Zone | WWW.GOVTEXAMZONE.COM`,
           metaDescription: post.short_desc ? post.short_desc.replace(/\s+/g, " ").trim() : `${post.title}. Check notification details, eligibility criteria, application process, and official links at Govt Exam Zone.`,
@@ -81079,7 +81083,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( activeFavicon ))
     ; __append("\\">\\n  <link rel=\\"apple-touch-icon\\" href=\\"")
     ; __append(escapeFn( activeFavicon ))
-    ; __append("\\">\\n\\n  <!-- Stylesheet -->\\n  <link rel=\\"stylesheet\\" href=\\"/css/style.css\\">\\n\\n  <!-- JSON-LD Schema.org Structured Data: WebSite -->\\n  <script type=\\"application/ld+json\\">\\n  {\\n    \\"@context\\": \\"https://schema.org\\",\\n    \\"@type\\": \\"WebSite\\",\\n    \\"name\\": \\"")
+    ; __append("\\">\\n\\n  <!-- Stylesheet -->\\n  <link rel=\\"stylesheet\\" href=\\"/css/style.css\\">\\n\\n  <!-- High-Speed Menu Prefetching for Instant Navigation -->\\n  <link rel=\\"prefetch\\" href=\\"/category/latest-jobs\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/result\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/admit-card\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/answer-key\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/syllabus\\">\\n\\n  <!-- JSON-LD Schema.org Structured Data: WebSite -->\\n  <script type=\\"application/ld+json\\">\\n  {\\n    \\"@context\\": \\"https://schema.org\\",\\n    \\"@type\\": \\"WebSite\\",\\n    \\"name\\": \\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' ))
     ; __append("\\",\\n    \\"alternateName\\": [\\"GovtExamZone\\", \\"Govt Exam Zone Official\\", \\"GEZ Official\\"],\\n    \\"url\\": \\"")
     ; __append(escapeFn( siteBase ))
@@ -81250,7 +81254,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( activeFavicon ))
     ; __append("\\">\\n  <link rel=\\"apple-touch-icon\\" href=\\"")
     ; __append(escapeFn( activeFavicon ))
-    ; __append("\\">\\n\\n  <!-- Stylesheet -->\\n  <link rel=\\"stylesheet\\" href=\\"/css/style.css\\">\\n\\n  <!-- JSON-LD Schema.org Structured Data: WebSite -->\\n  <script type=\\"application/ld+json\\">\\n  {\\n    \\"@context\\": \\"https://schema.org\\",\\n    \\"@type\\": \\"WebSite\\",\\n    \\"name\\": \\"")
+    ; __append("\\">\\n\\n  <!-- Stylesheet -->\\n  <link rel=\\"stylesheet\\" href=\\"/css/style.css\\">\\n\\n  <!-- High-Speed Menu Prefetching for Instant Navigation -->\\n  <link rel=\\"prefetch\\" href=\\"/category/latest-jobs\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/result\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/admit-card\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/answer-key\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/syllabus\\">\\n\\n  <!-- JSON-LD Schema.org Structured Data: WebSite -->\\n  <script type=\\"application/ld+json\\">\\n  {\\n    \\"@context\\": \\"https://schema.org\\",\\n    \\"@type\\": \\"WebSite\\",\\n    \\"name\\": \\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' ))
     ; __append("\\",\\n    \\"alternateName\\": [\\"GovtExamZone\\", \\"Govt Exam Zone Official\\", \\"GEZ Official\\"],\\n    \\"url\\": \\"")
     ; __append(escapeFn( siteBase ))
@@ -81765,7 +81769,15 @@ var worker_default = {
         try {
           const assetRes = await env2.ASSETS.fetch(request);
           if (assetRes && assetRes.status !== 404) {
-            return assetRes;
+            const h = new Headers(assetRes.headers);
+            if (!h.has("cache-control") || h.get("cache-control").includes("max-age=0")) {
+              h.set("cache-control", "public, max-age=86400, stale-while-revalidate=604800");
+            }
+            return new Response(assetRes.body, {
+              status: assetRes.status,
+              statusText: assetRes.statusText,
+              headers: h
+            });
           }
         } catch (assetErr) {
         }

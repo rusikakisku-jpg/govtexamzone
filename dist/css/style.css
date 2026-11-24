@@ -1174,7 +1174,8 @@ a:hover, a:focus {
     opacity: 0;
     visibility: hidden;
     background: #0f172a;
-    transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease, visibility 0.35s ease;
+    transition: max-height 0.18s ease-out, opacity 0.15s ease, visibility 0.18s ease;
+    will-change: max-height, opacity;
     border-top: 1px solid #1e293b;
     box-shadow: 0 12px 25px rgba(0, 0, 0, 0.55);
     margin: 0;

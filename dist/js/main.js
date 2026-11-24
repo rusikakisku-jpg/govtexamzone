@@ -52,11 +52,13 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
 
-    // Close drawer when a content link is clicked
+    // Close drawer immediately when a content link is clicked without blocking navigation
     navMenu.querySelectorAll('a').forEach(function(link) {
       link.addEventListener('click', function() {
         if (link.classList.contains('nav-dropdown-toggle')) return;
-        closeMenu();
+        navMenu.classList.remove('active');
+        toggleBtn.classList.remove('active');
+        toggleBtn.setAttribute('aria-expanded', 'false');
       });
     });
 
@@ -67,6 +69,26 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
+
+  // Instant Menu Navigation Hover/Touch Prefetching for Lightning-Fast Page Transitions
+  const prefetchedNavUrls = new Set();
+  function prefetchNavUrl(url) {
+    if (!url || url.startsWith('javascript') || prefetchedNavUrls.has(url)) return;
+    prefetchedNavUrls.add(url);
+    const prefetchLink = document.createElement('link');
+    prefetchLink.rel = 'prefetch';
+    prefetchLink.href = url;
+    prefetchLink.as = 'document';
+    document.head.appendChild(prefetchLink);
+  }
+
+  document.querySelectorAll('.nav-menu a, .site-header a').forEach(function(link) {
+    const href = link.getAttribute('href');
+    if (href && href.startsWith('/')) {
+      link.addEventListener('mouseenter', function() { prefetchNavUrl(href); }, { passive: true });
+      link.addEventListener('touchstart', function() { prefetchNavUrl(href); }, { passive: true });
+    }
+  });
 
   // More Navigation Dropdown Handler (Click to Toggle on Desktop & Mobile)
   const moreToggle = document.getElementById('moreDropdownToggle');

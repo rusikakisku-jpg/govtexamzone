@@ -3,6 +3,11 @@ const router = express.Router();
 const d1 = require('../db/d1Client');
 const { CATEGORIES, safeJsonParse, formatDate, formatPrettyDate } = require('../utils/helpers');
 
+// In-memory cache for global settings to prevent repetitive D1 roundtrips on every navigation
+let cachedSettings = null;
+let settingsCacheTime = 0;
+const SETTINGS_CACHE_TTL = 60 * 1000; // 60 seconds
+
 // Middleware to inject common data
 router.use(async (req, res, next) => {
   try {
@@ -14,6 +19,12 @@ router.use(async (req, res, next) => {
   res.locals.formatPrettyDate = formatPrettyDate;
   res.locals.safeJsonParse = safeJsonParse;
   res.locals.currentPath = req.path;
+
+  const now = Date.now();
+  if (cachedSettings && (now - settingsCacheTime < SETTINGS_CACHE_TTL)) {
+    res.locals.settings = cachedSettings;
+    return next();
+  }
 
   try {
     const sRows = await d1.prepare('SELECT * FROM settings').all();
@@ -28,9 +39,11 @@ router.use(async (req, res, next) => {
     if (sRows && Array.isArray(sRows)) {
       sRows.forEach(r => { siteSettings[r.key] = r.value; });
     }
+    cachedSettings = siteSettings;
+    settingsCacheTime = now;
     res.locals.settings = siteSettings;
   } catch (e) {
-    res.locals.settings = {
+    res.locals.settings = cachedSettings || {
       telegram_url: 'https://t.me/govtexamzoneofficial',
       whatsapp_url: 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10',
       contact_email: 'contact.govtexamzone@gmail.com',
@@ -45,46 +58,33 @@ router.use(async (req, res, next) => {
 // Homepage
 router.get('/', async (req, res, next) => {
   try {
-    const marquees = await d1.prepare(
-      'SELECT * FROM marquees WHERE is_active = 1 ORDER BY display_order ASC, id DESC'
-    ).all();
+    // Edge & Browser Caching for Instant Navigation
+    res.set('Cache-Control', 'public, max-age=60, s-maxage=180, stale-while-revalidate=600');
 
-    const badges = await d1.prepare(
-      'SELECT * FROM badges WHERE is_active = 1 ORDER BY display_order ASC, id ASC LIMIT 8'
-    ).all();
-
-    // Fetch posts for each category
-    const results = await d1.prepare(
-      "SELECT * FROM posts WHERE category = 'result' AND status = 'active' ORDER BY id DESC LIMIT 15"
-    ).all();
-
-    const admitCards = await d1.prepare(
-      "SELECT * FROM posts WHERE category = 'admit-card' AND status = 'active' ORDER BY id DESC LIMIT 15"
-    ).all();
-
-    const latestJobs = await d1.prepare(
-      "SELECT * FROM posts WHERE category = 'latest-jobs' AND status = 'active' ORDER BY id DESC LIMIT 15"
-    ).all();
-
-    const answerKeys = await d1.prepare(
-      "SELECT * FROM posts WHERE category = 'answer-key' AND status = 'active' ORDER BY id DESC LIMIT 8"
-    ).all();
-
-    const syllabi = await d1.prepare(
-      "SELECT * FROM posts WHERE category = 'syllabus' AND status = 'active' ORDER BY id DESC LIMIT 8"
-    ).all();
-
-    const admissions = await d1.prepare(
-      "SELECT * FROM posts WHERE category = 'admission' AND status = 'active' ORDER BY id DESC LIMIT 8"
-    ).all();
-
-    const verifications = await d1.prepare(
-      "SELECT * FROM posts WHERE category = 'certificate-verification' AND status = 'active' ORDER BY id DESC LIMIT 8"
-    ).all();
-
-    const importants = await d1.prepare(
-      "SELECT * FROM posts WHERE category = 'important' AND status = 'active' ORDER BY id DESC LIMIT 8"
-    ).all();
+    // Fetch all homepage sections concurrently via Promise.all (10x faster)
+    const [
+      marquees,
+      badges,
+      results,
+      admitCards,
+      latestJobs,
+      answerKeys,
+      syllabi,
+      admissions,
+      verifications,
+      importants
+    ] = await Promise.all([
+      d1.prepare('SELECT * FROM marquees WHERE is_active = 1 ORDER BY display_order ASC, id DESC').all(),
+      d1.prepare('SELECT * FROM badges WHERE is_active = 1 ORDER BY display_order ASC, id ASC LIMIT 8').all(),
+      d1.prepare("SELECT * FROM posts WHERE category = 'result' AND status = 'active' ORDER BY id DESC LIMIT 15").all(),
+      d1.prepare("SELECT * FROM posts WHERE category = 'admit-card' AND status = 'active' ORDER BY id DESC LIMIT 15").all(),
+      d1.prepare("SELECT * FROM posts WHERE category = 'latest-jobs' AND status = 'active' ORDER BY id DESC LIMIT 15").all(),
+      d1.prepare("SELECT * FROM posts WHERE category = 'answer-key' AND status = 'active' ORDER BY id DESC LIMIT 8").all(),
+      d1.prepare("SELECT * FROM posts WHERE category = 'syllabus' AND status = 'active' ORDER BY id DESC LIMIT 8").all(),
+      d1.prepare("SELECT * FROM posts WHERE category = 'admission' AND status = 'active' ORDER BY id DESC LIMIT 8").all(),
+      d1.prepare("SELECT * FROM posts WHERE category = 'certificate-verification' AND status = 'active' ORDER BY id DESC LIMIT 8").all(),
+      d1.prepare("SELECT * FROM posts WHERE category = 'important' AND status = 'active' ORDER BY id DESC LIMIT 8").all()
+    ]);
 
     res.render('pages/index', {
       title: `${res.locals.settings?.site_title || 'Govt Exam Zone'} : ${res.locals.settings?.site_tagline || 'Latest Govt Jobs, Admit Card, Results 2026'} | ${res.locals.settings?.header_subtitle || 'WWW.GOVTEXAMZONE.COM'}`,
@@ -117,20 +117,21 @@ router.get('/category/:cat', async (req, res, next) => {
       });
     }
 
+    // Edge & Browser Caching for Instant Category Navigation
+    res.set('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600');
+
     const page = parseInt(req.query.page || '1', 10);
     const limit = 30;
     const offset = (page - 1) * limit;
 
-    const countRow = await d1.prepare(
-      'SELECT COUNT(*) as total FROM posts WHERE category = ? AND status = "active"'
-    ).bind(categorySlug).first();
+    // Fetch count and posts concurrently
+    const [countRow, posts] = await Promise.all([
+      d1.prepare('SELECT COUNT(*) as total FROM posts WHERE category = ? AND status = "active"').bind(categorySlug).first(),
+      d1.prepare('SELECT * FROM posts WHERE category = ? AND status = "active" ORDER BY id DESC LIMIT ? OFFSET ?').bind(categorySlug, limit, offset).all()
+    ]);
 
     const totalPosts = countRow?.total || 0;
     const totalPages = Math.ceil(totalPosts / limit) || 1;
-
-    const posts = await d1.prepare(
-      'SELECT * FROM posts WHERE category = ? AND status = "active" ORDER BY id DESC LIMIT ? OFFSET ?'
-    ).bind(categorySlug, limit, offset).all();
 
     res.render('pages/category', {
       title: `${catInfo.name} - Govt Exam Zone 2026 | WWW.GOVTEXAMZONE.COM`,
@@ -193,6 +194,8 @@ router.get('/post/:slug', async (req, res, next) => {
       avatar_url: '/images/default-avatar.svg',
       bio: 'The official editorial and verification desk of Govt Exam Zone.'
     };
+
+    res.set('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600');
 
     res.render('pages/detail', {
       title: `${post.title} - Govt Exam Zone | WWW.GOVTEXAMZONE.COM`,
