@@ -28297,6 +28297,13 @@ var require_d1Client = __commonJS({
     view_date TEXT NOT NULL,
     views INTEGER DEFAULT 0,
     PRIMARY KEY (post_id, view_date)
+  )`,
+      `CREATE TABLE IF NOT EXISTS post_categories (
+    post_id INTEGER NOT NULL,
+    category TEXT NOT NULL,
+    display_title TEXT,
+    bumped_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (post_id, category)
   )`
     ];
     var CORE_INDEXES = [
@@ -28306,7 +28313,8 @@ var require_d1Client = __commonJS({
       `CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id)`,
       `CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at)`,
       `CREATE INDEX IF NOT EXISTS idx_authors_slug ON authors(slug)`,
-      `CREATE INDEX IF NOT EXISTS idx_daily_views_date ON post_daily_views(view_date)`
+      `CREATE INDEX IF NOT EXISTS idx_daily_views_date ON post_daily_views(view_date)`,
+      `CREATE INDEX IF NOT EXISTS idx_post_categories_cat_bump ON post_categories(category, bumped_at DESC)`
     ];
     var EMBEDDED_SCHEMA_SQL = CORE_TABLES.concat(CORE_INDEXES).join(";\n\n") + ";";
     function getSchemaSql() {
@@ -28419,6 +28427,14 @@ var require_d1Client = __commonJS({
         }
         const schemaSql = getSchemaSql();
         this.localDb.run(schemaSql);
+        try {
+          this.localDb.run(`
+        INSERT OR IGNORE INTO post_categories (post_id, category, display_title, bumped_at)
+        SELECT id, category, title, COALESCE(created_at, CURRENT_TIMESTAMP)
+        FROM posts WHERE category IS NOT NULL AND category != ''
+      `);
+        } catch (pcErr) {
+        }
         this.saveLocal();
         this.initialized = true;
         console.log("\u2705 Database schema verified and active.");
@@ -28468,6 +28484,14 @@ var require_d1Client = __commonJS({
             await this.queryRemote("ALTER TABLE posts ADD COLUMN thumbnail TEXT");
           } catch (migErr) {
           }
+          try {
+            await this.queryRemote(`
+          INSERT OR IGNORE INTO post_categories (post_id, category, display_title, bumped_at)
+          SELECT id, category, title, COALESCE(created_at, CURRENT_TIMESTAMP)
+          FROM posts WHERE category IS NOT NULL AND category != ''
+        `);
+          } catch (pcErr) {
+          }
           console.log("\u2705 Cloudflare D1 remote schema verified.");
         } catch (err) {
           console.warn("\u26A0\uFE0F Warning during remote D1 schema initialization:", err.message);
@@ -28506,6 +28530,14 @@ var require_d1Client = __commonJS({
           try {
             await nativeD1.prepare("ALTER TABLE posts ADD COLUMN thumbnail TEXT").run();
           } catch (colErr) {
+          }
+          try {
+            await nativeD1.prepare(`
+          INSERT OR IGNORE INTO post_categories (post_id, category, display_title, bumped_at)
+          SELECT id, category, title, COALESCE(created_at, CURRENT_TIMESTAMP)
+          FROM posts WHERE category IS NOT NULL AND category != ''
+        `).run();
+          } catch (pcErr) {
           }
           try {
             const countRow = await nativeD1.prepare("SELECT COUNT(*) as count FROM marquees").first();
@@ -28760,6 +28792,193 @@ var require_viewTracker = __commonJS({
   }
 });
 
+// src/utils/postCategoryManager.js
+var require_postCategoryManager = __commonJS({
+  "src/utils/postCategoryManager.js"(exports, module) {
+    var d1 = require_d1Client();
+    var { CATEGORIES } = require_helpers();
+    function getUtcTimestamp() {
+      return (/* @__PURE__ */ new Date()).toISOString().replace("T", " ").slice(0, 19);
+    }
+    async function getPostCategoryMap(postId) {
+      const map = {};
+      if (!postId) return map;
+      try {
+        const rows = await d1.prepare(
+          "SELECT category, display_title, bumped_at FROM post_categories WHERE post_id = ? ORDER BY bumped_at DESC"
+        ).bind(postId).all();
+        if (Array.isArray(rows)) {
+          rows.forEach((r) => {
+            if (r && r.category) {
+              map[r.category] = {
+                category: r.category,
+                display_title: r.display_title || "",
+                bumped_at: r.bumped_at || ""
+              };
+            }
+          });
+        }
+      } catch (err) {
+        console.warn("getPostCategoryMap notice:", err.message);
+      }
+      return map;
+    }
+    function parseSubmittedCategories(body, primaryCategory) {
+      const rawExtras = body?.extra_categories;
+      const set = /* @__PURE__ */ new Set();
+      if (Array.isArray(rawExtras)) {
+        rawExtras.forEach((c) => {
+          if (c && CATEGORIES[c]) set.add(String(c));
+        });
+      } else if (typeof rawExtras === "string" && rawExtras.trim() && CATEGORIES[rawExtras.trim()]) {
+        set.add(rawExtras.trim());
+      }
+      if (primaryCategory && CATEGORIES[primaryCategory]) {
+        set.add(primaryCategory);
+      }
+      return set;
+    }
+    async function syncPostCategoriesOnSave({
+      postId,
+      primaryCategory,
+      newTitle,
+      previousPost = null,
+      body = {}
+    }) {
+      if (!postId || !primaryCategory) return;
+      const nowTs = getUtcTimestamp();
+      const hasHistoryUi = body?.has_category_history_ui === "1";
+      const bumpPrimary = body?.bump_primary === "1";
+      const existingMap = previousPost ? await getPostCategoryMap(postId) : {};
+      if (previousPost && previousPost.category && !existingMap[previousPost.category]) {
+        const prevBumped = previousPost.created_at || previousPost.updated_at || nowTs;
+        await d1.prepare(`
+      INSERT OR IGNORE INTO post_categories (post_id, category, display_title, bumped_at)
+      VALUES (?, ?, ?, ?)
+    `).bind(postId, previousPost.category, previousPost.title || newTitle, prevBumped).run();
+        existingMap[previousPost.category] = {
+          category: previousPost.category,
+          display_title: previousPost.title || newTitle,
+          bumped_at: prevBumped
+        };
+      }
+      const categoryChanged = Boolean(previousPost && previousPost.category && previousPost.category !== primaryCategory);
+      let targetCategories;
+      if (hasHistoryUi) {
+        targetCategories = parseSubmittedCategories(body, primaryCategory);
+        if (categoryChanged && previousPost.category && body?.[`cat_remove_${previousPost.category}`] !== "1") {
+          targetCategories.add(previousPost.category);
+        }
+      } else {
+        targetCategories = new Set(Object.keys(existingMap));
+        targetCategories.add(primaryCategory);
+      }
+      for (const oldCat of Object.keys(existingMap)) {
+        if (!targetCategories.has(oldCat) && oldCat !== primaryCategory) {
+          await d1.prepare("DELETE FROM post_categories WHERE post_id = ? AND category = ?").bind(postId, oldCat).run();
+        }
+      }
+      for (const cat of targetCategories) {
+        const existingRow = existingMap[cat];
+        const submittedTitleRaw = body?.[`cat_title_${cat}`];
+        const submittedTitle = typeof submittedTitleRaw === "string" ? submittedTitleRaw.trim() : "";
+        if (cat === primaryCategory) {
+          let resolvedTitle = newTitle;
+          if (submittedTitle) {
+            if (!categoryChanged && previousPost && submittedTitle === previousPost.title && newTitle !== previousPost.title) {
+              resolvedTitle = newTitle;
+            } else {
+              resolvedTitle = submittedTitle;
+            }
+          }
+          const shouldBump = !existingRow || categoryChanged || bumpPrimary;
+          const resolvedBump = shouldBump ? nowTs : existingRow.bumped_at || nowTs;
+          await d1.prepare(`
+        INSERT INTO post_categories (post_id, category, display_title, bumped_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(post_id, category) DO UPDATE SET
+          display_title = excluded.display_title,
+          bumped_at = excluded.bumped_at
+      `).bind(postId, cat, resolvedTitle, resolvedBump).run();
+        } else if (existingRow) {
+          const preservedTitle = submittedTitle || existingRow.display_title || (previousPost ? previousPost.title : newTitle);
+          if (preservedTitle !== existingRow.display_title) {
+            await d1.prepare(`
+          UPDATE post_categories SET display_title = ? WHERE post_id = ? AND category = ?
+        `).bind(preservedTitle, postId, cat).run();
+          }
+        } else {
+          const extraTitle = submittedTitle || newTitle;
+          await d1.prepare(`
+        INSERT INTO post_categories (post_id, category, display_title, bumped_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(post_id, category) DO UPDATE SET
+          display_title = excluded.display_title
+      `).bind(postId, cat, extraTitle, nowTs).run();
+        }
+      }
+    }
+    async function cleanupPostRelations(postId) {
+      if (!postId) return;
+      try {
+        await d1.prepare("DELETE FROM post_categories WHERE post_id = ?").bind(postId).run();
+      } catch (e) {
+      }
+      try {
+        await d1.prepare("DELETE FROM post_daily_views WHERE post_id = ?").bind(postId).run();
+      } catch (e) {
+      }
+    }
+    async function fetchCategoryPosts(categorySlug, limit = 15, offset = 0) {
+      return await d1.prepare(`
+    SELECT p.*, COALESCE(NULLIF(pc.display_title, ''), p.title) AS title, pc.bumped_at
+    FROM post_categories pc
+    INNER JOIN posts p ON p.id = pc.post_id
+    WHERE pc.category = ? AND p.status = 'active'
+    ORDER BY pc.bumped_at DESC, p.id DESC
+    LIMIT ? OFFSET ?
+  `).bind(categorySlug, limit, offset).all();
+    }
+    async function countCategoryPosts(categorySlug) {
+      const row = await d1.prepare(`
+    SELECT COUNT(*) AS total
+    FROM post_categories pc
+    INNER JOIN posts p ON p.id = pc.post_id
+    WHERE pc.category = ? AND p.status = 'active'
+  `).bind(categorySlug).first();
+      return row?.total || 0;
+    }
+    async function fetchRelatedCategoryPosts(categorySlug, excludePostId, limit = 8) {
+      return await d1.prepare(`
+    SELECT p.id, COALESCE(NULLIF(pc.display_title, ''), p.title) AS title, p.slug, p.post_date
+    FROM post_categories pc
+    INNER JOIN posts p ON p.id = pc.post_id
+    WHERE pc.category = ? AND p.id != ? AND p.status = 'active'
+    ORDER BY pc.bumped_at DESC, p.id DESC
+    LIMIT ?
+  `).bind(categorySlug, excludePostId, limit).all();
+    }
+    async function fetchAllCategoryCounts() {
+      return await d1.prepare(`
+    SELECT pc.category, COUNT(DISTINCT pc.post_id) AS count
+    FROM post_categories pc
+    INNER JOIN posts p ON p.id = pc.post_id
+    WHERE p.status = 'active'
+    GROUP BY pc.category
+  `).all();
+    }
+    module.exports = {
+      getPostCategoryMap,
+      syncPostCategoriesOnSave,
+      cleanupPostRelations,
+      fetchCategoryPosts,
+      countCategoryPosts,
+      fetchRelatedCategoryPosts,
+      fetchAllCategoryCounts
+    };
+  }
+});
+
 // src/routes/webRoutes.js
 var require_webRoutes = __commonJS({
   "src/routes/webRoutes.js"(exports, module) {
@@ -28768,6 +28987,12 @@ var require_webRoutes = __commonJS({
     var d1 = require_d1Client();
     var { CATEGORIES, safeJsonParse, formatDate, formatPrettyDate } = require_helpers();
     var { recordPostView } = require_viewTracker();
+    var {
+      fetchCategoryPosts,
+      countCategoryPosts,
+      fetchRelatedCategoryPosts,
+      fetchAllCategoryCounts
+    } = require_postCategoryManager();
     var cachedSettings = null;
     var settingsCacheTime = 0;
     var SETTINGS_CACHE_TTL = 60 * 1e3;
@@ -28846,14 +29071,14 @@ var require_webRoutes = __commonJS({
         ] = await Promise.all([
           d1.prepare("SELECT * FROM marquees WHERE is_active = 1 ORDER BY display_order ASC, id DESC").all(),
           d1.prepare("SELECT * FROM badges WHERE is_active = 1 ORDER BY display_order ASC, id ASC LIMIT 8").all(),
-          d1.prepare("SELECT * FROM posts WHERE category = 'result' AND status = 'active' ORDER BY id DESC LIMIT 15").all(),
-          d1.prepare("SELECT * FROM posts WHERE category = 'admit-card' AND status = 'active' ORDER BY id DESC LIMIT 15").all(),
-          d1.prepare("SELECT * FROM posts WHERE category = 'latest-jobs' AND status = 'active' ORDER BY id DESC LIMIT 15").all(),
-          d1.prepare("SELECT * FROM posts WHERE category = 'answer-key' AND status = 'active' ORDER BY id DESC LIMIT 8").all(),
-          d1.prepare("SELECT * FROM posts WHERE category = 'syllabus' AND status = 'active' ORDER BY id DESC LIMIT 8").all(),
-          d1.prepare("SELECT * FROM posts WHERE category = 'admission' AND status = 'active' ORDER BY id DESC LIMIT 8").all(),
-          d1.prepare("SELECT * FROM posts WHERE category = 'certificate-verification' AND status = 'active' ORDER BY id DESC LIMIT 8").all(),
-          d1.prepare("SELECT * FROM posts WHERE category = 'important' AND status = 'active' ORDER BY id DESC LIMIT 8").all()
+          fetchCategoryPosts("result", 15, 0),
+          fetchCategoryPosts("admit-card", 15, 0),
+          fetchCategoryPosts("latest-jobs", 15, 0),
+          fetchCategoryPosts("answer-key", 8, 0),
+          fetchCategoryPosts("syllabus", 8, 0),
+          fetchCategoryPosts("admission", 8, 0),
+          fetchCategoryPosts("certificate-verification", 8, 0),
+          fetchCategoryPosts("important", 8, 0)
         ]);
         res.render("pages/index", {
           title: `${res.locals.settings?.site_title || "Govt Exam Zone"} : ${res.locals.settings?.site_tagline || "Latest Govt Jobs, Admit Card, Results 2026"} | ${res.locals.settings?.header_subtitle || "WWW.GOVTEXAMZONE.COM"}`,
@@ -28886,11 +29111,10 @@ var require_webRoutes = __commonJS({
         const page = parseInt(req.query.page || "1", 10);
         const limit = 30;
         const offset = (page - 1) * limit;
-        const [countRow, posts] = await Promise.all([
-          d1.prepare('SELECT COUNT(*) as total FROM posts WHERE category = ? AND status = "active"').bind(categorySlug).first(),
-          d1.prepare('SELECT * FROM posts WHERE category = ? AND status = "active" ORDER BY id DESC LIMIT ? OFFSET ?').bind(categorySlug, limit, offset).all()
+        const [totalPosts, posts] = await Promise.all([
+          countCategoryPosts(categorySlug),
+          fetchCategoryPosts(categorySlug, limit, offset)
         ]);
-        const totalPosts = countRow?.total || 0;
         const totalPages = Math.ceil(totalPosts / limit) || 1;
         res.render("pages/category", {
           title: `${catInfo.name} - Govt Exam Zone 2026 | WWW.GOVTEXAMZONE.COM`,
@@ -28925,9 +29149,7 @@ var require_webRoutes = __commonJS({
         }
         await recordPostView(post.id, req);
         const [relatedPosts, authorRow, recentPosts, popularPosts, categoryCounts] = await Promise.all([
-          d1.prepare(
-            "SELECT id, title, slug, post_date FROM posts WHERE category = ? AND id != ? AND status = 'active' ORDER BY id DESC LIMIT 8"
-          ).bind(post.category, post.id).all(),
+          fetchRelatedCategoryPosts(post.category, post.id, 8),
           d1.prepare("SELECT * FROM authors WHERE id = ?").bind(post.author_id || 1).first(),
           d1.prepare(
             "SELECT id, title, slug, category, post_date, created_at FROM posts WHERE status = 'active' AND id != ? ORDER BY id DESC LIMIT 5"
@@ -28935,9 +29157,7 @@ var require_webRoutes = __commonJS({
           d1.prepare(
             "SELECT id, title, slug, category, post_date, views, created_at FROM posts WHERE status = 'active' ORDER BY views DESC, id DESC LIMIT 5"
           ).all(),
-          d1.prepare(
-            "SELECT category, COUNT(*) as count FROM posts WHERE status = 'active' GROUP BY category"
-          ).all()
+          fetchAllCategoryCounts()
         ]);
         const importantDates = safeJsonParse(post.important_dates, []);
         const applicationFee = safeJsonParse(post.application_fee, []);
@@ -74986,6 +75206,11 @@ var require_adminRoutes = __commonJS({
     var { getAdminBase, getPublicBase, getAdminUrl, isAdminSubdomainRequest } = require_adminHost();
     var { saveUploadedAsset } = require_uploadHelper();
     var { getIstDateString } = require_viewTracker();
+    var {
+      getPostCategoryMap,
+      syncPostCategoriesOnSave,
+      cleanupPostRelations
+    } = require_postCategoryManager();
     var { slugify, CATEGORIES, safeJsonParse, formatDate } = require_helpers();
     var upload = multer({
       storage: multer.memoryStorage(),
@@ -75238,6 +75463,7 @@ var require_adminRoutes = __commonJS({
         res.render("admin/post-form", {
           title: "Create New Post - Govt Exam Zone Admin",
           post: null,
+          categoryHistoryMap: {},
           authors: authors || [],
           categories: CATEGORIES,
           action: getAdminUrl(req, "/posts/new")
@@ -75302,7 +75528,7 @@ var require_adminRoutes = __commonJS({
         const categoryDetails = req.body.category_details ? req.body.category_details : "[]";
         const links = req.body.links ? req.body.links : "[]";
         const authorId = author_id ? parseInt(author_id, 10) || 1 : 1;
-        await d1.prepare(`
+        const insertRes = await d1.prepare(`
       INSERT INTO posts (
         title, slug, category, department, post_date, last_date,
         short_desc, total_vacancy, important_dates, application_fee,
@@ -75345,6 +75571,14 @@ var require_adminRoutes = __commonJS({
           status || "active",
           authorId
         ).run();
+        const newPostId = insertRes?.lastInsertRowid || (await d1.prepare("SELECT id FROM posts WHERE slug = ?").bind(finalSlug).first())?.id;
+        await syncPostCategoriesOnSave({
+          postId: newPostId,
+          primaryCategory: category,
+          newTitle: title,
+          previousPost: null,
+          body: req.body
+        });
         res.redirect(getAdminUrl(req, "/posts?success=created"));
       } catch (err) {
         next(err);
@@ -75356,10 +75590,14 @@ var require_adminRoutes = __commonJS({
         if (!post) {
           return res.status(404).send("Post not found");
         }
-        const authors = await d1.prepare("SELECT id, name, role FROM authors WHERE is_active = 1 ORDER BY id ASC").all();
+        const [authors, categoryHistoryMap] = await Promise.all([
+          d1.prepare("SELECT id, name, role FROM authors WHERE is_active = 1 ORDER BY id ASC").all(),
+          getPostCategoryMap(post.id)
+        ]);
         res.render("admin/post-form", {
           title: `Edit: ${post.title} - Govt Exam Zone Admin`,
           post,
+          categoryHistoryMap: categoryHistoryMap || {},
           authors: authors || [],
           categories: CATEGORIES,
           action: getAdminUrl(req, `/posts/edit/${post.id}`)
@@ -75465,6 +75703,13 @@ var require_adminRoutes = __commonJS({
           authorId,
           postId
         ).run();
+        await syncPostCategoriesOnSave({
+          postId,
+          primaryCategory: category,
+          newTitle: title,
+          previousPost: currentPost,
+          body: req.body
+        });
         res.redirect(getAdminUrl(req, "/posts?success=updated"));
       } catch (err) {
         next(err);
@@ -75473,6 +75718,7 @@ var require_adminRoutes = __commonJS({
     router.post("/posts/delete/:id", async (req, res, next) => {
       try {
         await d1.prepare("DELETE FROM posts WHERE id = ?").bind(req.params.id).run();
+        await cleanupPostRelations(req.params.id);
         res.redirect(getAdminUrl(req, "/posts?success=deleted"));
       } catch (err) {
         next(err);
@@ -75926,6 +76172,7 @@ var require_authorRoutes = __commonJS({
     } = require_authorAuth();
     var { slugify, CATEGORIES, safeJsonParse, formatDate } = require_helpers();
     var { saveUploadedAsset } = require_uploadHelper();
+    var { getPostCategoryMap, syncPostCategoriesOnSave } = require_postCategoryManager();
     var upload = multer({
       storage: multer.memoryStorage(),
       limits: { fileSize: 25 * 1024 * 1024 }
@@ -76142,6 +76389,7 @@ var require_authorRoutes = __commonJS({
         title: "Write New Notification / Article - Author Workspace",
         author: req.author,
         post: null,
+        categoryHistoryMap: {},
         categories: CATEGORIES,
         action: "/author-portal/posts/new"
       });
@@ -76201,7 +76449,7 @@ var require_authorRoutes = __commonJS({
         const categoryDetails = req.body.category_details ? req.body.category_details : "[]";
         const links = req.body.links ? req.body.links : "[]";
         const postStatus = status === "draft" ? "draft" : "active";
-        await d1.prepare(`
+        const insertRes = await d1.prepare(`
       INSERT INTO posts (
         title, slug, category, department, post_date, last_date,
         short_desc, total_vacancy, important_dates, application_fee,
@@ -76245,6 +76493,14 @@ var require_authorRoutes = __commonJS({
           author.id
           // Strictly assigned to the logged-in author
         ).run();
+        const newPostId = insertRes?.lastInsertRowid || (await d1.prepare("SELECT id FROM posts WHERE slug = ?").bind(finalSlug).first())?.id;
+        await syncPostCategoriesOnSave({
+          postId: newPostId,
+          primaryCategory: category,
+          newTitle: title,
+          previousPost: null,
+          body: req.body
+        });
         res.redirect("/author-portal/posts?success=created");
       } catch (err) {
         next(err);
@@ -76260,10 +76516,12 @@ var require_authorRoutes = __commonJS({
         if (!req.isEditor && post.author_id !== author.id) {
           return res.status(403).send("Access Denied: You are not authorized to edit articles written by another author.");
         }
+        const categoryHistoryMap = await getPostCategoryMap(post.id);
         res.render("author/post-form", {
           title: `Edit Article: ${post.title} - Author Workspace`,
           author,
           post,
+          categoryHistoryMap: categoryHistoryMap || {},
           categories: CATEGORIES,
           action: `/author-portal/posts/edit/${post.id}`
         });
@@ -76406,6 +76664,13 @@ var require_authorRoutes = __commonJS({
             author.id
           ).run();
         }
+        await syncPostCategoriesOnSave({
+          postId,
+          primaryCategory: category,
+          newTitle: title,
+          previousPost: currentPost,
+          body: req.body
+        });
         res.redirect("/author-portal/posts?success=updated");
       } catch (err) {
         next(err);
@@ -77956,7 +78221,9 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( categories[key].name ))
     ; __append("\\n            </option>\\n          ")
     ;  }) 
-    ; __append("\\n        </select>\\n      </div>\\n    </div>\\n\\n    <!-- Row 2: Department, Dates -->\\n    <div class=\\"form-row\\">\\n      <div class=\\"form-group\\">\\n        <label for=\\"department\\">Department / Board</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"department\\" \\n          name=\\"department\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"e.g. Staff Selection Commission (SSC)\\" \\n          value=\\"")
+    ; __append("\\n        </select>\\n      </div>\\n    </div>\\n\\n    ")
+    ; __append( include('../partials/post-category-history') )
+    ; __append("\\n\\n    <!-- Row 2: Department, Dates -->\\n    <div class=\\"form-row\\">\\n      <div class=\\"form-group\\">\\n        <label for=\\"department\\">Department / Board</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"department\\" \\n          name=\\"department\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"e.g. Staff Selection Commission (SSC)\\" \\n          value=\\"")
     ; __append(escapeFn( post ? post.department : '' ))
     ; __append("\\"\\n        >\\n      </div>\\n\\n      <div class=\\"form-group\\">\\n        <label for=\\"post_date\\">Post Date / Update Text</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"post_date\\" \\n          name=\\"post_date\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"e.g. 24 September 2026 | 10:15 AM\\" \\n          value=\\"")
     ; __append(escapeFn( post ? post.post_date : '' ))
@@ -78082,7 +78349,9 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( categories[key].name ))
     ; __append("\\n            </option>\\n          ")
     ;  }) 
-    ; __append("\\n        </select>\\n      </div>\\n    </div>\\n\\n    <!-- Row 2: Department, Dates -->\\n    <div class=\\"form-row\\">\\n      <div class=\\"form-group\\">\\n        <label for=\\"department\\">Department / Board</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"department\\" \\n          name=\\"department\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"e.g. Staff Selection Commission (SSC)\\" \\n          value=\\"")
+    ; __append("\\n        </select>\\n      </div>\\n    </div>\\n\\n    ")
+    ; __append( include('../partials/post-category-history') )
+    ; __append("\\n\\n    <!-- Row 2: Department, Dates -->\\n    <div class=\\"form-row\\">\\n      <div class=\\"form-group\\">\\n        <label for=\\"department\\">Department / Board</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"department\\" \\n          name=\\"department\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"e.g. Staff Selection Commission (SSC)\\" \\n          value=\\"")
     ; __append(escapeFn( post ? post.department : '' ))
     ; __append("\\"\\n        >\\n      </div>\\n\\n      <div class=\\"form-group\\">\\n        <label for=\\"post_date\\">Post Date / Update Text</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"post_date\\" \\n          name=\\"post_date\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"e.g. 24 September 2026 | 10:15 AM\\" \\n          value=\\"")
     ; __append(escapeFn( post ? post.post_date : '' ))
@@ -79058,7 +79327,9 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( categories[key].name ))
     ; __append("\\n            </option>\\n          ")
     ;  }) 
-    ; __append("\\n        </select>\\n      </div>\\n    </div>\\n\\n    <!-- Row 2: Department, Dates -->\\n    <div class=\\"form-row\\">\\n      <div class=\\"form-group\\">\\n        <label for=\\"department\\">Department / Board</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"department\\" \\n          name=\\"department\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"e.g. Staff Selection Commission (SSC)\\" \\n          value=\\"")
+    ; __append("\\n        </select>\\n      </div>\\n    </div>\\n\\n    ")
+    ; __append( include('../partials/post-category-history') )
+    ; __append("\\n\\n    <!-- Row 2: Department, Dates -->\\n    <div class=\\"form-row\\">\\n      <div class=\\"form-group\\">\\n        <label for=\\"department\\">Department / Board</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"department\\" \\n          name=\\"department\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"e.g. Staff Selection Commission (SSC)\\" \\n          value=\\"")
     ; __append(escapeFn( post ? post.department : '' ))
     ; __append("\\"\\n        >\\n      </div>\\n\\n      <div class=\\"form-group\\">\\n        <label for=\\"post_date\\">Post Date / Update Text</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"post_date\\" \\n          name=\\"post_date\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"e.g. 24 September 2026 | 10:15 AM\\" \\n          value=\\"")
     ; __append(escapeFn( post ? post.post_date : '' ))
@@ -79166,7 +79437,9 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( categories[key].name ))
     ; __append("\\n            </option>\\n          ")
     ;  }) 
-    ; __append("\\n        </select>\\n      </div>\\n    </div>\\n\\n    <!-- Row 2: Department, Dates -->\\n    <div class=\\"form-row\\">\\n      <div class=\\"form-group\\">\\n        <label for=\\"department\\">Department / Board</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"department\\" \\n          name=\\"department\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"e.g. Staff Selection Commission (SSC)\\" \\n          value=\\"")
+    ; __append("\\n        </select>\\n      </div>\\n    </div>\\n\\n    ")
+    ; __append( include('../partials/post-category-history') )
+    ; __append("\\n\\n    <!-- Row 2: Department, Dates -->\\n    <div class=\\"form-row\\">\\n      <div class=\\"form-group\\">\\n        <label for=\\"department\\">Department / Board</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"department\\" \\n          name=\\"department\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"e.g. Staff Selection Commission (SSC)\\" \\n          value=\\"")
     ; __append(escapeFn( post ? post.department : '' ))
     ; __append("\\"\\n        >\\n      </div>\\n\\n      <div class=\\"form-group\\">\\n        <label for=\\"post_date\\">Post Date / Update Text</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"post_date\\" \\n          name=\\"post_date\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"e.g. 24 September 2026 | 10:15 AM\\" \\n          value=\\"")
     ; __append(escapeFn( post ? post.post_date : '' ))
@@ -81598,7 +81871,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( baseAdmin ))
     ; __append("/settings\\" class=\\"bottom-nav-item ")
     ; __append(escapeFn( isSettingsActive ? 'active' : '' ))
-    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u2699\uFE0F</span>\\n    <span class=\\"bottom-nav-label\\">Settings</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261125a\\"></script>\\n</body>\\n</html>\\n")
+    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u2699\uFE0F</span>\\n    <span class=\\"bottom-nav-label\\">Settings</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261125b\\"></script>\\n</body>\\n</html>\\n")
   }
   return __output;
 `,
@@ -81630,7 +81903,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( baseAdmin ))
     ; __append("/settings\\" class=\\"bottom-nav-item ")
     ; __append(escapeFn( isSettingsActive ? 'active' : '' ))
-    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u2699\uFE0F</span>\\n    <span class=\\"bottom-nav-label\\">Settings</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261125a\\"></script>\\n</body>\\n</html>\\n")
+    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u2699\uFE0F</span>\\n    <span class=\\"bottom-nav-label\\">Settings</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261125b\\"></script>\\n</body>\\n</html>\\n")
   }
   return __output;
 `,
@@ -81835,7 +82108,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( isAuthNew ? 'active' : '' ))
     ; __append("\\">\\n    <span class=\\"bottom-nav-fab\\" style=\\"background: linear-gradient(135deg, #2563eb, #1d4ed8); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);\\">\uFF0B</span>\\n    <span class=\\"bottom-nav-label\\">Write</span>\\n  </a>\\n\\n  <a href=\\"/author-portal/profile\\" class=\\"bottom-nav-item ")
     ; __append(escapeFn( isAuthProfile ? 'active' : '' ))
-    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u{1F464}</span>\\n    <span class=\\"bottom-nav-label\\">Profile</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261125a\\"></script>\\n</body>\\n</html>\\n")
+    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u{1F464}</span>\\n    <span class=\\"bottom-nav-label\\">Profile</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261125b\\"></script>\\n</body>\\n</html>\\n")
   }
   return __output;
 `,
@@ -81858,7 +82131,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( isAuthNew ? 'active' : '' ))
     ; __append("\\">\\n    <span class=\\"bottom-nav-fab\\" style=\\"background: linear-gradient(135deg, #2563eb, #1d4ed8); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);\\">\uFF0B</span>\\n    <span class=\\"bottom-nav-label\\">Write</span>\\n  </a>\\n\\n  <a href=\\"/author-portal/profile\\" class=\\"bottom-nav-item ")
     ; __append(escapeFn( isAuthProfile ? 'active' : '' ))
-    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u{1F464}</span>\\n    <span class=\\"bottom-nav-label\\">Profile</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261125a\\"></script>\\n</body>\\n</html>\\n")
+    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u{1F464}</span>\\n    <span class=\\"bottom-nav-label\\">Profile</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261125b\\"></script>\\n</body>\\n</html>\\n")
   }
   return __output;
 `,
@@ -83015,6 +83288,118 @@ var require_templateEngine = __commonJS({
     ; __append("\\n      <!-- Header Menu Search Function with Search Icon -->\\n      <li class=\\"nav-search-item\\">\\n        <div class=\\"header-search-wrap\\">\\n          <form action=\\"/search\\" method=\\"GET\\" class=\\"header-search-form\\" id=\\"headerNavSearchForm\\">\\n            <span class=\\"header-search-icon\\" aria-hidden=\\"true\\">\u{1F50D}</span>\\n            <input \\n              type=\\"text\\" \\n              name=\\"q\\" \\n              id=\\"live-search-input\\" \\n              placeholder=\\"Search Exams, Jobs...\\" \\n              autocomplete=\\"off\\"\\n              value=\\"")
     ; __append(escapeFn( typeof query !== 'undefined' ? query : '' ))
     ; __append("\\"\\n              aria-label=\\"Search Govt Exam Zone\\"\\n            >\\n            <button type=\\"submit\\" class=\\"header-search-btn\\">Search</button>\\n          </form>\\n          <div id=\\"search-results-dropdown\\" class=\\"header-search-results\\" style=\\"display: none;\\"></div>\\n        </div>\\n      </li>\\n    </ul>\\n  </div>\\n</nav>\\n</div>\\n<!-- Spacer to offset fixed header height so page content starts cleanly below -->\\n<div class=\\"site-header-spacer\\" id=\\"siteHeaderSpacer\\"></div>\\n<script>\\n(function() {\\n  function syncHeaderSpacer() {\\n    var wrapper = document.getElementById('siteHeaderStickyWrapper');\\n    var spacer = document.getElementById('siteHeaderSpacer');\\n    if (wrapper && spacer) {\\n      spacer.style.height = wrapper.offsetHeight + 'px';\\n    }\\n  }\\n  syncHeaderSpacer();\\n  window.addEventListener('resize', syncHeaderSpacer, { passive: true });\\n  window.addEventListener('load', syncHeaderSpacer, { passive: true });\\n})();\\n</script>\\n\\n<!-- Main Page Content Wrapper (Swappable for instant fluctuation-free transitions) -->\\n<div id=\\"pageContentWrapper\\">\\n")
+  }
+  return __output;
+`,
+      "partials/post-category-history.ejs": `  var __output = "";
+  function __append(s) { if (s !== undefined && s !== null) __output += s }
+  with (locals || {}) {
+    ; 
+  const historyMap = (typeof categoryHistoryMap !== 'undefined' && categoryHistoryMap) ? categoryHistoryMap : {};
+  const primaryCatVal = (typeof post !== 'undefined' && post && post.category) ? post.category : 'latest-jobs';
+
+    ; __append("\\n<!-- Category History & Multi-Section Appearances (Preserves Old Section Titles with Same Slug) -->\\n<div id=\\"categoryHistoryPanel\\" data-initial-primary=\\"")
+    ; __append(escapeFn( post ? primaryCatVal : '' ))
+    ; __append("\\" style=\\"background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px;\\">\\n  <input type=\\"hidden\\" name=\\"has_category_history_ui\\" value=\\"1\\">\\n  <div style=\\"display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;\\">\\n    <div>\\n      <div style=\\"font-size: 14px; font-weight: 700; color: #0f172a;\\">\\n        \u{1F4CC} Category History &amp; Section Titles (Same Slug Across All Stages)\\n      </div>\\n      <div style=\\"font-size: 12px; color: #475569; margin-top: 2px;\\">\\n        Jab aap Category change karenge (e.g. <b>Latest Jobs \u2192 Admit Card \u2192 Result</b>), purani category aur uska purana title automatically preserve rahega aur URL slug same rahega.\\n      </div>\\n    </div>\\n    ")
+    ;  if (post) { 
+    ; __append("\\n      <label style=\\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #1d4ed8; background: #eff6ff; padding: 5px 10px; border-radius: 6px; border: 1px solid #bfdbfe; cursor: pointer;\\">\\n        <input type=\\"checkbox\\" name=\\"bump_primary\\" value=\\"1\\" id=\\"bumpPrimaryCheckbox\\">\\n        <span>\u{1F51D} Bump Primary Category to Top</span>\\n      </label>\\n    ")
+    ;  } 
+    ; __append("\\n  </div>\\n\\n  <div style=\\"display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 8px;\\">\\n    ")
+    ;  Object.keys(categories).forEach(catKey => { 
+    ; __append("\\n      ")
+    ; 
+        const savedInfo = historyMap[catKey] || null;
+        const isPrimary = Boolean(post ? (primaryCatVal === catKey) : (catKey === 'latest-jobs'));
+        const isChecked = Boolean(isPrimary || savedInfo);
+        const savedTitle = savedInfo ? (savedInfo.display_title || '') : (isPrimary && post ? (post.title || '') : '');
+      
+    ; __append("\\n      <div class=\\"cat-history-row\\" data-cat-key=\\"")
+    ; __append(escapeFn( catKey ))
+    ; __append("\\" style=\\"background: #ffffff; border: 1px solid ")
+    ; __append(escapeFn( isPrimary ? '#3b82f6' : '#e2e8f0' ))
+    ; __append("; border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px;\\">\\n        <label style=\\"display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 0; font-size: 12.5px; font-weight: 700; color: #1e293b; cursor: pointer;\\">\\n          <span style=\\"display: inline-flex; align-items: center; gap: 6px;\\">\\n            <input\\n              type=\\"checkbox\\"\\n              name=\\"extra_categories\\"\\n              value=\\"")
+    ; __append(escapeFn( catKey ))
+    ; __append("\\"\\n              class=\\"cat-history-checkbox\\"\\n              data-cat-key=\\"")
+    ; __append(escapeFn( catKey ))
+    ; __append("\\"\\n              ")
+    ; __append(escapeFn( isChecked ? 'checked' : '' ))
+    ; __append("\\n            >\\n            <span>")
+    ; __append(escapeFn( categories[catKey].name ))
+    ; __append("</span>\\n          </span>\\n          <span class=\\"cat-primary-badge\\" data-cat-key=\\"")
+    ; __append(escapeFn( catKey ))
+    ; __append("\\" style=\\"font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: ")
+    ; __append(escapeFn( isPrimary ? '#dbeafe' : (savedInfo ? '#dcfce7' : '#f1f5f9') ))
+    ; __append("; color: ")
+    ; __append(escapeFn( isPrimary ? '#1d4ed8' : (savedInfo ? '#15803d' : '#64748b') ))
+    ; __append(";\\">\\n            ")
+    ; __append(escapeFn( isPrimary ? 'Primary' : (savedInfo ? 'Preserved' : 'Optional') ))
+    ; __append("\\n          </span>\\n        </label>\\n        <input\\n          type=\\"text\\"\\n          name=\\"cat_title_")
+    ; __append(escapeFn( catKey ))
+    ; __append("\\"\\n          class=\\"form-control cat-history-title-input\\"\\n          data-cat-key=\\"")
+    ; __append(escapeFn( catKey ))
+    ; __append("\\"\\n          data-saved-title=\\"")
+    ; __append(escapeFn( savedTitle ))
+    ; __append("\\"\\n          value=\\"")
+    ; __append(escapeFn( savedTitle ))
+    ; __append("\\"\\n          placeholder=\\"Section title (defaults to Post Title)\\"\\n          style=\\"font-size: 12px; padding: 6px 8px;\\"\\n        >\\n      </div>\\n    ")
+    ;  }) 
+    ; __append("\\n  </div>\\n</div>\\n")
+  }
+  return __output;
+`,
+      "views/partials/post-category-history.ejs": `  var __output = "";
+  function __append(s) { if (s !== undefined && s !== null) __output += s }
+  with (locals || {}) {
+    ; 
+  const historyMap = (typeof categoryHistoryMap !== 'undefined' && categoryHistoryMap) ? categoryHistoryMap : {};
+  const primaryCatVal = (typeof post !== 'undefined' && post && post.category) ? post.category : 'latest-jobs';
+
+    ; __append("\\n<!-- Category History & Multi-Section Appearances (Preserves Old Section Titles with Same Slug) -->\\n<div id=\\"categoryHistoryPanel\\" data-initial-primary=\\"")
+    ; __append(escapeFn( post ? primaryCatVal : '' ))
+    ; __append("\\" style=\\"background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px;\\">\\n  <input type=\\"hidden\\" name=\\"has_category_history_ui\\" value=\\"1\\">\\n  <div style=\\"display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;\\">\\n    <div>\\n      <div style=\\"font-size: 14px; font-weight: 700; color: #0f172a;\\">\\n        \u{1F4CC} Category History &amp; Section Titles (Same Slug Across All Stages)\\n      </div>\\n      <div style=\\"font-size: 12px; color: #475569; margin-top: 2px;\\">\\n        Jab aap Category change karenge (e.g. <b>Latest Jobs \u2192 Admit Card \u2192 Result</b>), purani category aur uska purana title automatically preserve rahega aur URL slug same rahega.\\n      </div>\\n    </div>\\n    ")
+    ;  if (post) { 
+    ; __append("\\n      <label style=\\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #1d4ed8; background: #eff6ff; padding: 5px 10px; border-radius: 6px; border: 1px solid #bfdbfe; cursor: pointer;\\">\\n        <input type=\\"checkbox\\" name=\\"bump_primary\\" value=\\"1\\" id=\\"bumpPrimaryCheckbox\\">\\n        <span>\u{1F51D} Bump Primary Category to Top</span>\\n      </label>\\n    ")
+    ;  } 
+    ; __append("\\n  </div>\\n\\n  <div style=\\"display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 8px;\\">\\n    ")
+    ;  Object.keys(categories).forEach(catKey => { 
+    ; __append("\\n      ")
+    ; 
+        const savedInfo = historyMap[catKey] || null;
+        const isPrimary = Boolean(post ? (primaryCatVal === catKey) : (catKey === 'latest-jobs'));
+        const isChecked = Boolean(isPrimary || savedInfo);
+        const savedTitle = savedInfo ? (savedInfo.display_title || '') : (isPrimary && post ? (post.title || '') : '');
+      
+    ; __append("\\n      <div class=\\"cat-history-row\\" data-cat-key=\\"")
+    ; __append(escapeFn( catKey ))
+    ; __append("\\" style=\\"background: #ffffff; border: 1px solid ")
+    ; __append(escapeFn( isPrimary ? '#3b82f6' : '#e2e8f0' ))
+    ; __append("; border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px;\\">\\n        <label style=\\"display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 0; font-size: 12.5px; font-weight: 700; color: #1e293b; cursor: pointer;\\">\\n          <span style=\\"display: inline-flex; align-items: center; gap: 6px;\\">\\n            <input\\n              type=\\"checkbox\\"\\n              name=\\"extra_categories\\"\\n              value=\\"")
+    ; __append(escapeFn( catKey ))
+    ; __append("\\"\\n              class=\\"cat-history-checkbox\\"\\n              data-cat-key=\\"")
+    ; __append(escapeFn( catKey ))
+    ; __append("\\"\\n              ")
+    ; __append(escapeFn( isChecked ? 'checked' : '' ))
+    ; __append("\\n            >\\n            <span>")
+    ; __append(escapeFn( categories[catKey].name ))
+    ; __append("</span>\\n          </span>\\n          <span class=\\"cat-primary-badge\\" data-cat-key=\\"")
+    ; __append(escapeFn( catKey ))
+    ; __append("\\" style=\\"font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: ")
+    ; __append(escapeFn( isPrimary ? '#dbeafe' : (savedInfo ? '#dcfce7' : '#f1f5f9') ))
+    ; __append("; color: ")
+    ; __append(escapeFn( isPrimary ? '#1d4ed8' : (savedInfo ? '#15803d' : '#64748b') ))
+    ; __append(";\\">\\n            ")
+    ; __append(escapeFn( isPrimary ? 'Primary' : (savedInfo ? 'Preserved' : 'Optional') ))
+    ; __append("\\n          </span>\\n        </label>\\n        <input\\n          type=\\"text\\"\\n          name=\\"cat_title_")
+    ; __append(escapeFn( catKey ))
+    ; __append("\\"\\n          class=\\"form-control cat-history-title-input\\"\\n          data-cat-key=\\"")
+    ; __append(escapeFn( catKey ))
+    ; __append("\\"\\n          data-saved-title=\\"")
+    ; __append(escapeFn( savedTitle ))
+    ; __append("\\"\\n          value=\\"")
+    ; __append(escapeFn( savedTitle ))
+    ; __append("\\"\\n          placeholder=\\"Section title (defaults to Post Title)\\"\\n          style=\\"font-size: 12px; padding: 6px 8px;\\"\\n        >\\n      </div>\\n    ")
+    ;  }) 
+    ; __append("\\n  </div>\\n</div>\\n")
   }
   return __output;
 `,

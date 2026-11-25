@@ -611,6 +611,75 @@ document.addEventListener('DOMContentLoaded', function() {
   if (submitBtn) {
     submitBtn.addEventListener('click', syncAllBuilders);
   }
+
+  // Category History & Preserved Section Titles Controller
+  const historyPanel = document.getElementById('categoryHistoryPanel');
+  const titleField = document.getElementById('title');
+  const categorySelect = document.getElementById('category');
+  const bumpPrimaryCheckbox = document.getElementById('bumpPrimaryCheckbox');
+
+  if (historyPanel && titleField && categorySelect) {
+    const initialPrimaryCat = historyPanel.getAttribute('data-initial-primary') || '';
+    let activePrimaryCat = categorySelect.value;
+
+    const getCatElements = (catKey) => ({
+      row: historyPanel.querySelector(`.cat-history-row[data-cat-key="${catKey}"]`),
+      cb: historyPanel.querySelector(`.cat-history-checkbox[data-cat-key="${catKey}"]`),
+      badge: historyPanel.querySelector(`.cat-primary-badge[data-cat-key="${catKey}"]`),
+      input: historyPanel.querySelector(`.cat-history-title-input[data-cat-key="${catKey}"]`)
+    });
+
+    historyPanel.querySelectorAll('.cat-history-title-input').forEach(inp => {
+      inp.addEventListener('input', () => {
+        inp.dataset.manualEdit = '1';
+      });
+    });
+
+    titleField.addEventListener('input', () => {
+      const { input } = getCatElements(activePrimaryCat);
+      if (input && input.dataset.manualEdit !== '1') {
+        input.value = titleField.value;
+      }
+    });
+
+    categorySelect.addEventListener('change', () => {
+      const prevPrimary = activePrimaryCat;
+      const nextPrimary = categorySelect.value;
+      if (prevPrimary === nextPrimary) return;
+
+      // Freeze & preserve previous primary category's saved section title
+      const prevEls = getCatElements(prevPrimary);
+      if (prevEls.cb) prevEls.cb.checked = true;
+      if (prevEls.row) prevEls.row.style.borderColor = '#e2e8f0';
+      if (prevEls.input && prevPrimary === initialPrimaryCat && prevEls.input.dataset.manualEdit !== '1') {
+        const saved = prevEls.input.getAttribute('data-saved-title') || '';
+        if (saved) prevEls.input.value = saved;
+      }
+      if (prevEls.badge) {
+        prevEls.badge.textContent = (prevEls.input && prevEls.input.value.trim()) ? 'Preserved' : 'Optional';
+        prevEls.badge.style.background = '#dcfce7';
+        prevEls.badge.style.color = '#15803d';
+      }
+
+      // Activate new primary category & sync it to current Post Title (if not manually customized)
+      const nextEls = getCatElements(nextPrimary);
+      if (nextEls.cb) nextEls.cb.checked = true;
+      if (nextEls.row) nextEls.row.style.borderColor = '#3b82f6';
+      if (nextEls.badge) {
+        nextEls.badge.textContent = 'Primary';
+        nextEls.badge.style.background = '#dbeafe';
+        nextEls.badge.style.color = '#1d4ed8';
+      }
+      if (nextEls.input && nextEls.input.dataset.manualEdit !== '1') {
+        nextEls.input.value = titleField.value;
+      }
+      if (bumpPrimaryCheckbox && initialPrimaryCat && nextPrimary !== initialPrimaryCat) {
+        bumpPrimaryCheckbox.checked = true;
+      }
+
+      activePrimaryCat = nextPrimary;
+    });
+  }
 });
 
 // TinyMCE 6 WYSIWYG Rich Text Editor Initialization for #article_content

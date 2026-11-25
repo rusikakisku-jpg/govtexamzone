@@ -102,3 +102,13 @@ CREATE TABLE IF NOT EXISTS post_daily_views (
 );
 
 CREATE INDEX IF NOT EXISTS idx_daily_views_date ON post_daily_views(view_date);
+
+CREATE TABLE IF NOT EXISTS post_categories (
+    post_id INTEGER NOT NULL,
+    category TEXT NOT NULL,
+    display_title TEXT,
+    bumped_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (post_id, category)
+);
+
+CREATE INDEX IF NOT EXISTS idx_post_categories_cat_bump ON post_categories(category, bumped_at DESC);

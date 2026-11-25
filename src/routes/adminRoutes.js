@@ -9,6 +9,11 @@ const { hashPassword } = require('../middleware/authorAuth');
 const { getAdminBase, getPublicBase, getAdminUrl, isAdminSubdomainRequest } = require('../utils/adminHost');
 const { saveUploadedAsset } = require('../utils/uploadHelper');
 const { getIstDateString } = require('../utils/viewTracker');
+const {
+  getPostCategoryMap,
+  syncPostCategoriesOnSave,
+  cleanupPostRelations
+} = require('../utils/postCategoryManager');
 const { slugify, CATEGORIES, safeJsonParse, formatDate } = require('../utils/helpers');
 
 // Multer memory storage for direct R2 streaming
@@ -298,6 +303,7 @@ router.get('/posts/new', async (req, res, next) => {
     res.render('admin/post-form', {
       title: 'Create New Post - Govt Exam Zone Admin',
       post: null,
+      categoryHistoryMap: {},
       authors: authors || [],
       categories: CATEGORIES,
       action: getAdminUrl(req, '/posts/new')
@@ -366,7 +372,7 @@ router.post('/posts/new', upload.fields([
     const links = req.body.links ? req.body.links : '[]';
     const authorId = author_id ? (parseInt(author_id, 10) || 1) : 1;
 
-    await d1.prepare(`
+    const insertRes = await d1.prepare(`
       INSERT INTO posts (
         title, slug, category, department, post_date, last_date,
         short_desc, total_vacancy, important_dates, application_fee,
@@ -391,6 +397,15 @@ router.post('/posts/new', upload.fields([
       authorId
     ).run();
 
+    const newPostId = insertRes?.lastInsertRowid || (await d1.prepare('SELECT id FROM posts WHERE slug = ?').bind(finalSlug).first())?.id;
+    await syncPostCategoriesOnSave({
+      postId: newPostId,
+      primaryCategory: category,
+      newTitle: title,
+      previousPost: null,
+      body: req.body
+    });
+
     res.redirect(getAdminUrl(req, '/posts?success=created'));
   } catch (err) {
     next(err);
@@ -405,11 +420,15 @@ router.get('/posts/edit/:id', async (req, res, next) => {
       return res.status(404).send('Post not found');
     }
 
-    const authors = await d1.prepare('SELECT id, name, role FROM authors WHERE is_active = 1 ORDER BY id ASC').all();
+    const [authors, categoryHistoryMap] = await Promise.all([
+      d1.prepare('SELECT id, name, role FROM authors WHERE is_active = 1 ORDER BY id ASC').all(),
+      getPostCategoryMap(post.id)
+    ]);
 
     res.render('admin/post-form', {
       title: `Edit: ${post.title} - Govt Exam Zone Admin`,
       post,
+      categoryHistoryMap: categoryHistoryMap || {},
       authors: authors || [],
       categories: CATEGORIES,
       action: getAdminUrl(req, `/posts/edit/${post.id}`)
@@ -504,6 +523,14 @@ router.post('/posts/edit/:id', upload.fields([
       postId
     ).run();
 
+    await syncPostCategoriesOnSave({
+      postId,
+      primaryCategory: category,
+      newTitle: title,
+      previousPost: currentPost,
+      body: req.body
+    });
+
     res.redirect(getAdminUrl(req, '/posts?success=updated'));
   } catch (err) {
     next(err);
@@ -514,6 +541,7 @@ router.post('/posts/edit/:id', upload.fields([
 router.post('/posts/delete/:id', async (req, res, next) => {
   try {
     await d1.prepare('DELETE FROM posts WHERE id = ?').bind(req.params.id).run();
+    await cleanupPostRelations(req.params.id);
     res.redirect(getAdminUrl(req, '/posts?success=deleted'));
   } catch (err) {
     next(err);

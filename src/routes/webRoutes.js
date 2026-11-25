@@ -3,6 +3,12 @@ const router = express.Router();
 const d1 = require('../db/d1Client');
 const { CATEGORIES, safeJsonParse, formatDate, formatPrettyDate } = require('../utils/helpers');
 const { recordPostView } = require('../utils/viewTracker');
+const {
+  fetchCategoryPosts,
+  countCategoryPosts,
+  fetchRelatedCategoryPosts,
+  fetchAllCategoryCounts
+} = require('../utils/postCategoryManager');
 
 // In-memory cache for global settings to prevent repetitive D1 roundtrips on every navigation
 let cachedSettings = null;
@@ -90,14 +96,14 @@ router.get('/', async (req, res, next) => {
     ] = await Promise.all([
       d1.prepare('SELECT * FROM marquees WHERE is_active = 1 ORDER BY display_order ASC, id DESC').all(),
       d1.prepare('SELECT * FROM badges WHERE is_active = 1 ORDER BY display_order ASC, id ASC LIMIT 8').all(),
-      d1.prepare("SELECT * FROM posts WHERE category = 'result' AND status = 'active' ORDER BY id DESC LIMIT 15").all(),
-      d1.prepare("SELECT * FROM posts WHERE category = 'admit-card' AND status = 'active' ORDER BY id DESC LIMIT 15").all(),
-      d1.prepare("SELECT * FROM posts WHERE category = 'latest-jobs' AND status = 'active' ORDER BY id DESC LIMIT 15").all(),
-      d1.prepare("SELECT * FROM posts WHERE category = 'answer-key' AND status = 'active' ORDER BY id DESC LIMIT 8").all(),
-      d1.prepare("SELECT * FROM posts WHERE category = 'syllabus' AND status = 'active' ORDER BY id DESC LIMIT 8").all(),
-      d1.prepare("SELECT * FROM posts WHERE category = 'admission' AND status = 'active' ORDER BY id DESC LIMIT 8").all(),
-      d1.prepare("SELECT * FROM posts WHERE category = 'certificate-verification' AND status = 'active' ORDER BY id DESC LIMIT 8").all(),
-      d1.prepare("SELECT * FROM posts WHERE category = 'important' AND status = 'active' ORDER BY id DESC LIMIT 8").all()
+      fetchCategoryPosts('result', 15, 0),
+      fetchCategoryPosts('admit-card', 15, 0),
+      fetchCategoryPosts('latest-jobs', 15, 0),
+      fetchCategoryPosts('answer-key', 8, 0),
+      fetchCategoryPosts('syllabus', 8, 0),
+      fetchCategoryPosts('admission', 8, 0),
+      fetchCategoryPosts('certificate-verification', 8, 0),
+      fetchCategoryPosts('important', 8, 0)
     ]);
 
     res.render('pages/index', {
@@ -139,12 +145,11 @@ router.get('/category/:cat', async (req, res, next) => {
     const offset = (page - 1) * limit;
 
     // Fetch count and posts concurrently
-    const [countRow, posts] = await Promise.all([
-      d1.prepare('SELECT COUNT(*) as total FROM posts WHERE category = ? AND status = "active"').bind(categorySlug).first(),
-      d1.prepare('SELECT * FROM posts WHERE category = ? AND status = "active" ORDER BY id DESC LIMIT ? OFFSET ?').bind(categorySlug, limit, offset).all()
+    const [totalPosts, posts] = await Promise.all([
+      countCategoryPosts(categorySlug),
+      fetchCategoryPosts(categorySlug, limit, offset)
     ]);
 
-    const totalPosts = countRow?.total || 0;
     const totalPages = Math.ceil(totalPosts / limit) || 1;
 
     res.render('pages/category', {
@@ -189,9 +194,7 @@ router.get('/post/:slug', async (req, res, next) => {
 
     // Fetch related posts, author, recent posts, popular posts, and category counts concurrently
     const [relatedPosts, authorRow, recentPosts, popularPosts, categoryCounts] = await Promise.all([
-      d1.prepare(
-        "SELECT id, title, slug, post_date FROM posts WHERE category = ? AND id != ? AND status = 'active' ORDER BY id DESC LIMIT 8"
-      ).bind(post.category, post.id).all(),
+      fetchRelatedCategoryPosts(post.category, post.id, 8),
       d1.prepare('SELECT * FROM authors WHERE id = ?').bind(post.author_id || 1).first(),
       d1.prepare(
         "SELECT id, title, slug, category, post_date, created_at FROM posts WHERE status = 'active' AND id != ? ORDER BY id DESC LIMIT 5"
@@ -199,9 +202,7 @@ router.get('/post/:slug', async (req, res, next) => {
       d1.prepare(
         "SELECT id, title, slug, category, post_date, views, created_at FROM posts WHERE status = 'active' ORDER BY views DESC, id DESC LIMIT 5"
       ).all(),
-      d1.prepare(
-        "SELECT category, COUNT(*) as count FROM posts WHERE status = 'active' GROUP BY category"
-      ).all()
+      fetchAllCategoryCounts()
     ]);
 
     // Parse JSON fields

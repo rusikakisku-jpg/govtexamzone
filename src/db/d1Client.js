@@ -92,6 +92,13 @@ const CORE_TABLES = [
     view_date TEXT NOT NULL,
     views INTEGER DEFAULT 0,
     PRIMARY KEY (post_id, view_date)
+  )`,
+  `CREATE TABLE IF NOT EXISTS post_categories (
+    post_id INTEGER NOT NULL,
+    category TEXT NOT NULL,
+    display_title TEXT,
+    bumped_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (post_id, category)
   )`
 ];
 
@@ -102,7 +109,8 @@ const CORE_INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id)`,
   `CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_authors_slug ON authors(slug)`,
-  `CREATE INDEX IF NOT EXISTS idx_daily_views_date ON post_daily_views(view_date)`
+  `CREATE INDEX IF NOT EXISTS idx_daily_views_date ON post_daily_views(view_date)`,
+  `CREATE INDEX IF NOT EXISTS idx_post_categories_cat_bump ON post_categories(category, bumped_at DESC)`
 ];
 
 const EMBEDDED_SCHEMA_SQL = CORE_TABLES.concat(CORE_INDEXES).join(';\n\n') + ';';
@@ -232,6 +240,13 @@ class D1Client {
     // Apply schema
     const schemaSql = getSchemaSql();
     this.localDb.run(schemaSql);
+    try {
+      this.localDb.run(`
+        INSERT OR IGNORE INTO post_categories (post_id, category, display_title, bumped_at)
+        SELECT id, category, title, COALESCE(created_at, CURRENT_TIMESTAMP)
+        FROM posts WHERE category IS NOT NULL AND category != ''
+      `);
+    } catch (pcErr) {}
     this.saveLocal();
     this.initialized = true;
     console.log('✅ Database schema verified and active.');
@@ -289,6 +304,13 @@ class D1Client {
       try {
         await this.queryRemote('ALTER TABLE posts ADD COLUMN thumbnail TEXT');
       } catch (migErr) {}
+      try {
+        await this.queryRemote(`
+          INSERT OR IGNORE INTO post_categories (post_id, category, display_title, bumped_at)
+          SELECT id, category, title, COALESCE(created_at, CURRENT_TIMESTAMP)
+          FROM posts WHERE category IS NOT NULL AND category != ''
+        `);
+      } catch (pcErr) {}
       console.log('✅ Cloudflare D1 remote schema verified.');
     } catch (err) {
       console.warn('⚠️ Warning during remote D1 schema initialization:', err.message);
@@ -333,6 +355,13 @@ class D1Client {
       try {
         await nativeD1.prepare('ALTER TABLE posts ADD COLUMN thumbnail TEXT').run();
       } catch (colErr) {}
+      try {
+        await nativeD1.prepare(`
+          INSERT OR IGNORE INTO post_categories (post_id, category, display_title, bumped_at)
+          SELECT id, category, title, COALESCE(created_at, CURRENT_TIMESTAMP)
+          FROM posts WHERE category IS NOT NULL AND category != ''
+        `).run();
+      } catch (pcErr) {}
 
       // 3. Check if marquees table has data; if empty, auto-seed initial Govt Exam Zone records
       try {

@@ -13,6 +13,7 @@ const {
 } = require('../middleware/authorAuth');
 const { slugify, CATEGORIES, safeJsonParse, formatDate } = require('../utils/helpers');
 const { saveUploadedAsset } = require('../utils/uploadHelper');
+const { getPostCategoryMap, syncPostCategoriesOnSave } = require('../utils/postCategoryManager');
 
 // Multer memory storage for direct R2 streaming
 const upload = multer({
@@ -277,6 +278,7 @@ router.get('/posts/new', (req, res) => {
     title: 'Write New Notification / Article - Author Workspace',
     author: req.author,
     post: null,
+    categoryHistoryMap: {},
     categories: CATEGORIES,
     action: '/author-portal/posts/new'
   });
@@ -343,7 +345,7 @@ router.post('/posts/new', upload.fields([
     // Authors can choose status 'draft' or 'active'
     const postStatus = (status === 'draft') ? 'draft' : 'active';
 
-    await d1.prepare(`
+    const insertRes = await d1.prepare(`
       INSERT INTO posts (
         title, slug, category, department, post_date, last_date,
         short_desc, total_vacancy, important_dates, application_fee,
@@ -368,6 +370,15 @@ router.post('/posts/new', upload.fields([
       author.id // Strictly assigned to the logged-in author
     ).run();
 
+    const newPostId = insertRes?.lastInsertRowid || (await d1.prepare('SELECT id FROM posts WHERE slug = ?').bind(finalSlug).first())?.id;
+    await syncPostCategoriesOnSave({
+      postId: newPostId,
+      primaryCategory: category,
+      newTitle: title,
+      previousPost: null,
+      body: req.body
+    });
+
     res.redirect('/author-portal/posts?success=created');
   } catch (err) {
     next(err);
@@ -389,10 +400,13 @@ router.get('/posts/edit/:id', async (req, res, next) => {
       return res.status(403).send('Access Denied: You are not authorized to edit articles written by another author.');
     }
 
+    const categoryHistoryMap = await getPostCategoryMap(post.id);
+
     res.render('author/post-form', {
       title: `Edit Article: ${post.title} - Author Workspace`,
       author,
       post,
+      categoryHistoryMap: categoryHistoryMap || {},
       categories: CATEGORIES,
       action: `/author-portal/posts/edit/${post.id}`
     });
@@ -508,6 +522,14 @@ router.post('/posts/edit/:id', upload.fields([
         postId, author.id
       ).run();
     }
+
+    await syncPostCategoriesOnSave({
+      postId,
+      primaryCategory: category,
+      newTitle: title,
+      previousPost: currentPost,
+      body: req.body
+    });
 
     res.redirect('/author-portal/posts?success=updated');
   } catch (err) {
