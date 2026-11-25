@@ -363,14 +363,17 @@ class D1Client {
         `).run();
       } catch (pcErr) {}
 
-      // 3. Check if marquees table has data; if empty, auto-seed initial Govt Exam Zone records
+      // 3. Check if marquees table has data; if empty, auto-seed initial Govt Exam Zone records (unless skip_auto_seed is enabled)
       try {
-        const countRow = await nativeD1.prepare('SELECT COUNT(*) as count FROM marquees').first();
-        if (!countRow || countRow.count === 0) {
-          console.log('🌱 Seeding initial Cloudflare D1 database records...');
-          const seedDatabase = require('./seed');
-          await seedDatabase();
-          console.log('🎉 Cloudflare D1 initial seeding complete!');
+        const skipSeedRow = await nativeD1.prepare("SELECT value FROM settings WHERE key = 'skip_auto_seed'").first().catch(() => null);
+        if (!skipSeedRow || skipSeedRow.value !== '1') {
+          const countRow = await nativeD1.prepare('SELECT COUNT(*) as count FROM marquees').first();
+          if (!countRow || countRow.count === 0) {
+            console.log('🌱 Seeding initial Cloudflare D1 database records...');
+            const seedDatabase = require('./seed');
+            await seedDatabase();
+            console.log('🎉 Cloudflare D1 initial seeding complete!');
+          }
         }
       } catch (seedCheckErr) {
         console.warn('D1 auto-seed notice:', seedCheckErr.message);

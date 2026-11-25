@@ -207,7 +207,10 @@ if (typeof WebSocketPair === 'undefined' && !globalThis.__CF_ENV__ && !globalThi
       await d1.init();
       console.log('✅ Database schema verified and active.');
       if (!d1.isNativeD1) {
-        await seedDatabase();
+        const skipSeedRow = await d1.prepare("SELECT value FROM settings WHERE key = 'skip_auto_seed'").first().catch(() => null);
+        if (!skipSeedRow || skipSeedRow.value !== '1') {
+          await seedDatabase();
+        }
       }
     } catch (err) {
       console.warn('⚠️ Database init notice:', err.message);

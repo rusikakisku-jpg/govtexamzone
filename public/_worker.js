@@ -28540,12 +28540,15 @@ var require_d1Client = __commonJS({
           } catch (pcErr) {
           }
           try {
-            const countRow = await nativeD1.prepare("SELECT COUNT(*) as count FROM marquees").first();
-            if (!countRow || countRow.count === 0) {
-              console.log("\u{1F331} Seeding initial Cloudflare D1 database records...");
-              const seedDatabase = require_seed();
-              await seedDatabase();
-              console.log("\u{1F389} Cloudflare D1 initial seeding complete!");
+            const skipSeedRow = await nativeD1.prepare("SELECT value FROM settings WHERE key = 'skip_auto_seed'").first().catch(() => null);
+            if (!skipSeedRow || skipSeedRow.value !== "1") {
+              const countRow = await nativeD1.prepare("SELECT COUNT(*) as count FROM marquees").first();
+              if (!countRow || countRow.count === 0) {
+                console.log("\u{1F331} Seeding initial Cloudflare D1 database records...");
+                const seedDatabase = require_seed();
+                await seedDatabase();
+                console.log("\u{1F389} Cloudflare D1 initial seeding complete!");
+              }
             }
           } catch (seedCheckErr) {
             console.warn("D1 auto-seed notice:", seedCheckErr.message);
@@ -83905,7 +83908,10 @@ var require_server = __commonJS({
           await d1.init();
           console.log("\u2705 Database schema verified and active.");
           if (!d1.isNativeD1) {
-            await seedDatabase();
+            const skipSeedRow = await d1.prepare("SELECT value FROM settings WHERE key = 'skip_auto_seed'").first().catch(() => null);
+            if (!skipSeedRow || skipSeedRow.value !== "1") {
+              await seedDatabase();
+            }
           }
         } catch (err) {
           console.warn("\u26A0\uFE0F Database init notice:", err.message);
