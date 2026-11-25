@@ -364,6 +364,19 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   initSeamlessNav();
+
+  // FAQ Single-Open Accordion: Keep all FAQs collapsed initially; expanding one collapses any other open FAQ
+  document.addEventListener('toggle', function(e) {
+    const target = e.target;
+    if (!target || target.tagName !== 'DETAILS' || !target.open) return;
+    const scope = target.closest('.homepage-faq-section, .static-page-content, .gez-article-content') || target.parentElement;
+    if (!scope) return;
+    scope.querySelectorAll('details[open]').forEach(function(other) {
+      if (other !== target) {
+        other.removeAttribute('open');
+      }
+    });
+  }, true);
 });
 
 // Global Toast Notification Helper
