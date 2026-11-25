@@ -93,3 +93,12 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+
+CREATE TABLE IF NOT EXISTS post_daily_views (
+    post_id INTEGER NOT NULL,
+    view_date TEXT NOT NULL,
+    views INTEGER DEFAULT 0,
+    PRIMARY KEY (post_id, view_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_views_date ON post_daily_views(view_date);

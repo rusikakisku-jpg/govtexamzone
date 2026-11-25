@@ -28291,6 +28291,12 @@ var require_d1Client = __commonJS({
       `CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
+  )`,
+      `CREATE TABLE IF NOT EXISTS post_daily_views (
+    post_id INTEGER NOT NULL,
+    view_date TEXT NOT NULL,
+    views INTEGER DEFAULT 0,
+    PRIMARY KEY (post_id, view_date)
   )`
     ];
     var CORE_INDEXES = [
@@ -28299,7 +28305,8 @@ var require_d1Client = __commonJS({
       `CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status)`,
       `CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id)`,
       `CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at)`,
-      `CREATE INDEX IF NOT EXISTS idx_authors_slug ON authors(slug)`
+      `CREATE INDEX IF NOT EXISTS idx_authors_slug ON authors(slug)`,
+      `CREATE INDEX IF NOT EXISTS idx_daily_views_date ON post_daily_views(view_date)`
     ];
     var EMBEDDED_SCHEMA_SQL = CORE_TABLES.concat(CORE_INDEXES).join(";\n\n") + ";";
     function getSchemaSql() {
@@ -28708,6 +28715,45 @@ var require_helpers = __commonJS({
   }
 });
 
+// src/utils/viewTracker.js
+var require_viewTracker = __commonJS({
+  "src/utils/viewTracker.js"(exports, module) {
+    var d1 = require_d1Client();
+    function getIstDateString(offsetDays = 0) {
+      const istOffsetMs = 330 * 60 * 1e3;
+      const targetMs = Date.now() + istOffsetMs + offsetDays * 86400 * 1e3;
+      return new Date(targetMs).toISOString().slice(0, 10);
+    }
+    function isPrefetchRequest(req) {
+      if (!req || !req.headers) return false;
+      const purpose = String(req.headers["sec-purpose"] || req.headers.purpose || req.headers["x-purpose"] || "").toLowerCase();
+      return purpose.includes("prefetch") || purpose.includes("preview");
+    }
+    async function recordPostView(postId, req) {
+      if (!postId || isPrefetchRequest(req)) return;
+      const todayIst = getIstDateString(0);
+      try {
+        await d1.prepare("UPDATE posts SET views = COALESCE(views, 0) + 1 WHERE id = ?").bind(postId).run();
+      } catch (err) {
+        console.error("Post lifetime view update error:", err.message);
+      }
+      try {
+        await d1.prepare(`
+      INSERT INTO post_daily_views (post_id, view_date, views)
+      VALUES (?, ?, 1)
+      ON CONFLICT(post_id, view_date) DO UPDATE SET views = views + 1
+    `).bind(postId, todayIst).run();
+      } catch (err) {
+        console.error("Post daily view update error:", err.message);
+      }
+    }
+    module.exports = {
+      getIstDateString,
+      recordPostView
+    };
+  }
+});
+
 // src/routes/webRoutes.js
 var require_webRoutes = __commonJS({
   "src/routes/webRoutes.js"(exports, module) {
@@ -28715,6 +28761,7 @@ var require_webRoutes = __commonJS({
     var router = express.Router();
     var d1 = require_d1Client();
     var { CATEGORIES, safeJsonParse, formatDate, formatPrettyDate } = require_helpers();
+    var { recordPostView } = require_viewTracker();
     var cachedSettings = null;
     var settingsCacheTime = 0;
     var SETTINGS_CACHE_TTL = 60 * 1e3;
@@ -28870,7 +28917,7 @@ var require_webRoutes = __commonJS({
             message: "The job or result notification you are looking for does not exist or has been removed."
           });
         }
-        d1.prepare("UPDATE posts SET views = views + 1 WHERE id = ?").bind(post.id).run().catch(console.error);
+        await recordPostView(post.id, req);
         const [relatedPosts, authorRow, recentPosts, popularPosts, categoryCounts] = await Promise.all([
           d1.prepare(
             "SELECT id, title, slug, post_date FROM posts WHERE category = ? AND id != ? AND status = 'active' ORDER BY id DESC LIMIT 8"
@@ -74932,6 +74979,7 @@ var require_adminRoutes = __commonJS({
     var { hashPassword } = require_authorAuth();
     var { getAdminBase, getPublicBase, getAdminUrl, isAdminSubdomainRequest } = require_adminHost();
     var { saveUploadedAsset } = require_uploadHelper();
+    var { getIstDateString } = require_viewTracker();
     var { slugify, CATEGORIES, safeJsonParse, formatDate } = require_helpers();
     var upload = multer({
       storage: multer.memoryStorage(),
@@ -75020,17 +75068,116 @@ var require_adminRoutes = __commonJS({
       res.redirect(getAdminUrl(req, "/login"));
     });
     router.use(requireAuth);
+    async function getDashboardAnalytics() {
+      const todayIst = getIstDateString(0);
+      const yesterdayIst = getIstDateString(-1);
+      const startDayIst = getIstDateString(-6);
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const formatShortDay = (isoDate) => {
+        const [y, m, d] = isoDate.split("-").map(Number);
+        return `${d} ${monthNames[m - 1 || 0]}`;
+      };
+      let totalViews = 0;
+      let todayViews = 0;
+      let yesterdayViews = 0;
+      let todayPostsViewed = 0;
+      let dailyTrend = [];
+      let topPostsOverall = [];
+      let topPostsToday = [];
+      let categoryViews = [];
+      try {
+        const [totRow, dailyRows, topOverallRows, topTodayRows, catViewRows] = await Promise.all([
+          d1.prepare("SELECT COALESCE(SUM(views), 0) as total_views FROM posts").first(),
+          d1.prepare(`
+        SELECT view_date, COALESCE(SUM(views), 0) as total_views, COUNT(DISTINCT post_id) as posts_read
+        FROM post_daily_views
+        WHERE view_date >= ?
+        GROUP BY view_date
+        ORDER BY view_date ASC
+      `).bind(startDayIst).all(),
+          d1.prepare(`
+        SELECT p.id, p.title, p.slug, p.category, COALESCE(p.views, 0) as views,
+               COALESCE(dv.views, 0) as today_views
+        FROM posts p
+        LEFT JOIN post_daily_views dv ON dv.post_id = p.id AND dv.view_date = ?
+        ORDER BY COALESCE(p.views, 0) DESC, p.id DESC
+        LIMIT 8
+      `).bind(todayIst).all(),
+          d1.prepare(`
+        SELECT p.id, p.title, p.slug, p.category, COALESCE(p.views, 0) as total_views,
+               dv.views as today_views
+        FROM post_daily_views dv
+        INNER JOIN posts p ON p.id = dv.post_id
+        WHERE dv.view_date = ? AND dv.views > 0
+        ORDER BY dv.views DESC, p.views DESC
+        LIMIT 8
+      `).bind(todayIst).all(),
+          d1.prepare(`
+        SELECT category, COUNT(*) as post_count, COALESCE(SUM(views), 0) as total_views
+        FROM posts
+        GROUP BY category
+        ORDER BY total_views DESC
+      `).all()
+        ]);
+        totalViews = Number(totRow?.total_views || 0);
+        const dailyMap = {};
+        if (Array.isArray(dailyRows)) {
+          dailyRows.forEach((r) => {
+            dailyMap[r.view_date] = {
+              views: Number(r.total_views || 0),
+              postsRead: Number(r.posts_read || 0)
+            };
+          });
+        }
+        todayViews = dailyMap[todayIst]?.views || 0;
+        todayPostsViewed = dailyMap[todayIst]?.postsRead || 0;
+        yesterdayViews = dailyMap[yesterdayIst]?.views || 0;
+        for (let offset = -6; offset <= 0; offset++) {
+          const dateStr = getIstDateString(offset);
+          const entry = dailyMap[dateStr] || { views: 0, postsRead: 0 };
+          dailyTrend.push({
+            date: dateStr,
+            label: offset === 0 ? "Today" : offset === -1 ? "Yest." : formatShortDay(dateStr),
+            fullLabel: formatShortDay(dateStr),
+            isToday: offset === 0,
+            views: entry.views,
+            postsRead: entry.postsRead
+          });
+        }
+        topPostsOverall = Array.isArray(topOverallRows) ? topOverallRows : [];
+        topPostsToday = Array.isArray(topTodayRows) ? topTodayRows : [];
+        categoryViews = Array.isArray(catViewRows) ? catViewRows : [];
+      } catch (err) {
+        console.warn("Dashboard analytics fallback notice:", err.message);
+      }
+      const weekViewsTotal = dailyTrend.reduce((acc, d) => acc + d.views, 0);
+      const maxDailyViews = Math.max(1, ...dailyTrend.map((d) => d.views));
+      return {
+        todayIst,
+        totalViews,
+        todayViews,
+        yesterdayViews,
+        todayPostsViewed,
+        weekViewsTotal,
+        maxDailyViews,
+        dailyTrend,
+        topPostsOverall,
+        topPostsToday,
+        categoryViews
+      };
+    }
     router.get("/", async (req, res, next) => {
       try {
-        const totalPostsRow = await d1.prepare("SELECT COUNT(*) as count FROM posts").first();
-        const categoriesCount = await d1.prepare(`
-      SELECT category, COUNT(*) as count FROM posts GROUP BY category
-    `).all();
-        const recentPosts = await d1.prepare(`
-      SELECT id, title, slug, category, post_date, views, status, created_at
-      FROM posts ORDER BY id DESC LIMIT 10
-    `).all();
-        const uploadsCountRow = await d1.prepare("SELECT COUNT(*) as count FROM uploads").first();
+        const [totalPostsRow, categoriesCount, recentPosts, uploadsCountRow, analytics] = await Promise.all([
+          d1.prepare("SELECT COUNT(*) as count FROM posts").first(),
+          d1.prepare("SELECT category, COUNT(*) as count FROM posts GROUP BY category").all(),
+          d1.prepare(`
+        SELECT id, title, slug, category, department, post_date, views, status, created_at
+        FROM posts ORDER BY id DESC LIMIT 10
+      `).all(),
+          d1.prepare("SELECT COUNT(*) as count FROM uploads").first(),
+          getDashboardAnalytics()
+        ]);
         res.render("admin/dashboard", {
           title: "Admin Dashboard - Govt Exam Zone Control Panel",
           totalPosts: totalPostsRow?.count || 0,
@@ -75038,6 +75185,7 @@ var require_adminRoutes = __commonJS({
           recentPosts,
           uploadsCount: uploadsCountRow?.count || 0,
           categories: CATEGORIES,
+          analytics,
           d1Mode: d1.isCloudflareD1 ? "Cloudflare D1 (Remote)" : "SQLite (Local D1 Emulated)",
           r2Mode: r2.isR2Configured ? "Cloudflare R2 (Active)" : "Local Storage (Fallback)"
         });
@@ -77066,7 +77214,190 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
     ; __append("/r2\\" class=\\"btn btn-secondary btn-sm\\">\u2601\uFE0F R2 Uploads</a>\\n      <a href=\\"")
     ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
-    ; __append("/d1\\" class=\\"btn btn-secondary btn-sm\\">\u{1F4BE} D1 SQL Console</a>\\n    </div>\\n  </div>\\n</div>\\n\\n<!-- Category Distribution -->\\n<div class=\\"admin-card\\">\\n  <div class=\\"admin-card-header\\">\\n    <h2>Post Distribution Across Categories</h2>\\n    <span style=\\"font-size: 12.5px; color: #64748b;\\">Live Counts</span>\\n  </div>\\n  <div class=\\"admin-cat-grid\\" style=\\"display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px;\\">\\n    ")
+    ; __append("/d1\\" class=\\"btn btn-secondary btn-sm\\">\u{1F4BE} D1 SQL Console</a>\\n    </div>\\n  </div>\\n</div>\\n\\n")
+    ; 
+  const statsData = (typeof analytics !== 'undefined' && analytics) ? analytics : {};
+  const todayViews = Number(statsData.todayViews || 0);
+  const yesterdayViews = Number(statsData.yesterdayViews || 0);
+  const todayPostsViewed = Number(statsData.todayPostsViewed || 0);
+  const totalViewsAll = Number(statsData.totalViews || 0);
+  const weekViewsTotal = Number(statsData.weekViewsTotal || 0);
+  const maxDailyViews = Math.max(1, Number(statsData.maxDailyViews || 1));
+  const dailyTrend = Array.isArray(statsData.dailyTrend) ? statsData.dailyTrend : [];
+  const topPostsOverall = Array.isArray(statsData.topPostsOverall) ? statsData.topPostsOverall : [];
+  const topPostsToday = Array.isArray(statsData.topPostsToday) ? statsData.topPostsToday : [];
+  const categoryViews = Array.isArray(statsData.categoryViews) ? statsData.categoryViews : [];
+  const topOverallLeader = topPostsOverall[0] || null;
+  const maxOverallViews = Math.max(1, Number(topOverallLeader ? topOverallLeader.views : 1));
+  const maxTodayPostViews = Math.max(1, Number(topPostsToday[0] ? topPostsToday[0].today_views : 1));
+
+  let deltaPctText = 'Live Today';
+  let deltaClass = 'analytics-delta-neutral';
+  if (yesterdayViews > 0) {
+    const pct = Math.round(((todayViews - yesterdayViews) / yesterdayViews) * 100);
+    deltaPctText = (pct >= 0 ? '\u25B2 +' : '\u25BC ') + pct + '% vs yest.';
+    deltaClass = pct >= 0 ? 'analytics-delta-up' : 'analytics-delta-down';
+  } else if (todayViews > 0) {
+    deltaPctText = '\u25B2 Active Today';
+    deltaClass = 'analytics-delta-up';
+  }
+
+    ; __append("\\n\\n<!-- Views & Traffic KPI Cards -->\\n<div class=\\"analytics-kpi-grid\\" id=\\"viewsAnalyticsSection\\">\\n  <div class=\\"analytics-kpi-card\\">\\n    <div class=\\"analytics-kpi-top\\">\\n      <div>\\n        <div class=\\"analytics-kpi-label\\">Today's Views (IST)</div>\\n        <div class=\\"analytics-kpi-value\\">")
+    ; __append(escapeFn( todayViews.toLocaleString('en-IN') ))
+    ; __append("</div>\\n      </div>\\n      <div class=\\"analytics-kpi-icon\\" style=\\"background: #ffe4e6; color: #be123c;\\">\u{1F441}\uFE0F</div>\\n    </div>\\n    <div class=\\"analytics-kpi-meta\\">\\n      <span class=\\"analytics-delta-pill ")
+    ; __append(escapeFn( deltaClass ))
+    ; __append("\\">")
+    ; __append(escapeFn( deltaPctText ))
+    ; __append("</span>\\n      <span>Yest: ")
+    ; __append(escapeFn( yesterdayViews.toLocaleString('en-IN') ))
+    ; __append("</span>\\n    </div>\\n  </div>\\n\\n  <div class=\\"analytics-kpi-card\\">\\n    <div class=\\"analytics-kpi-top\\">\\n      <div>\\n        <div class=\\"analytics-kpi-label\\">Posts Viewed Today</div>\\n        <div class=\\"analytics-kpi-value\\">")
+    ; __append(escapeFn( todayPostsViewed.toLocaleString('en-IN') ))
+    ; __append("</div>\\n      </div>\\n      <div class=\\"analytics-kpi-icon\\" style=\\"background: #e0f2fe; color: #0284c7;\\">\u{1F4C4}</div>\\n    </div>\\n    <div class=\\"analytics-kpi-meta\\">\\n      <span style=\\"color: #0369a1;\\">Out of ")
+    ; __append(escapeFn( totalPosts ))
+    ; __append(" total posts</span>\\n    </div>\\n  </div>\\n\\n  <div class=\\"analytics-kpi-card\\">\\n    <div class=\\"analytics-kpi-top\\">\\n      <div>\\n        <div class=\\"analytics-kpi-label\\">Total Lifetime Views</div>\\n        <div class=\\"analytics-kpi-value\\">")
+    ; __append(escapeFn( totalViewsAll.toLocaleString('en-IN') ))
+    ; __append("</div>\\n      </div>\\n      <div class=\\"analytics-kpi-icon\\" style=\\"background: #ecfdf5; color: #059669;\\">\u{1F525}</div>\\n    </div>\\n    <div class=\\"analytics-kpi-meta\\">\\n      <span style=\\"color: #059669;\\">7-Day Total: ")
+    ; __append(escapeFn( weekViewsTotal.toLocaleString('en-IN') ))
+    ; __append("</span>\\n    </div>\\n  </div>\\n\\n  <div class=\\"analytics-kpi-card\\">\\n    <div class=\\"analytics-kpi-top\\">\\n      <div style=\\"min-width: 0; flex: 1;\\">\\n        <div class=\\"analytics-kpi-label\\">#1 Top Post Views</div>\\n        <div class=\\"analytics-kpi-value\\">")
+    ; __append(escapeFn( topOverallLeader ? Number(topOverallLeader.views || 0).toLocaleString('en-IN') : '0' ))
+    ; __append("</div>\\n      </div>\\n      <div class=\\"analytics-kpi-icon\\" style=\\"background: #fef9c3; color: #ca8a04;\\">\u{1F3C6}</div>\\n    </div>\\n    <div class=\\"analytics-kpi-meta\\" style=\\"overflow: hidden;\\">\\n      <span style=\\"white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; display: block;\\" title=\\"")
+    ; __append(escapeFn( topOverallLeader ? topOverallLeader.title : '' ))
+    ; __append("\\">\\n        ")
+    ; __append(escapeFn( topOverallLeader ? topOverallLeader.title : 'No views recorded yet' ))
+    ; __append("\\n      </span>\\n    </div>\\n  </div>\\n</div>\\n\\n<!-- Graphical Charts Row: 7-Day Trend Bar Chart + Category Views Breakdown -->\\n<div class=\\"analytics-charts-grid\\">\\n  <!-- 7-Day Views Graphic Chart -->\\n  <div class=\\"admin-card\\">\\n    <div class=\\"admin-card-header\\">\\n      <div>\\n        <h2>\u{1F4CA} Daily Post Views Graphic (Last 7 Days - IST)</h2>\\n        <div style=\\"font-size: 12.5px; color: #64748b; margin-top: 2px;\\">\\n          Real-time daily views across all posts (")
+    ; __append(escapeFn( statsData.todayIst || '' ))
+    ; __append(")\\n        </div>\\n      </div>\\n      <span class=\\"analytics-delta-pill analytics-delta-up\\">7D: ")
+    ; __append(escapeFn( weekViewsTotal.toLocaleString('en-IN') ))
+    ; __append(" Views</span>\\n    </div>\\n\\n    <div class=\\"chart-bars-stage\\" role=\\"img\\" aria-label=\\"Last 7 days post views bar chart\\">\\n      ")
+    ;  dailyTrend.forEach(day => { 
+    ; __append("\\n        ")
+    ; 
+          const pctHeight = day.views > 0 ? Math.max(8, Math.round((day.views / maxDailyViews) * 100)) : 4;
+        
+    ; __append("\\n        <div class=\\"chart-bar-col ")
+    ; __append(escapeFn( day.isToday ? 'is-today' : '' ))
+    ; __append("\\" title=\\"")
+    ; __append(escapeFn( day.fullLabel ))
+    ; __append(": ")
+    ; __append(escapeFn( day.views ))
+    ; __append(" views (")
+    ; __append(escapeFn( day.postsRead ))
+    ; __append(" posts viewed)\\">\\n          <span class=\\"chart-bar-count\\">")
+    ; __append(escapeFn( day.views.toLocaleString('en-IN') ))
+    ; __append("</span>\\n          <div class=\\"chart-bar-track\\">\\n            <div class=\\"chart-bar-fill\\" style=\\"height: ")
+    ; __append(escapeFn( pctHeight ))
+    ; __append("%;\\"></div>\\n          </div>\\n          <span class=\\"chart-bar-label\\">")
+    ; __append(escapeFn( day.label ))
+    ; __append("</span>\\n        </div>\\n      ")
+    ;  }) 
+    ; __append("\\n    </div>\\n    <div style=\\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; font-size: 11.5px; color: #64748b;\\">\\n      <span>Hover/tap any bar for exact views &amp; unique posts read that day</span>\\n      <span><strong style=\\"color: #ab183d;\\">\u25A0</strong> Today &nbsp;|&nbsp; <strong style=\\"color: #1d4ed8;\\">\u25A0</strong> Past Days</span>\\n    </div>\\n  </div>\\n\\n  <!-- Category Views Share Graphic -->\\n  <div class=\\"admin-card\\">\\n    <div class=\\"admin-card-header\\">\\n      <div>\\n        <h2>\u{1F4C8} Views by Category</h2>\\n        <div style=\\"font-size: 12.5px; color: #64748b; margin-top: 2px;\\">Traffic share across exam sections</div>\\n      </div>\\n      <span style=\\"font-size: 12px; font-weight: 700; color: #475569;\\">")
+    ; __append(escapeFn( totalViewsAll.toLocaleString('en-IN') ))
+    ; __append(" Total</span>\\n    </div>\\n\\n    <div class=\\"cat-share-list\\">\\n      ")
+    ;  if (categoryViews.length > 0) { 
+    ; __append("\\n        ")
+    ;  categoryViews.slice(0, 8).forEach(cv => { 
+    ; __append("\\n          ")
+    ; 
+            const cvCount = Number(cv.total_views || 0);
+            const sharePct = totalViewsAll > 0 ? Math.round((cvCount / totalViewsAll) * 100) : 0;
+            const barWidth = cvCount > 0 ? Math.max(4, sharePct) : 2;
+            const catTitle = (categories[cv.category] && categories[cv.category].name) ? categories[cv.category].name : cv.category;
+          
+    ; __append("\\n          <div class=\\"cat-share-row\\">\\n            <div class=\\"cat-share-meta\\">\\n              <span class=\\"cat-share-name\\">")
+    ; __append(escapeFn( catTitle ))
+    ; __append(" <small style=\\"color: #94a3b8; font-weight: 500;\\">(")
+    ; __append(escapeFn( cv.post_count ))
+    ; __append(" posts)</small></span>\\n              <span class=\\"cat-share-nums\\">")
+    ; __append(escapeFn( cvCount.toLocaleString('en-IN') ))
+    ; __append(" (")
+    ; __append(escapeFn( sharePct ))
+    ; __append("%)</span>\\n            </div>\\n            <div class=\\"cat-share-bar-bg\\">\\n              <div class=\\"cat-share-bar-fill\\" style=\\"width: ")
+    ; __append(escapeFn( barWidth ))
+    ; __append("%;\\"></div>\\n            </div>\\n          </div>\\n        ")
+    ;  }) 
+    ; __append("\\n      ")
+    ;  } else { 
+    ; __append("\\n        <div style=\\"padding: 25px; text-align: center; color: #64748b; font-size: 13px;\\">No category traffic recorded yet.</div>\\n      ")
+    ;  } 
+    ; __append("\\n    </div>\\n  </div>\\n</div>\\n\\n<!-- Detailed Top Posts Breakdown: Today vs All-Time -->\\n<div class=\\"analytics-top-grid\\">\\n  <!-- Today's Most Viewed Posts -->\\n  <div class=\\"admin-card\\">\\n    <div class=\\"admin-card-header\\">\\n      <div>\\n        <h2>\u{1F525} Today's Most Viewed Posts</h2>\\n        <div style=\\"font-size: 12.5px; color: #64748b; margin-top: 2px;\\">\\n          Posts getting maximum clicks today (")
+    ; __append(escapeFn( todayPostsViewed ))
+    ; __append(" active today)\\n        </div>\\n      </div>\\n      <span class=\\"analytics-delta-pill today-hot\\" style=\\"background: #ffe4e6; color: #be123c;\\">")
+    ; __append(escapeFn( todayViews.toLocaleString('en-IN') ))
+    ; __append(" Today</span>\\n    </div>\\n\\n    ")
+    ;  if (topPostsToday.length > 0) { 
+    ; __append("\\n      <div class=\\"top-post-list\\">\\n        ")
+    ;  topPostsToday.forEach((p, idx) => { 
+    ; __append("\\n          ")
+    ;  const barPct = Math.max(6, Math.round((Number(p.today_views || 0) / maxTodayPostViews) * 100)); 
+    ; __append("\\n          <div class=\\"top-post-item\\">\\n            <div class=\\"top-post-head\\">\\n              <div class=\\"top-post-title-wrap\\">\\n                <span class=\\"top-rank-badge ")
+    ; __append(escapeFn( idx < 3 ? ('rank-' + (idx + 1)) : '' ))
+    ; __append("\\">#")
+    ; __append(escapeFn( idx + 1 ))
+    ; __append("</span>\\n                <a href=\\"")
+    ; __append(escapeFn( (typeof publicBase !== 'undefined' ? publicBase : '') ))
+    ; __append("/post/")
+    ; __append(escapeFn( p.slug ))
+    ; __append("\\" target=\\"_blank\\" class=\\"top-post-title\\">")
+    ; __append(escapeFn( p.title ))
+    ; __append("</a>\\n              </div>\\n              <span class=\\"top-post-views-pill today-hot\\">+")
+    ; __append(escapeFn( Number(p.today_views || 0).toLocaleString('en-IN') ))
+    ; __append(" today</span>\\n            </div>\\n            <div class=\\"top-post-foot\\">\\n              <div class=\\"top-post-meter-bg\\">\\n                <div class=\\"top-post-meter-fill today-fill\\" style=\\"width: ")
+    ; __append(escapeFn( barPct ))
+    ; __append("%;\\"></div>\\n              </div>\\n              <span style=\\"white-space: nowrap;\\">Total: ")
+    ; __append(escapeFn( Number(p.total_views || 0).toLocaleString('en-IN') ))
+    ; __append("</span>\\n              <a href=\\"")
+    ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
+    ; __append("/posts/edit/")
+    ; __append(escapeFn( p.id ))
+    ; __append("\\" style=\\"color: #0284c7; font-weight: 700; text-decoration: none;\\">Edit</a>\\n            </div>\\n          </div>\\n        ")
+    ;  }) 
+    ; __append("\\n      </div>\\n    ")
+    ;  } else { 
+    ; __append("\\n      <div style=\\"background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 26px 16px; text-align: center; color: #64748b; font-size: 13px;\\">\\n        <strong>No post visits recorded for today yet.</strong><br>\\n        <span style=\\"font-size: 12px;\\">Jaise hi visitors post open karenge, aaj ke top viewed posts yahan live show honge.</span>\\n      </div>\\n    ")
+    ;  } 
+    ; __append("\\n  </div>\\n\\n  <!-- All-Time Most Viewed Posts -->\\n  <div class=\\"admin-card\\">\\n    <div class=\\"admin-card-header\\">\\n      <div>\\n        <h2>\u{1F3C6} Highest Viewed Posts (All-Time)</h2>\\n        <div style=\\"font-size: 12.5px; color: #64748b; margin-top: 2px;\\">Most popular notifications ranked by total views</div>\\n      </div>\\n      <a href=\\"")
+    ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
+    ; __append("/posts\\" class=\\"btn btn-secondary btn-sm\\">All Posts</a>\\n    </div>\\n\\n    ")
+    ;  if (topPostsOverall.length > 0) { 
+    ; __append("\\n      <div class=\\"top-post-list\\">\\n        ")
+    ;  topPostsOverall.forEach((p, idx) => { 
+    ; __append("\\n          ")
+    ;  const barPct = Number(p.views || 0) > 0 ? Math.max(5, Math.round((Number(p.views || 0) / maxOverallViews) * 100)) : 2; 
+    ; __append("\\n          <div class=\\"top-post-item\\">\\n            <div class=\\"top-post-head\\">\\n              <div class=\\"top-post-title-wrap\\">\\n                <span class=\\"top-rank-badge ")
+    ; __append(escapeFn( idx < 3 ? ('rank-' + (idx + 1)) : '' ))
+    ; __append("\\">\\n                  ")
+    ; __append(escapeFn( idx === 0 ? '\u{1F947}' : (idx === 1 ? '\u{1F948}' : (idx === 2 ? '\u{1F949}' : ('#' + (idx + 1)))) ))
+    ; __append("\\n                </span>\\n                <a href=\\"")
+    ; __append(escapeFn( (typeof publicBase !== 'undefined' ? publicBase : '') ))
+    ; __append("/post/")
+    ; __append(escapeFn( p.slug ))
+    ; __append("\\" target=\\"_blank\\" class=\\"top-post-title\\">")
+    ; __append(escapeFn( p.title ))
+    ; __append("</a>\\n              </div>\\n              <span class=\\"top-post-views-pill\\">")
+    ; __append(escapeFn( Number(p.views || 0).toLocaleString('en-IN') ))
+    ; __append(" views</span>\\n            </div>\\n            <div class=\\"top-post-foot\\">\\n              <div class=\\"top-post-meter-bg\\">\\n                <div class=\\"top-post-meter-fill\\" style=\\"width: ")
+    ; __append(escapeFn( barPct ))
+    ; __append("%;\\"></div>\\n              </div>\\n              ")
+    ;  if (Number(p.today_views || 0) > 0) { 
+    ; __append("\\n                <span style=\\"color: #be123c; font-weight: 700; white-space: nowrap;\\">+")
+    ; __append(escapeFn( p.today_views ))
+    ; __append(" today</span>\\n              ")
+    ;  } else { 
+    ; __append("\\n                <span style=\\"text-transform: capitalize; white-space: nowrap;\\">")
+    ; __append(escapeFn( p.category ))
+    ; __append("</span>\\n              ")
+    ;  } 
+    ; __append("\\n              <a href=\\"")
+    ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
+    ; __append("/posts/edit/")
+    ; __append(escapeFn( p.id ))
+    ; __append("\\" style=\\"color: #0284c7; font-weight: 700; text-decoration: none;\\">Edit</a>\\n            </div>\\n          </div>\\n        ")
+    ;  }) 
+    ; __append("\\n      </div>\\n    ")
+    ;  } else { 
+    ; __append("\\n      <div style=\\"background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 26px 16px; text-align: center; color: #64748b; font-size: 13px;\\">\\n        No posts found yet.\\n      </div>\\n    ")
+    ;  } 
+    ; __append("\\n  </div>\\n</div>\\n\\n<!-- Category Distribution -->\\n<div class=\\"admin-card\\">\\n  <div class=\\"admin-card-header\\">\\n    <h2>Post Distribution Across Categories</h2>\\n    <span style=\\"font-size: 12.5px; color: #64748b;\\">Live Counts</span>\\n  </div>\\n  <div class=\\"admin-cat-grid\\" style=\\"display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px;\\">\\n    ")
     ;  categoriesCount.forEach(cat => { 
     ; __append("\\n      <div style=\\"background: #f8fafc; border: 1px solid #e2e8f0; padding: 14px; border-radius: 8px; text-align: center; transition: all 0.15s ease;\\">\\n        <div style=\\"font-weight: 800; color: var(--admin-primary); font-size: 22px; line-height: 1.1;\\">")
     ; __append(escapeFn( cat.count ))
@@ -77156,7 +77487,190 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
     ; __append("/r2\\" class=\\"btn btn-secondary btn-sm\\">\u2601\uFE0F R2 Uploads</a>\\n      <a href=\\"")
     ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
-    ; __append("/d1\\" class=\\"btn btn-secondary btn-sm\\">\u{1F4BE} D1 SQL Console</a>\\n    </div>\\n  </div>\\n</div>\\n\\n<!-- Category Distribution -->\\n<div class=\\"admin-card\\">\\n  <div class=\\"admin-card-header\\">\\n    <h2>Post Distribution Across Categories</h2>\\n    <span style=\\"font-size: 12.5px; color: #64748b;\\">Live Counts</span>\\n  </div>\\n  <div class=\\"admin-cat-grid\\" style=\\"display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px;\\">\\n    ")
+    ; __append("/d1\\" class=\\"btn btn-secondary btn-sm\\">\u{1F4BE} D1 SQL Console</a>\\n    </div>\\n  </div>\\n</div>\\n\\n")
+    ; 
+  const statsData = (typeof analytics !== 'undefined' && analytics) ? analytics : {};
+  const todayViews = Number(statsData.todayViews || 0);
+  const yesterdayViews = Number(statsData.yesterdayViews || 0);
+  const todayPostsViewed = Number(statsData.todayPostsViewed || 0);
+  const totalViewsAll = Number(statsData.totalViews || 0);
+  const weekViewsTotal = Number(statsData.weekViewsTotal || 0);
+  const maxDailyViews = Math.max(1, Number(statsData.maxDailyViews || 1));
+  const dailyTrend = Array.isArray(statsData.dailyTrend) ? statsData.dailyTrend : [];
+  const topPostsOverall = Array.isArray(statsData.topPostsOverall) ? statsData.topPostsOverall : [];
+  const topPostsToday = Array.isArray(statsData.topPostsToday) ? statsData.topPostsToday : [];
+  const categoryViews = Array.isArray(statsData.categoryViews) ? statsData.categoryViews : [];
+  const topOverallLeader = topPostsOverall[0] || null;
+  const maxOverallViews = Math.max(1, Number(topOverallLeader ? topOverallLeader.views : 1));
+  const maxTodayPostViews = Math.max(1, Number(topPostsToday[0] ? topPostsToday[0].today_views : 1));
+
+  let deltaPctText = 'Live Today';
+  let deltaClass = 'analytics-delta-neutral';
+  if (yesterdayViews > 0) {
+    const pct = Math.round(((todayViews - yesterdayViews) / yesterdayViews) * 100);
+    deltaPctText = (pct >= 0 ? '\u25B2 +' : '\u25BC ') + pct + '% vs yest.';
+    deltaClass = pct >= 0 ? 'analytics-delta-up' : 'analytics-delta-down';
+  } else if (todayViews > 0) {
+    deltaPctText = '\u25B2 Active Today';
+    deltaClass = 'analytics-delta-up';
+  }
+
+    ; __append("\\n\\n<!-- Views & Traffic KPI Cards -->\\n<div class=\\"analytics-kpi-grid\\" id=\\"viewsAnalyticsSection\\">\\n  <div class=\\"analytics-kpi-card\\">\\n    <div class=\\"analytics-kpi-top\\">\\n      <div>\\n        <div class=\\"analytics-kpi-label\\">Today's Views (IST)</div>\\n        <div class=\\"analytics-kpi-value\\">")
+    ; __append(escapeFn( todayViews.toLocaleString('en-IN') ))
+    ; __append("</div>\\n      </div>\\n      <div class=\\"analytics-kpi-icon\\" style=\\"background: #ffe4e6; color: #be123c;\\">\u{1F441}\uFE0F</div>\\n    </div>\\n    <div class=\\"analytics-kpi-meta\\">\\n      <span class=\\"analytics-delta-pill ")
+    ; __append(escapeFn( deltaClass ))
+    ; __append("\\">")
+    ; __append(escapeFn( deltaPctText ))
+    ; __append("</span>\\n      <span>Yest: ")
+    ; __append(escapeFn( yesterdayViews.toLocaleString('en-IN') ))
+    ; __append("</span>\\n    </div>\\n  </div>\\n\\n  <div class=\\"analytics-kpi-card\\">\\n    <div class=\\"analytics-kpi-top\\">\\n      <div>\\n        <div class=\\"analytics-kpi-label\\">Posts Viewed Today</div>\\n        <div class=\\"analytics-kpi-value\\">")
+    ; __append(escapeFn( todayPostsViewed.toLocaleString('en-IN') ))
+    ; __append("</div>\\n      </div>\\n      <div class=\\"analytics-kpi-icon\\" style=\\"background: #e0f2fe; color: #0284c7;\\">\u{1F4C4}</div>\\n    </div>\\n    <div class=\\"analytics-kpi-meta\\">\\n      <span style=\\"color: #0369a1;\\">Out of ")
+    ; __append(escapeFn( totalPosts ))
+    ; __append(" total posts</span>\\n    </div>\\n  </div>\\n\\n  <div class=\\"analytics-kpi-card\\">\\n    <div class=\\"analytics-kpi-top\\">\\n      <div>\\n        <div class=\\"analytics-kpi-label\\">Total Lifetime Views</div>\\n        <div class=\\"analytics-kpi-value\\">")
+    ; __append(escapeFn( totalViewsAll.toLocaleString('en-IN') ))
+    ; __append("</div>\\n      </div>\\n      <div class=\\"analytics-kpi-icon\\" style=\\"background: #ecfdf5; color: #059669;\\">\u{1F525}</div>\\n    </div>\\n    <div class=\\"analytics-kpi-meta\\">\\n      <span style=\\"color: #059669;\\">7-Day Total: ")
+    ; __append(escapeFn( weekViewsTotal.toLocaleString('en-IN') ))
+    ; __append("</span>\\n    </div>\\n  </div>\\n\\n  <div class=\\"analytics-kpi-card\\">\\n    <div class=\\"analytics-kpi-top\\">\\n      <div style=\\"min-width: 0; flex: 1;\\">\\n        <div class=\\"analytics-kpi-label\\">#1 Top Post Views</div>\\n        <div class=\\"analytics-kpi-value\\">")
+    ; __append(escapeFn( topOverallLeader ? Number(topOverallLeader.views || 0).toLocaleString('en-IN') : '0' ))
+    ; __append("</div>\\n      </div>\\n      <div class=\\"analytics-kpi-icon\\" style=\\"background: #fef9c3; color: #ca8a04;\\">\u{1F3C6}</div>\\n    </div>\\n    <div class=\\"analytics-kpi-meta\\" style=\\"overflow: hidden;\\">\\n      <span style=\\"white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; display: block;\\" title=\\"")
+    ; __append(escapeFn( topOverallLeader ? topOverallLeader.title : '' ))
+    ; __append("\\">\\n        ")
+    ; __append(escapeFn( topOverallLeader ? topOverallLeader.title : 'No views recorded yet' ))
+    ; __append("\\n      </span>\\n    </div>\\n  </div>\\n</div>\\n\\n<!-- Graphical Charts Row: 7-Day Trend Bar Chart + Category Views Breakdown -->\\n<div class=\\"analytics-charts-grid\\">\\n  <!-- 7-Day Views Graphic Chart -->\\n  <div class=\\"admin-card\\">\\n    <div class=\\"admin-card-header\\">\\n      <div>\\n        <h2>\u{1F4CA} Daily Post Views Graphic (Last 7 Days - IST)</h2>\\n        <div style=\\"font-size: 12.5px; color: #64748b; margin-top: 2px;\\">\\n          Real-time daily views across all posts (")
+    ; __append(escapeFn( statsData.todayIst || '' ))
+    ; __append(")\\n        </div>\\n      </div>\\n      <span class=\\"analytics-delta-pill analytics-delta-up\\">7D: ")
+    ; __append(escapeFn( weekViewsTotal.toLocaleString('en-IN') ))
+    ; __append(" Views</span>\\n    </div>\\n\\n    <div class=\\"chart-bars-stage\\" role=\\"img\\" aria-label=\\"Last 7 days post views bar chart\\">\\n      ")
+    ;  dailyTrend.forEach(day => { 
+    ; __append("\\n        ")
+    ; 
+          const pctHeight = day.views > 0 ? Math.max(8, Math.round((day.views / maxDailyViews) * 100)) : 4;
+        
+    ; __append("\\n        <div class=\\"chart-bar-col ")
+    ; __append(escapeFn( day.isToday ? 'is-today' : '' ))
+    ; __append("\\" title=\\"")
+    ; __append(escapeFn( day.fullLabel ))
+    ; __append(": ")
+    ; __append(escapeFn( day.views ))
+    ; __append(" views (")
+    ; __append(escapeFn( day.postsRead ))
+    ; __append(" posts viewed)\\">\\n          <span class=\\"chart-bar-count\\">")
+    ; __append(escapeFn( day.views.toLocaleString('en-IN') ))
+    ; __append("</span>\\n          <div class=\\"chart-bar-track\\">\\n            <div class=\\"chart-bar-fill\\" style=\\"height: ")
+    ; __append(escapeFn( pctHeight ))
+    ; __append("%;\\"></div>\\n          </div>\\n          <span class=\\"chart-bar-label\\">")
+    ; __append(escapeFn( day.label ))
+    ; __append("</span>\\n        </div>\\n      ")
+    ;  }) 
+    ; __append("\\n    </div>\\n    <div style=\\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; font-size: 11.5px; color: #64748b;\\">\\n      <span>Hover/tap any bar for exact views &amp; unique posts read that day</span>\\n      <span><strong style=\\"color: #ab183d;\\">\u25A0</strong> Today &nbsp;|&nbsp; <strong style=\\"color: #1d4ed8;\\">\u25A0</strong> Past Days</span>\\n    </div>\\n  </div>\\n\\n  <!-- Category Views Share Graphic -->\\n  <div class=\\"admin-card\\">\\n    <div class=\\"admin-card-header\\">\\n      <div>\\n        <h2>\u{1F4C8} Views by Category</h2>\\n        <div style=\\"font-size: 12.5px; color: #64748b; margin-top: 2px;\\">Traffic share across exam sections</div>\\n      </div>\\n      <span style=\\"font-size: 12px; font-weight: 700; color: #475569;\\">")
+    ; __append(escapeFn( totalViewsAll.toLocaleString('en-IN') ))
+    ; __append(" Total</span>\\n    </div>\\n\\n    <div class=\\"cat-share-list\\">\\n      ")
+    ;  if (categoryViews.length > 0) { 
+    ; __append("\\n        ")
+    ;  categoryViews.slice(0, 8).forEach(cv => { 
+    ; __append("\\n          ")
+    ; 
+            const cvCount = Number(cv.total_views || 0);
+            const sharePct = totalViewsAll > 0 ? Math.round((cvCount / totalViewsAll) * 100) : 0;
+            const barWidth = cvCount > 0 ? Math.max(4, sharePct) : 2;
+            const catTitle = (categories[cv.category] && categories[cv.category].name) ? categories[cv.category].name : cv.category;
+          
+    ; __append("\\n          <div class=\\"cat-share-row\\">\\n            <div class=\\"cat-share-meta\\">\\n              <span class=\\"cat-share-name\\">")
+    ; __append(escapeFn( catTitle ))
+    ; __append(" <small style=\\"color: #94a3b8; font-weight: 500;\\">(")
+    ; __append(escapeFn( cv.post_count ))
+    ; __append(" posts)</small></span>\\n              <span class=\\"cat-share-nums\\">")
+    ; __append(escapeFn( cvCount.toLocaleString('en-IN') ))
+    ; __append(" (")
+    ; __append(escapeFn( sharePct ))
+    ; __append("%)</span>\\n            </div>\\n            <div class=\\"cat-share-bar-bg\\">\\n              <div class=\\"cat-share-bar-fill\\" style=\\"width: ")
+    ; __append(escapeFn( barWidth ))
+    ; __append("%;\\"></div>\\n            </div>\\n          </div>\\n        ")
+    ;  }) 
+    ; __append("\\n      ")
+    ;  } else { 
+    ; __append("\\n        <div style=\\"padding: 25px; text-align: center; color: #64748b; font-size: 13px;\\">No category traffic recorded yet.</div>\\n      ")
+    ;  } 
+    ; __append("\\n    </div>\\n  </div>\\n</div>\\n\\n<!-- Detailed Top Posts Breakdown: Today vs All-Time -->\\n<div class=\\"analytics-top-grid\\">\\n  <!-- Today's Most Viewed Posts -->\\n  <div class=\\"admin-card\\">\\n    <div class=\\"admin-card-header\\">\\n      <div>\\n        <h2>\u{1F525} Today's Most Viewed Posts</h2>\\n        <div style=\\"font-size: 12.5px; color: #64748b; margin-top: 2px;\\">\\n          Posts getting maximum clicks today (")
+    ; __append(escapeFn( todayPostsViewed ))
+    ; __append(" active today)\\n        </div>\\n      </div>\\n      <span class=\\"analytics-delta-pill today-hot\\" style=\\"background: #ffe4e6; color: #be123c;\\">")
+    ; __append(escapeFn( todayViews.toLocaleString('en-IN') ))
+    ; __append(" Today</span>\\n    </div>\\n\\n    ")
+    ;  if (topPostsToday.length > 0) { 
+    ; __append("\\n      <div class=\\"top-post-list\\">\\n        ")
+    ;  topPostsToday.forEach((p, idx) => { 
+    ; __append("\\n          ")
+    ;  const barPct = Math.max(6, Math.round((Number(p.today_views || 0) / maxTodayPostViews) * 100)); 
+    ; __append("\\n          <div class=\\"top-post-item\\">\\n            <div class=\\"top-post-head\\">\\n              <div class=\\"top-post-title-wrap\\">\\n                <span class=\\"top-rank-badge ")
+    ; __append(escapeFn( idx < 3 ? ('rank-' + (idx + 1)) : '' ))
+    ; __append("\\">#")
+    ; __append(escapeFn( idx + 1 ))
+    ; __append("</span>\\n                <a href=\\"")
+    ; __append(escapeFn( (typeof publicBase !== 'undefined' ? publicBase : '') ))
+    ; __append("/post/")
+    ; __append(escapeFn( p.slug ))
+    ; __append("\\" target=\\"_blank\\" class=\\"top-post-title\\">")
+    ; __append(escapeFn( p.title ))
+    ; __append("</a>\\n              </div>\\n              <span class=\\"top-post-views-pill today-hot\\">+")
+    ; __append(escapeFn( Number(p.today_views || 0).toLocaleString('en-IN') ))
+    ; __append(" today</span>\\n            </div>\\n            <div class=\\"top-post-foot\\">\\n              <div class=\\"top-post-meter-bg\\">\\n                <div class=\\"top-post-meter-fill today-fill\\" style=\\"width: ")
+    ; __append(escapeFn( barPct ))
+    ; __append("%;\\"></div>\\n              </div>\\n              <span style=\\"white-space: nowrap;\\">Total: ")
+    ; __append(escapeFn( Number(p.total_views || 0).toLocaleString('en-IN') ))
+    ; __append("</span>\\n              <a href=\\"")
+    ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
+    ; __append("/posts/edit/")
+    ; __append(escapeFn( p.id ))
+    ; __append("\\" style=\\"color: #0284c7; font-weight: 700; text-decoration: none;\\">Edit</a>\\n            </div>\\n          </div>\\n        ")
+    ;  }) 
+    ; __append("\\n      </div>\\n    ")
+    ;  } else { 
+    ; __append("\\n      <div style=\\"background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 26px 16px; text-align: center; color: #64748b; font-size: 13px;\\">\\n        <strong>No post visits recorded for today yet.</strong><br>\\n        <span style=\\"font-size: 12px;\\">Jaise hi visitors post open karenge, aaj ke top viewed posts yahan live show honge.</span>\\n      </div>\\n    ")
+    ;  } 
+    ; __append("\\n  </div>\\n\\n  <!-- All-Time Most Viewed Posts -->\\n  <div class=\\"admin-card\\">\\n    <div class=\\"admin-card-header\\">\\n      <div>\\n        <h2>\u{1F3C6} Highest Viewed Posts (All-Time)</h2>\\n        <div style=\\"font-size: 12.5px; color: #64748b; margin-top: 2px;\\">Most popular notifications ranked by total views</div>\\n      </div>\\n      <a href=\\"")
+    ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
+    ; __append("/posts\\" class=\\"btn btn-secondary btn-sm\\">All Posts</a>\\n    </div>\\n\\n    ")
+    ;  if (topPostsOverall.length > 0) { 
+    ; __append("\\n      <div class=\\"top-post-list\\">\\n        ")
+    ;  topPostsOverall.forEach((p, idx) => { 
+    ; __append("\\n          ")
+    ;  const barPct = Number(p.views || 0) > 0 ? Math.max(5, Math.round((Number(p.views || 0) / maxOverallViews) * 100)) : 2; 
+    ; __append("\\n          <div class=\\"top-post-item\\">\\n            <div class=\\"top-post-head\\">\\n              <div class=\\"top-post-title-wrap\\">\\n                <span class=\\"top-rank-badge ")
+    ; __append(escapeFn( idx < 3 ? ('rank-' + (idx + 1)) : '' ))
+    ; __append("\\">\\n                  ")
+    ; __append(escapeFn( idx === 0 ? '\u{1F947}' : (idx === 1 ? '\u{1F948}' : (idx === 2 ? '\u{1F949}' : ('#' + (idx + 1)))) ))
+    ; __append("\\n                </span>\\n                <a href=\\"")
+    ; __append(escapeFn( (typeof publicBase !== 'undefined' ? publicBase : '') ))
+    ; __append("/post/")
+    ; __append(escapeFn( p.slug ))
+    ; __append("\\" target=\\"_blank\\" class=\\"top-post-title\\">")
+    ; __append(escapeFn( p.title ))
+    ; __append("</a>\\n              </div>\\n              <span class=\\"top-post-views-pill\\">")
+    ; __append(escapeFn( Number(p.views || 0).toLocaleString('en-IN') ))
+    ; __append(" views</span>\\n            </div>\\n            <div class=\\"top-post-foot\\">\\n              <div class=\\"top-post-meter-bg\\">\\n                <div class=\\"top-post-meter-fill\\" style=\\"width: ")
+    ; __append(escapeFn( barPct ))
+    ; __append("%;\\"></div>\\n              </div>\\n              ")
+    ;  if (Number(p.today_views || 0) > 0) { 
+    ; __append("\\n                <span style=\\"color: #be123c; font-weight: 700; white-space: nowrap;\\">+")
+    ; __append(escapeFn( p.today_views ))
+    ; __append(" today</span>\\n              ")
+    ;  } else { 
+    ; __append("\\n                <span style=\\"text-transform: capitalize; white-space: nowrap;\\">")
+    ; __append(escapeFn( p.category ))
+    ; __append("</span>\\n              ")
+    ;  } 
+    ; __append("\\n              <a href=\\"")
+    ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
+    ; __append("/posts/edit/")
+    ; __append(escapeFn( p.id ))
+    ; __append("\\" style=\\"color: #0284c7; font-weight: 700; text-decoration: none;\\">Edit</a>\\n            </div>\\n          </div>\\n        ")
+    ;  }) 
+    ; __append("\\n      </div>\\n    ")
+    ;  } else { 
+    ; __append("\\n      <div style=\\"background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 26px 16px; text-align: center; color: #64748b; font-size: 13px;\\">\\n        No posts found yet.\\n      </div>\\n    ")
+    ;  } 
+    ; __append("\\n  </div>\\n</div>\\n\\n<!-- Category Distribution -->\\n<div class=\\"admin-card\\">\\n  <div class=\\"admin-card-header\\">\\n    <h2>Post Distribution Across Categories</h2>\\n    <span style=\\"font-size: 12.5px; color: #64748b;\\">Live Counts</span>\\n  </div>\\n  <div class=\\"admin-cat-grid\\" style=\\"display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px;\\">\\n    ")
     ;  categoriesCount.forEach(cat => { 
     ; __append("\\n      <div style=\\"background: #f8fafc; border: 1px solid #e2e8f0; padding: 14px; border-radius: 8px; text-align: center; transition: all 0.15s ease;\\">\\n        <div style=\\"font-weight: 800; color: var(--admin-primary); font-size: 22px; line-height: 1.1;\\">")
     ; __append(escapeFn( cat.count ))
@@ -81115,7 +81629,7 @@ var require_templateEngine = __commonJS({
 
     ; __append("\\n<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0, viewport-fit=cover\\">\\n  <meta name=\\"robots\\" content=\\"noindex, nofollow, noarchive\\">\\n  <meta name=\\"theme-color\\" content=\\"#0f172a\\">\\n  <title>")
     ; __append(escapeFn( title || 'Govt Exam Zone - Professional Admin Console' ))
-    ; __append("</title>\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link href=\\"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap\\" rel=\\"stylesheet\\">\\n  <link rel=\\"stylesheet\\" href=\\"/css/admin.css?v=20261124d\\">\\n  <link rel=\\"icon\\" href=\\"")
+    ; __append("</title>\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link href=\\"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap\\" rel=\\"stylesheet\\">\\n  <link rel=\\"stylesheet\\" href=\\"/css/admin.css?v=20261125a\\">\\n  <link rel=\\"icon\\" href=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_favicon) ? settings.site_favicon : '/images/gez-logo.svg' ))
     ; __append("\\">\\n</head>\\n<body class=\\"admin-body\\">\\n\\n<div class=\\"admin-app-layout\\">\\n  <!-- Mobile Sidebar Overlay Backdrop -->\\n  <div class=\\"sidebar-backdrop\\" id=\\"sidebarBackdrop\\"></div>\\n\\n  <!-- Professional Dark Sidebar -->\\n  <aside class=\\"admin-sidebar\\" id=\\"adminSidebar\\">\\n    <!-- Brand Header -->\\n    <div class=\\"sidebar-brand\\">\\n      <a href=\\"")
     ; __append(escapeFn( baseAdmin || '/' ))
@@ -81206,7 +81720,7 @@ var require_templateEngine = __commonJS({
 
     ; __append("\\n<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0, viewport-fit=cover\\">\\n  <meta name=\\"robots\\" content=\\"noindex, nofollow, noarchive\\">\\n  <meta name=\\"theme-color\\" content=\\"#0f172a\\">\\n  <title>")
     ; __append(escapeFn( title || 'Govt Exam Zone - Professional Admin Console' ))
-    ; __append("</title>\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link href=\\"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap\\" rel=\\"stylesheet\\">\\n  <link rel=\\"stylesheet\\" href=\\"/css/admin.css?v=20261124d\\">\\n  <link rel=\\"icon\\" href=\\"")
+    ; __append("</title>\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link href=\\"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap\\" rel=\\"stylesheet\\">\\n  <link rel=\\"stylesheet\\" href=\\"/css/admin.css?v=20261125a\\">\\n  <link rel=\\"icon\\" href=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_favicon) ? settings.site_favicon : '/images/gez-logo.svg' ))
     ; __append("\\">\\n</head>\\n<body class=\\"admin-body\\">\\n\\n<div class=\\"admin-app-layout\\">\\n  <!-- Mobile Sidebar Overlay Backdrop -->\\n  <div class=\\"sidebar-backdrop\\" id=\\"sidebarBackdrop\\"></div>\\n\\n  <!-- Professional Dark Sidebar -->\\n  <aside class=\\"admin-sidebar\\" id=\\"adminSidebar\\">\\n    <!-- Brand Header -->\\n    <div class=\\"sidebar-brand\\">\\n      <a href=\\"")
     ; __append(escapeFn( baseAdmin || '/' ))

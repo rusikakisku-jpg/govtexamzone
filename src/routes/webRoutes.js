@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const d1 = require('../db/d1Client');
 const { CATEGORIES, safeJsonParse, formatDate, formatPrettyDate } = require('../utils/helpers');
+const { recordPostView } = require('../utils/viewTracker');
 
 // In-memory cache for global settings to prevent repetitive D1 roundtrips on every navigation
 let cachedSettings = null;
@@ -183,8 +184,8 @@ router.get('/post/:slug', async (req, res, next) => {
       });
     }
 
-    // Increment views asynchronously
-    d1.prepare('UPDATE posts SET views = views + 1 WHERE id = ?').bind(post.id).run().catch(console.error);
+    // Record lifetime + daily post views cleanly before sending response
+    await recordPostView(post.id, req);
 
     // Fetch related posts, author, recent posts, popular posts, and category counts concurrently
     const [relatedPosts, authorRow, recentPosts, popularPosts, categoryCounts] = await Promise.all([

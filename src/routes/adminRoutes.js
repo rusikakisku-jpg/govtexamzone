@@ -8,6 +8,7 @@ const { requireAuth, setAuthCookie, clearAuthCookie } = require('../middleware/a
 const { hashPassword } = require('../middleware/authorAuth');
 const { getAdminBase, getPublicBase, getAdminUrl, isAdminSubdomainRequest } = require('../utils/adminHost');
 const { saveUploadedAsset } = require('../utils/uploadHelper');
+const { getIstDateString } = require('../utils/viewTracker');
 const { slugify, CATEGORIES, safeJsonParse, formatDate } = require('../utils/helpers');
 
 // Multer memory storage for direct R2 streaming
@@ -112,20 +113,128 @@ router.get('/logout', (req, res) => {
 // Apply auth protection to all routes below
 router.use(requireAuth);
 
+async function getDashboardAnalytics() {
+  const todayIst = getIstDateString(0);
+  const yesterdayIst = getIstDateString(-1);
+  const startDayIst = getIstDateString(-6);
+
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const formatShortDay = (isoDate) => {
+    const [y, m, d] = isoDate.split('-').map(Number);
+    return `${d} ${monthNames[(m - 1) || 0]}`;
+  };
+
+  let totalViews = 0;
+  let todayViews = 0;
+  let yesterdayViews = 0;
+  let todayPostsViewed = 0;
+  let dailyTrend = [];
+  let topPostsOverall = [];
+  let topPostsToday = [];
+  let categoryViews = [];
+
+  try {
+    const [totRow, dailyRows, topOverallRows, topTodayRows, catViewRows] = await Promise.all([
+      d1.prepare('SELECT COALESCE(SUM(views), 0) as total_views FROM posts').first(),
+      d1.prepare(`
+        SELECT view_date, COALESCE(SUM(views), 0) as total_views, COUNT(DISTINCT post_id) as posts_read
+        FROM post_daily_views
+        WHERE view_date >= ?
+        GROUP BY view_date
+        ORDER BY view_date ASC
+      `).bind(startDayIst).all(),
+      d1.prepare(`
+        SELECT p.id, p.title, p.slug, p.category, COALESCE(p.views, 0) as views,
+               COALESCE(dv.views, 0) as today_views
+        FROM posts p
+        LEFT JOIN post_daily_views dv ON dv.post_id = p.id AND dv.view_date = ?
+        ORDER BY COALESCE(p.views, 0) DESC, p.id DESC
+        LIMIT 8
+      `).bind(todayIst).all(),
+      d1.prepare(`
+        SELECT p.id, p.title, p.slug, p.category, COALESCE(p.views, 0) as total_views,
+               dv.views as today_views
+        FROM post_daily_views dv
+        INNER JOIN posts p ON p.id = dv.post_id
+        WHERE dv.view_date = ? AND dv.views > 0
+        ORDER BY dv.views DESC, p.views DESC
+        LIMIT 8
+      `).bind(todayIst).all(),
+      d1.prepare(`
+        SELECT category, COUNT(*) as post_count, COALESCE(SUM(views), 0) as total_views
+        FROM posts
+        GROUP BY category
+        ORDER BY total_views DESC
+      `).all()
+    ]);
+
+    totalViews = Number(totRow?.total_views || 0);
+
+    const dailyMap = {};
+    if (Array.isArray(dailyRows)) {
+      dailyRows.forEach(r => {
+        dailyMap[r.view_date] = {
+          views: Number(r.total_views || 0),
+          postsRead: Number(r.posts_read || 0)
+        };
+      });
+    }
+
+    todayViews = dailyMap[todayIst]?.views || 0;
+    todayPostsViewed = dailyMap[todayIst]?.postsRead || 0;
+    yesterdayViews = dailyMap[yesterdayIst]?.views || 0;
+
+    for (let offset = -6; offset <= 0; offset++) {
+      const dateStr = getIstDateString(offset);
+      const entry = dailyMap[dateStr] || { views: 0, postsRead: 0 };
+      dailyTrend.push({
+        date: dateStr,
+        label: offset === 0 ? 'Today' : (offset === -1 ? 'Yest.' : formatShortDay(dateStr)),
+        fullLabel: formatShortDay(dateStr),
+        isToday: offset === 0,
+        views: entry.views,
+        postsRead: entry.postsRead
+      });
+    }
+
+    topPostsOverall = Array.isArray(topOverallRows) ? topOverallRows : [];
+    topPostsToday = Array.isArray(topTodayRows) ? topTodayRows : [];
+    categoryViews = Array.isArray(catViewRows) ? catViewRows : [];
+  } catch (err) {
+    console.warn('Dashboard analytics fallback notice:', err.message);
+  }
+
+  const weekViewsTotal = dailyTrend.reduce((acc, d) => acc + d.views, 0);
+  const maxDailyViews = Math.max(1, ...dailyTrend.map(d => d.views));
+
+  return {
+    todayIst,
+    totalViews,
+    todayViews,
+    yesterdayViews,
+    todayPostsViewed,
+    weekViewsTotal,
+    maxDailyViews,
+    dailyTrend,
+    topPostsOverall,
+    topPostsToday,
+    categoryViews
+  };
+}
+
 // Admin Dashboard
 router.get('/', async (req, res, next) => {
   try {
-    const totalPostsRow = await d1.prepare('SELECT COUNT(*) as count FROM posts').first();
-    const categoriesCount = await d1.prepare(`
-      SELECT category, COUNT(*) as count FROM posts GROUP BY category
-    `).all();
-
-    const recentPosts = await d1.prepare(`
-      SELECT id, title, slug, category, post_date, views, status, created_at
-      FROM posts ORDER BY id DESC LIMIT 10
-    `).all();
-
-    const uploadsCountRow = await d1.prepare('SELECT COUNT(*) as count FROM uploads').first();
+    const [totalPostsRow, categoriesCount, recentPosts, uploadsCountRow, analytics] = await Promise.all([
+      d1.prepare('SELECT COUNT(*) as count FROM posts').first(),
+      d1.prepare('SELECT category, COUNT(*) as count FROM posts GROUP BY category').all(),
+      d1.prepare(`
+        SELECT id, title, slug, category, department, post_date, views, status, created_at
+        FROM posts ORDER BY id DESC LIMIT 10
+      `).all(),
+      d1.prepare('SELECT COUNT(*) as count FROM uploads').first(),
+      getDashboardAnalytics()
+    ]);
 
     res.render('admin/dashboard', {
       title: 'Admin Dashboard - Govt Exam Zone Control Panel',
@@ -134,6 +243,7 @@ router.get('/', async (req, res, next) => {
       recentPosts,
       uploadsCount: uploadsCountRow?.count || 0,
       categories: CATEGORIES,
+      analytics,
       d1Mode: d1.isCloudflareD1 ? 'Cloudflare D1 (Remote)' : 'SQLite (Local D1 Emulated)',
       r2Mode: r2.isR2Configured ? 'Cloudflare R2 (Active)' : 'Local Storage (Fallback)'
     });

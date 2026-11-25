@@ -86,6 +86,12 @@ const CORE_TABLES = [
   `CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS post_daily_views (
+    post_id INTEGER NOT NULL,
+    view_date TEXT NOT NULL,
+    views INTEGER DEFAULT 0,
+    PRIMARY KEY (post_id, view_date)
   )`
 ];
 
@@ -95,7 +101,8 @@ const CORE_INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status)`,
   `CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id)`,
   `CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at)`,
-  `CREATE INDEX IF NOT EXISTS idx_authors_slug ON authors(slug)`
+  `CREATE INDEX IF NOT EXISTS idx_authors_slug ON authors(slug)`,
+  `CREATE INDEX IF NOT EXISTS idx_daily_views_date ON post_daily_views(view_date)`
 ];
 
 const EMBEDDED_SCHEMA_SQL = CORE_TABLES.concat(CORE_INDEXES).join(';\n\n') + ';';
