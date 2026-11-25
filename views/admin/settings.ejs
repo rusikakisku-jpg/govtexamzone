@@ -29,6 +29,7 @@
   <div class="settings-nav-pills" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 26px; border-bottom: 1px solid #e2e8f0; padding-bottom: 14px;">
     <a href="#section-branding" class="settings-pill active">🌐 General &amp; Branding</a>
     <a href="#section-layout" class="settings-pill">📰 Post Page Layout</a>
+    <a href="#section-categories" class="settings-pill">📂 Category Visibility</a>
     <a href="#section-social" class="settings-pill">📲 Social Communities</a>
     <a href="#section-helpdesk" class="settings-pill">✉️ Contact &amp; Helpdesk</a>
     <a href="#section-seo" class="settings-pill">🚀 SEO &amp; Analytics</a>
@@ -329,6 +330,60 @@
       </div>
     </div>
 
+    <!-- 1C. Frontend Category Visibility Controls -->
+    <div id="section-categories" class="settings-group-card">
+      <input type="hidden" name="has_category_visibility_ui" value="1">
+      <div class="settings-group-header" style="justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+        <div style="display: flex; align-items: flex-start; gap: 12px;">
+          <span class="settings-group-icon">📂</span>
+          <div>
+            <h3 class="settings-group-title">Category Visibility Control (Show / Hide Sections on Website)</h3>
+            <p class="settings-group-desc">Uncheck any category with 0 posts to hide its box from Homepage, Header Navigation, Footer, Sidebar &amp; Sitemap.</p>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button type="button" id="btnHideEmptyCats" class="btn btn-secondary btn-sm">🙈 Hide All 0-Post Categories</button>
+          <button type="button" id="btnShowAllCats" class="btn btn-secondary btn-sm">👁️ Show All 8 Categories</button>
+        </div>
+      </div>
+
+      <%
+        const _hiddenSet = new Set(Array.isArray(typeof hiddenCategories !== 'undefined' ? hiddenCategories : []) ? hiddenCategories : []);
+        const _countMap = (typeof categoryCountMap !== 'undefined' && categoryCountMap) ? categoryCountMap : {};
+        const _autoHideEmpty = settings.auto_hide_empty_categories === '1';
+      %>
+      <label style="display: flex; align-items: center; gap: 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; cursor: pointer;">
+        <input type="checkbox" name="auto_hide_empty_categories" value="1" id="autoHideEmptyCheckbox" <%= _autoHideEmpty ? 'checked' : '' %> style="width: 17px; height: 17px; cursor: pointer;">
+        <div>
+          <strong style="font-size: 13.5px; color: #1e3a8a;">⚡ Automatically Hide Any Category With 0 Active Posts</strong>
+          <div style="font-size: 12px; color: #475569;">When enabled, empty categories stay hidden automatically and reappear automatically as soon as you publish a post in them.</div>
+        </div>
+      </label>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
+        <% Object.keys(categories || {}).forEach(catKey => { %>
+          <%
+            const countVal = Number(_countMap[catKey] || 0);
+            const isChecked = !_hiddenSet.has(catKey);
+          %>
+          <label class="cat-vis-card" data-post-count="<%= countVal %>" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border: 1.5px solid <%= isChecked ? '#86efac' : '#fecaca' %>; background: <%= isChecked ? '#f0fdf4' : '#fef2f2' %>; border-radius: 8px; cursor: pointer;">
+            <div style="min-width: 0;">
+              <div style="font-weight: 700; font-size: 13.5px; color: #0f172a;"><%= categories[catKey].name %></div>
+              <div style="font-size: 11.5px; font-weight: 600; color: <%= countVal > 0 ? '#15803d' : '#b45309' %>; margin-top: 2px;">
+                <%= countVal %> active <%= countVal === 1 ? 'post' : 'posts' %>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+              <span class="cat-vis-status-label" style="font-size: 11px; font-weight: 700; color: <%= isChecked ? '#166534' : '#991b1b' %>;">
+                <%= isChecked ? 'Visible' : 'Hidden' %>
+              </span>
+              <input type="checkbox" name="visible_categories" value="<%= catKey %>" class="cat-vis-checkbox" <%= isChecked ? 'checked' : '' %> style="width: 17px; height: 17px; cursor: pointer;">
+            </div>
+          </label>
+        <% }) %>
+      </div>
+    </div>
+
 
     <!-- 2. Social Media & Community Channels -->
     <div id="section-social" class="settings-group-card">
@@ -539,7 +594,7 @@
             value="<%= settings.google_analytics_id || '' %>" 
             placeholder="e.g. G-XXXXXXXXXX"
           >
-          <small class="field-hint">Automatically injects the official Google tag script into all public pages.</small>
+          <small class="field-hint">Enter your GA4 Measurement ID (e.g. <code>G-XXXXXXXXXX</code>). Automatically tracks both direct loads and seamless SPA page views across all public pages.</small>
         </div>
       </div>
     </div>
@@ -1007,6 +1062,50 @@
       }
     });
   });
+
+  // Category Visibility quick actions & live card styling
+  function syncCatVisCard(cb) {
+    const card = cb.closest('.cat-vis-card');
+    if (!card) return;
+    const statusLabel = card.querySelector('.cat-vis-status-label');
+    if (cb.checked) {
+      card.style.borderColor = '#86efac';
+      card.style.background = '#f0fdf4';
+      if (statusLabel) { statusLabel.textContent = 'Visible'; statusLabel.style.color = '#166534'; }
+    } else {
+      card.style.borderColor = '#fecaca';
+      card.style.background = '#fef2f2';
+      if (statusLabel) { statusLabel.textContent = 'Hidden'; statusLabel.style.color = '#991b1b'; }
+    }
+  }
+
+  document.querySelectorAll('.cat-vis-checkbox').forEach(function(cb) {
+    cb.addEventListener('change', function() { syncCatVisCard(cb); });
+  });
+
+  const btnHideEmptyCats = document.getElementById('btnHideEmptyCats');
+  if (btnHideEmptyCats) {
+    btnHideEmptyCats.addEventListener('click', function() {
+      document.querySelectorAll('.cat-vis-card').forEach(function(card) {
+        const count = parseInt(card.getAttribute('data-post-count') || '0', 10);
+        const cb = card.querySelector('.cat-vis-checkbox');
+        if (cb && count === 0) {
+          cb.checked = false;
+          syncCatVisCard(cb);
+        }
+      });
+    });
+  }
+
+  const btnShowAllCats = document.getElementById('btnShowAllCats');
+  if (btnShowAllCats) {
+    btnShowAllCats.addEventListener('click', function() {
+      document.querySelectorAll('.cat-vis-checkbox').forEach(function(cb) {
+        cb.checked = true;
+        syncCatVisCard(cb);
+      });
+    });
+  }
 </script>
 
 <%- include('../partials/admin-footer') %>

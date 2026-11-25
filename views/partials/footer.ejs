@@ -31,15 +31,18 @@
     </div>
 
     <div class="footer-bottom">
+      <%
+        const isFooterCatShown = (slug) => typeof visibleCategories === 'undefined' || visibleCategories[slug] !== false;
+      %>
       <div class="footer-links">
         <a href="/">Home</a> |
         <a href="/about-us">About Us</a> |
         <a href="/faq">FAQ</a> |
-        <a href="/category/latest-jobs">Latest Jobs</a> |
-        <a href="/category/result">Results</a> |
-        <a href="/category/admit-card">Admit Card</a> |
-        <a href="/category/answer-key">Answer Key</a> |
-        <a href="/category/syllabus">Syllabus</a> |
+        <% if (isFooterCatShown('latest-jobs')) { %><a href="/category/latest-jobs">Latest Jobs</a> |<% } %>
+        <% if (isFooterCatShown('result')) { %><a href="/category/result">Results</a> |<% } %>
+        <% if (isFooterCatShown('admit-card')) { %><a href="/category/admit-card">Admit Card</a> |<% } %>
+        <% if (isFooterCatShown('answer-key')) { %><a href="/category/answer-key">Answer Key</a> |<% } %>
+        <% if (isFooterCatShown('syllabus')) { %><a href="/category/syllabus">Syllabus</a> |<% } %>
         <a href="/contact-us">Contact Us</a> |
         <a href="/terms-conditions">Terms of Use</a> |
         <a href="/disclaimer">Disclaimer</a> |
@@ -67,7 +70,7 @@
 <!-- Global Toast Notification -->
 <div id="toast" class="toast-msg">Link copied to clipboard!</div>
 
-<script src="/js/main.js"></script>
+<script src="/js/main.js?v=20261125a"></script>
 
 <% if (typeof settings !== 'undefined' && settings.footer_custom_code) { %>
   <!-- Webmaster Custom Footer Code -->

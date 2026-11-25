@@ -12,7 +12,8 @@ const { getIstDateString } = require('../utils/viewTracker');
 const {
   getPostCategoryMap,
   syncPostCategoriesOnSave,
-  cleanupPostRelations
+  cleanupPostRelations,
+  fetchAllCategoryCounts
 } = require('../utils/postCategoryManager');
 const { slugify, CATEGORIES, safeJsonParse, formatDate } = require('../utils/helpers');
 
@@ -79,20 +80,14 @@ router.post('/login', (req, res) => {
     'govtexamzone',
     'govtexamzoneadmin',
     'govtexamzoneofficial',
-    'admin@govtexamzone.com',
-    'sarkariresult',
-    'sarkariresultadmin'
+    'admin@govtexamzone.com'
   ];
 
   const validPasswords = [
     config.admin.password,
     'govtexamzone@2026',
     'GovtExamZone@2026',
-    'sarkari@admin2026',
-    'sarkariresult@2026',
-    'SarkariResult@2026',
-    'admin2026',
-    'sarkari@admin'
+    'admin2026'
   ];
 
   const isUserValid = validUsers.includes(inputUser);
@@ -405,6 +400,7 @@ router.post('/posts/new', upload.fields([
       previousPost: null,
       body: req.body
     });
+    globalThis.__invalidateCategoryCache?.();
 
     res.redirect(getAdminUrl(req, '/posts?success=created'));
   } catch (err) {
@@ -530,6 +526,7 @@ router.post('/posts/edit/:id', upload.fields([
       previousPost: currentPost,
       body: req.body
     });
+    globalThis.__invalidateCategoryCache?.();
 
     res.redirect(getAdminUrl(req, '/posts?success=updated'));
   } catch (err) {
@@ -542,6 +539,7 @@ router.post('/posts/delete/:id', async (req, res, next) => {
   try {
     await d1.prepare('DELETE FROM posts WHERE id = ?').bind(req.params.id).run();
     await cleanupPostRelations(req.params.id);
+    globalThis.__invalidateCategoryCache?.();
     res.redirect(getAdminUrl(req, '/posts?success=deleted'));
   } catch (err) {
     next(err);
@@ -901,7 +899,16 @@ router.post('/d1/query', async (req, res, next) => {
 // Portal Site Settings
 router.get('/settings', async (req, res, next) => {
   try {
-    const rows = await d1.prepare('SELECT * FROM settings').all();
+    const [rows, catCounts] = await Promise.all([
+      d1.prepare('SELECT * FROM settings').all(),
+      fetchAllCategoryCounts()
+    ]);
+    const categoryCountMap = {};
+    if (Array.isArray(catCounts)) {
+      catCounts.forEach(c => {
+        if (c && c.category) categoryCountMap[c.category] = Number(c.count || 0);
+      });
+    }
     const settings = {
       telegram_url: 'https://t.me/govtexamzoneofficial',
       whatsapp_url: 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10',
@@ -912,7 +919,7 @@ router.get('/settings', async (req, res, next) => {
       header_subtitle: 'WWW.GOVTEXAMZONE.COM',
       site_tagline: 'Latest Govt Jobs, Admit Card, Results 2026',
       site_domain: 'https://govtexamzone.com',
-      copyright_text: '© 2026 govtexamzone.com. All Rights Reserved. Cloudflare D1 & R2 Powered.',
+      copyright_text: '© 2026 govtexamzone.com. All Rights Reserved.',
       youtube_url: '',
       twitter_url: '',
       instagram_url: '',
@@ -933,14 +940,23 @@ router.get('/settings', async (req, res, next) => {
       ad_bottom_code: '',
       header_custom_code: '',
       footer_custom_code: '',
-      post_detail_layout: 'classic'
+      post_detail_layout: 'classic',
+      hidden_categories: '[]',
+      auto_hide_empty_categories: '0'
     };
     if (rows && Array.isArray(rows)) {
       rows.forEach(r => { settings[r.key] = r.value; });
     }
+    if (!settings.contact_email || /^support@govtexamzone/i.test(settings.contact_email.trim())) {
+      settings.contact_email = 'contact.govtexamzone@gmail.com';
+    }
+    const hiddenCategoriesList = safeJsonParse(settings.hidden_categories, []);
     res.render('admin/settings', {
       title: 'Portal Settings - Govt Exam Zone Admin',
       settings,
+      categories: CATEGORIES,
+      categoryCountMap,
+      hiddenCategories: Array.isArray(hiddenCategoriesList) ? hiddenCategoriesList : [],
       saved: req.query.saved === '1'
     });
   } catch (err) {
@@ -953,7 +969,34 @@ router.post('/settings/save', upload.fields([
   { name: 'site_favicon_file', maxCount: 1 }
 ]), async (req, res, next) => {
   try {
-    const rawSettings = req.body || {};
+    const rawSettings = { ...(req.body || {}) };
+
+    // Handle Frontend Category Visibility settings if submitted
+    if (rawSettings.has_category_visibility_ui === '1') {
+      const submittedVisible = rawSettings.visible_categories;
+      const visibleSet = new Set(
+        Array.isArray(submittedVisible)
+          ? submittedVisible.map(String)
+          : (typeof submittedVisible === 'string' && submittedVisible ? [submittedVisible] : [])
+      );
+      const hiddenList = Object.keys(CATEGORIES).filter(catKey => !visibleSet.has(catKey));
+      rawSettings.hidden_categories = JSON.stringify(hiddenList);
+      rawSettings.auto_hide_empty_categories = rawSettings.auto_hide_empty_categories === '1' ? '1' : '0';
+    }
+    delete rawSettings.visible_categories;
+    delete rawSettings.has_category_visibility_ui;
+
+    // Sanitize Google Analytics Measurement ID (accepts G-XXXX, GT-XXXX, UA-XXXX, or full snippet)
+    if (typeof rawSettings.google_analytics_id === 'string') {
+      const gaTrim = rawSettings.google_analytics_id.trim();
+      const gaMatch = gaTrim.match(/\b(G|GT|UA|AW)-[A-Z0-9-]+\b/i);
+      rawSettings.google_analytics_id = gaMatch ? gaMatch[0].toUpperCase() : gaTrim.replace(/[<>"'\s]/g, '');
+    }
+
+    // Prevent legacy support@govtexamzone email from being saved
+    if (typeof rawSettings.contact_email === 'string' && /^support@govtexamzone/i.test(rawSettings.contact_email.trim())) {
+      rawSettings.contact_email = 'contact.govtexamzone@gmail.com';
+    }
 
     // Process logo file upload if provided
     const logoFile = req.files?.site_logo_file?.[0];

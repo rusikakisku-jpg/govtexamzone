@@ -378,6 +378,7 @@ router.post('/posts/new', upload.fields([
       previousPost: null,
       body: req.body
     });
+    globalThis.__invalidateCategoryCache?.();
 
     res.redirect('/author-portal/posts?success=created');
   } catch (err) {
@@ -530,6 +531,7 @@ router.post('/posts/edit/:id', upload.fields([
       previousPost: currentPost,
       body: req.body
     });
+    globalThis.__invalidateCategoryCache?.();
 
     res.redirect('/author-portal/posts?success=updated');
   } catch (err) {

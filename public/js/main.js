@@ -346,6 +346,17 @@ document.addEventListener('DOMContentLoaded', function() {
         history.pushState({}, '', href);
       }
 
+      // Notify Google Analytics (GA4) on seamless SPA navigation page views
+      if (typeof window.gtag === 'function' && window.__GA_MEASUREMENT_ID) {
+        try {
+          const parsedNav = new URL(href, window.location.origin);
+          window.gtag('config', window.__GA_MEASUREMENT_ID, {
+            page_path: parsedNav.pathname + parsedNav.search,
+            page_title: document.title
+          });
+        } catch (gaErr) {}
+      }
+
       window.scrollTo({ top: 0 });
     } catch (err) {
       window.location.href = href;

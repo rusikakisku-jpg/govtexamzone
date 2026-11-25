@@ -10,9 +10,7 @@ function getAllValidTokens() {
     'govtexamzone',
     'govtexamzoneadmin',
     'govtexamzoneofficial',
-    'admin@govtexamzone.com',
-    'sarkariresult',
-    'sarkariresultadmin'
+    'admin@govtexamzone.com'
   ];
   return validUsers.map(u => crypto.createHmac('sha256', secret).update(u).digest('hex'));
 }

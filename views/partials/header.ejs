@@ -78,11 +78,11 @@
   <link rel="stylesheet" href="/css/style.css">
 
   <!-- High-Speed Menu Prefetching for Instant Navigation -->
-  <link rel="prefetch" href="/category/latest-jobs">
-  <link rel="prefetch" href="/category/result">
-  <link rel="prefetch" href="/category/admit-card">
-  <link rel="prefetch" href="/category/answer-key">
-  <link rel="prefetch" href="/category/syllabus">
+  <% ['latest-jobs', 'result', 'admit-card', 'answer-key', 'syllabus'].forEach(catSlug => { %>
+    <% if (typeof visibleCategories === 'undefined' || visibleCategories[catSlug] !== false) { %>
+  <link rel="prefetch" href="/category/<%= catSlug %>">
+    <% } %>
+  <% }); %>
 
   <!-- JSON-LD Schema.org Structured Data: WebSite -->
   <script type="application/ld+json">
@@ -131,14 +131,20 @@
   }
   </script>
 
-  <% if (typeof settings !== 'undefined' && settings.google_analytics_id) { %>
-  <!-- Google Analytics GA4 -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=<%= settings.google_analytics_id %>"></script>
+  <%
+    const rawGaId = (typeof settings !== 'undefined' && settings.google_analytics_id) ? String(settings.google_analytics_id).trim() : '';
+    const gaMatch = rawGaId.match(/\b(G|GT|UA|AW)-[A-Z0-9-]+\b/i);
+    const activeGaId = gaMatch ? gaMatch[0].toUpperCase() : rawGaId.replace(/[<>"'\s]/g, '');
+  %>
+  <% if (activeGaId) { %>
+  <!-- Google Analytics (GA4) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=<%= activeGaId %>"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
+    window.__GA_MEASUREMENT_ID = '<%= activeGaId %>';
     gtag('js', new Date());
-    gtag('config', '<%= settings.google_analytics_id %>');
+    gtag('config', '<%= activeGaId %>');
   </script>
   <% } %>
 
@@ -189,7 +195,10 @@
 
     <!-- Navigation Menu List -->
     <ul class="nav-menu" id="primaryNavMenu">
-      <% const cur = typeof currentPath !== 'undefined' ? currentPath : ''; %>
+      <%
+        const cur = typeof currentPath !== 'undefined' ? currentPath : '';
+        const isCatShown = (slug) => typeof visibleCategories === 'undefined' || visibleCategories[slug] !== false;
+      %>
       <li>
         <a href="/" class="<%= cur === '/' ? 'active' : '' %>">
           <span class="menu-icon">🏠</span>
@@ -197,6 +206,7 @@
           <span class="menu-chevron">›</span>
         </a>
       </li>
+      <% if (isCatShown('latest-jobs')) { %>
       <li>
         <a href="/category/latest-jobs" class="<%= cur.includes('latest-jobs') ? 'active' : '' %>">
           <span class="menu-icon">💼</span>
@@ -204,6 +214,8 @@
           <span class="menu-chevron">›</span>
         </a>
       </li>
+      <% } %>
+      <% if (isCatShown('result')) { %>
       <li>
         <a href="/category/result" class="<%= cur.includes('result') ? 'active' : '' %>">
           <span class="menu-icon">🏆</span>
@@ -211,6 +223,8 @@
           <span class="menu-chevron">›</span>
         </a>
       </li>
+      <% } %>
+      <% if (isCatShown('admit-card')) { %>
       <li>
         <a href="/category/admit-card" class="<%= cur.includes('admit-card') ? 'active' : '' %>">
           <span class="menu-icon">🎫</span>
@@ -218,6 +232,8 @@
           <span class="menu-chevron">›</span>
         </a>
       </li>
+      <% } %>
+      <% if (isCatShown('answer-key')) { %>
       <li>
         <a href="/category/answer-key" class="<%= cur.includes('answer-key') ? 'active' : '' %>">
           <span class="menu-icon">🔑</span>
@@ -225,6 +241,8 @@
           <span class="menu-chevron">›</span>
         </a>
       </li>
+      <% } %>
+      <% if (isCatShown('syllabus')) { %>
       <li>
         <a href="/category/syllabus" class="<%= cur.includes('syllabus') ? 'active' : '' %>">
           <span class="menu-icon">📚</span>
@@ -232,6 +250,7 @@
           <span class="menu-chevron">›</span>
         </a>
       </li>
+      <% } %>
       <% if (false) { /* Hidden for now as requested: Candidate Utilities & Tools */ %>
       <li class="nav-dropdown-item <%= cur.includes('/tools/') ? 'active' : '' %>" id="moreDropdownItem">
         <a href="javascript:void(0)" class="nav-dropdown-toggle <%= cur.includes('/tools/') ? 'active' : '' %>" id="moreDropdownToggle" aria-haspopup="true" aria-expanded="false" role="button">

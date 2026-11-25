@@ -7,16 +7,22 @@ const {
   fetchCategoryPosts,
   countCategoryPosts,
   fetchRelatedCategoryPosts,
-  fetchAllCategoryCounts
+  fetchAllCategoryCounts,
+  getVisibleCategoriesMap
 } = require('../utils/postCategoryManager');
 
-// In-memory cache for global settings to prevent repetitive D1 roundtrips on every navigation
+// In-memory cache for global settings & category visibility to prevent repetitive D1 roundtrips
 let cachedSettings = null;
+let cachedVisibleCategories = null;
 let settingsCacheTime = 0;
 const SETTINGS_CACHE_TTL = 60 * 1000; // 60 seconds
 globalThis.__invalidateSettingsCache = () => {
   cachedSettings = null;
+  cachedVisibleCategories = null;
   settingsCacheTime = 0;
+};
+globalThis.__invalidateCategoryCache = () => {
+  cachedVisibleCategories = null;
 };
 
 // Middleware to inject common data
@@ -32,13 +38,17 @@ router.use(async (req, res, next) => {
   res.locals.currentPath = req.path;
 
   const now = Date.now();
-  if (cachedSettings && (now - settingsCacheTime < SETTINGS_CACHE_TTL)) {
+  if (cachedSettings && cachedVisibleCategories && (now - settingsCacheTime < SETTINGS_CACHE_TTL)) {
     res.locals.settings = cachedSettings;
+    res.locals.visibleCategories = cachedVisibleCategories;
     return next();
   }
 
   try {
-    const sRows = await d1.prepare('SELECT * FROM settings').all();
+    const [sRows, catCounts] = await Promise.all([
+      d1.prepare('SELECT * FROM settings').all(),
+      fetchAllCategoryCounts()
+    ]);
     const siteSettings = {
       telegram_url: 'https://t.me/govtexamzoneofficial',
       whatsapp_url: 'https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10',
@@ -46,10 +56,19 @@ router.use(async (req, res, next) => {
       site_title: 'Govt Exam Zone',
       site_logo: '',
       site_favicon: '/images/gez-logo.svg',
-      post_detail_layout: 'classic'
+      post_detail_layout: 'classic',
+      hidden_categories: '[]',
+      auto_hide_empty_categories: '0'
     };
     if (sRows && Array.isArray(sRows)) {
       sRows.forEach(r => { siteSettings[r.key] = r.value; });
+    }
+    // Remove legacy support email if stored in D1 settings
+    if (!siteSettings.contact_email || /^support@govtexamzone/i.test(siteSettings.contact_email.trim())) {
+      siteSettings.contact_email = 'contact.govtexamzone@gmail.com';
+      try {
+        await d1.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('contact_email', 'contact.govtexamzone@gmail.com')").run();
+      } catch (err) {}
     }
     // Remove previous demo/uploaded logo so header displays clean text by default
     if (siteSettings.site_logo && (siteSettings.site_logo.includes('photo_2026') || siteSettings.site_logo.includes('gez-logo.svg'))) {
@@ -59,8 +78,10 @@ router.use(async (req, res, next) => {
       } catch (err) {}
     }
     cachedSettings = siteSettings;
+    cachedVisibleCategories = getVisibleCategoriesMap(siteSettings, catCounts);
     settingsCacheTime = now;
     res.locals.settings = siteSettings;
+    res.locals.visibleCategories = cachedVisibleCategories;
   } catch (e) {
     res.locals.settings = cachedSettings || {
       telegram_url: 'https://t.me/govtexamzoneofficial',
@@ -69,8 +90,11 @@ router.use(async (req, res, next) => {
       site_title: 'Govt Exam Zone',
       site_logo: '',
       site_favicon: '/images/gez-logo.svg',
-      post_detail_layout: 'classic'
+      post_detail_layout: 'classic',
+      hidden_categories: '[]',
+      auto_hide_empty_categories: '0'
     };
+    res.locals.visibleCategories = cachedVisibleCategories || getVisibleCategoriesMap(res.locals.settings, []);
   }
   next();
 });
@@ -129,11 +153,12 @@ router.get('/category/:cat', async (req, res, next) => {
   try {
     const categorySlug = req.params.cat;
     const catInfo = CATEGORIES[categorySlug];
+    const isCatVisible = !res.locals.visibleCategories || res.locals.visibleCategories[categorySlug] !== false;
 
-    if (!catInfo) {
+    if (!catInfo || !isCatVisible) {
       return res.status(404).render('pages/error', {
         title: 'Category Not Found',
-        message: 'The requested category does not exist.'
+        message: 'The requested category is currently not available.'
       });
     }
 
@@ -318,9 +343,11 @@ router.get('/sitemap.xml', async (req, res) => {
     // Homepage
     xml += `  <url><loc>${host}/</loc><lastmod>${todayStr}</lastmod><changefreq>always</changefreq><priority>1.0</priority></url>\n`;
 
-    // Category pages
+    // Category pages (only active visible categories)
     Object.keys(CATEGORIES).forEach(cat => {
-      xml += `  <url><loc>${host}/category/${cat}</loc><lastmod>${todayStr}</lastmod><changefreq>hourly</changefreq><priority>0.9</priority></url>\n`;
+      if (!res.locals.visibleCategories || res.locals.visibleCategories[cat] !== false) {
+        xml += `  <url><loc>${host}/category/${cat}</loc><lastmod>${todayStr}</lastmod><changefreq>hourly</changefreq><priority>0.9</priority></url>\n`;
+      }
     });
 
     // Candidate Tools (temporarily hidden as requested)

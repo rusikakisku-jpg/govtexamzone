@@ -17,7 +17,7 @@ function verifyPassword(inputPassword, storedHash) {
 }
 
 function generateAuthorToken(author) {
-  const secret = config.server.sessionSecret || 'sarkari_result_secret_key_2026';
+  const secret = config.server.sessionSecret || 'govtexamzone_secret_key_cloudflare_d1_r2';
   const data = `${author.id}:${author.slug}`;
   const sig = crypto.createHmac('sha256', secret).update(data).digest('hex');
   return `${author.id}.${sig}`;
@@ -34,7 +34,7 @@ async function getAuthorFromToken(token) {
     const author = await d1.prepare('SELECT * FROM authors WHERE id = ? AND is_active = 1').bind(authorId).first();
     if (!author) return null;
 
-    const secret = config.server.sessionSecret || 'sarkari_result_secret_key_2026';
+    const secret = config.server.sessionSecret || 'govtexamzone_secret_key_cloudflare_d1_r2';
     const expectedSig = crypto.createHmac('sha256', secret).update(`${author.id}:${author.slug}`).digest('hex');
 
     if (sig === expectedSig) {

@@ -1,5 +1,5 @@
 const d1 = require('../db/d1Client');
-const { CATEGORIES } = require('./helpers');
+const { CATEGORIES, safeJsonParse } = require('./helpers');
 
 function getUtcTimestamp() {
   return new Date().toISOString().replace('T', ' ').slice(0, 19);
@@ -224,6 +224,30 @@ async function fetchAllCategoryCounts() {
   `).all();
 }
 
+/**
+ * Compute visible categories map based on admin hidden_categories and optional auto-hide empty setting.
+ */
+function getVisibleCategoriesMap(settings = {}, categoryCounts = []) {
+  const hiddenList = safeJsonParse(settings?.hidden_categories, []);
+  const hiddenSet = new Set(Array.isArray(hiddenList) ? hiddenList.map(String) : []);
+  const autoHideEmpty = settings?.auto_hide_empty_categories === '1';
+
+  const countMap = {};
+  if (Array.isArray(categoryCounts)) {
+    categoryCounts.forEach(c => {
+      if (c && c.category) countMap[c.category] = Number(c.count || 0);
+    });
+  }
+
+  const visibleMap = {};
+  Object.keys(CATEGORIES).forEach(catKey => {
+    const manuallyHidden = hiddenSet.has(catKey);
+    const emptyHidden = autoHideEmpty && (countMap[catKey] || 0) === 0;
+    visibleMap[catKey] = !(manuallyHidden || emptyHidden);
+  });
+  return visibleMap;
+}
+
 module.exports = {
   getPostCategoryMap,
   syncPostCategoriesOnSave,
@@ -231,5 +255,6 @@ module.exports = {
   fetchCategoryPosts,
   countCategoryPosts,
   fetchRelatedCategoryPosts,
-  fetchAllCategoryCounts
+  fetchAllCategoryCounts,
+  getVisibleCategoriesMap
 };

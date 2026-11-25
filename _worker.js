@@ -27241,7 +27241,7 @@ var require_authorAuth = __commonJS({
       return hashPassword(inputPassword) === storedHash;
     }
     function generateAuthorToken(author) {
-      const secret = config.server.sessionSecret || "sarkari_result_secret_key_2026";
+      const secret = config.server.sessionSecret || "govtexamzone_secret_key_cloudflare_d1_r2";
       const data = `${author.id}:${author.slug}`;
       const sig = crypto6.createHmac("sha256", secret).update(data).digest("hex");
       return `${author.id}.${sig}`;
@@ -27254,7 +27254,7 @@ var require_authorAuth = __commonJS({
       try {
         const author = await d1.prepare("SELECT * FROM authors WHERE id = ? AND is_active = 1").bind(authorId).first();
         if (!author) return null;
-        const secret = config.server.sessionSecret || "sarkari_result_secret_key_2026";
+        const secret = config.server.sessionSecret || "govtexamzone_secret_key_cloudflare_d1_r2";
         const expectedSig = crypto6.createHmac("sha256", secret).update(`${author.id}:${author.slug}`).digest("hex");
         if (sig === expectedSig) {
           return author;
@@ -28796,7 +28796,7 @@ var require_viewTracker = __commonJS({
 var require_postCategoryManager = __commonJS({
   "src/utils/postCategoryManager.js"(exports, module) {
     var d1 = require_d1Client();
-    var { CATEGORIES } = require_helpers();
+    var { CATEGORIES, safeJsonParse } = require_helpers();
     function getUtcTimestamp() {
       return (/* @__PURE__ */ new Date()).toISOString().replace("T", " ").slice(0, 19);
     }
@@ -28967,6 +28967,24 @@ var require_postCategoryManager = __commonJS({
     GROUP BY pc.category
   `).all();
     }
+    function getVisibleCategoriesMap(settings = {}, categoryCounts = []) {
+      const hiddenList = safeJsonParse(settings?.hidden_categories, []);
+      const hiddenSet = new Set(Array.isArray(hiddenList) ? hiddenList.map(String) : []);
+      const autoHideEmpty = settings?.auto_hide_empty_categories === "1";
+      const countMap = {};
+      if (Array.isArray(categoryCounts)) {
+        categoryCounts.forEach((c) => {
+          if (c && c.category) countMap[c.category] = Number(c.count || 0);
+        });
+      }
+      const visibleMap = {};
+      Object.keys(CATEGORIES).forEach((catKey) => {
+        const manuallyHidden = hiddenSet.has(catKey);
+        const emptyHidden = autoHideEmpty && (countMap[catKey] || 0) === 0;
+        visibleMap[catKey] = !(manuallyHidden || emptyHidden);
+      });
+      return visibleMap;
+    }
     module.exports = {
       getPostCategoryMap,
       syncPostCategoriesOnSave,
@@ -28974,7 +28992,8 @@ var require_postCategoryManager = __commonJS({
       fetchCategoryPosts,
       countCategoryPosts,
       fetchRelatedCategoryPosts,
-      fetchAllCategoryCounts
+      fetchAllCategoryCounts,
+      getVisibleCategoriesMap
     };
   }
 });
@@ -28991,14 +29010,20 @@ var require_webRoutes = __commonJS({
       fetchCategoryPosts,
       countCategoryPosts,
       fetchRelatedCategoryPosts,
-      fetchAllCategoryCounts
+      fetchAllCategoryCounts,
+      getVisibleCategoriesMap
     } = require_postCategoryManager();
     var cachedSettings = null;
+    var cachedVisibleCategories = null;
     var settingsCacheTime = 0;
     var SETTINGS_CACHE_TTL = 60 * 1e3;
     globalThis.__invalidateSettingsCache = () => {
       cachedSettings = null;
+      cachedVisibleCategories = null;
       settingsCacheTime = 0;
+    };
+    globalThis.__invalidateCategoryCache = () => {
+      cachedVisibleCategories = null;
     };
     router.use(async (req, res, next) => {
       try {
@@ -29011,12 +29036,16 @@ var require_webRoutes = __commonJS({
       res.locals.safeJsonParse = safeJsonParse;
       res.locals.currentPath = req.path;
       const now = Date.now();
-      if (cachedSettings && now - settingsCacheTime < SETTINGS_CACHE_TTL) {
+      if (cachedSettings && cachedVisibleCategories && now - settingsCacheTime < SETTINGS_CACHE_TTL) {
         res.locals.settings = cachedSettings;
+        res.locals.visibleCategories = cachedVisibleCategories;
         return next();
       }
       try {
-        const sRows = await d1.prepare("SELECT * FROM settings").all();
+        const [sRows, catCounts] = await Promise.all([
+          d1.prepare("SELECT * FROM settings").all(),
+          fetchAllCategoryCounts()
+        ]);
         const siteSettings = {
           telegram_url: "https://t.me/govtexamzoneofficial",
           whatsapp_url: "https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10",
@@ -29024,12 +29053,21 @@ var require_webRoutes = __commonJS({
           site_title: "Govt Exam Zone",
           site_logo: "",
           site_favicon: "/images/gez-logo.svg",
-          post_detail_layout: "classic"
+          post_detail_layout: "classic",
+          hidden_categories: "[]",
+          auto_hide_empty_categories: "0"
         };
         if (sRows && Array.isArray(sRows)) {
           sRows.forEach((r) => {
             siteSettings[r.key] = r.value;
           });
+        }
+        if (!siteSettings.contact_email || /^support@govtexamzone/i.test(siteSettings.contact_email.trim())) {
+          siteSettings.contact_email = "contact.govtexamzone@gmail.com";
+          try {
+            await d1.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('contact_email', 'contact.govtexamzone@gmail.com')").run();
+          } catch (err) {
+          }
         }
         if (siteSettings.site_logo && (siteSettings.site_logo.includes("photo_2026") || siteSettings.site_logo.includes("gez-logo.svg"))) {
           siteSettings.site_logo = "";
@@ -29039,8 +29077,10 @@ var require_webRoutes = __commonJS({
           }
         }
         cachedSettings = siteSettings;
+        cachedVisibleCategories = getVisibleCategoriesMap(siteSettings, catCounts);
         settingsCacheTime = now;
         res.locals.settings = siteSettings;
+        res.locals.visibleCategories = cachedVisibleCategories;
       } catch (e) {
         res.locals.settings = cachedSettings || {
           telegram_url: "https://t.me/govtexamzoneofficial",
@@ -29049,8 +29089,11 @@ var require_webRoutes = __commonJS({
           site_title: "Govt Exam Zone",
           site_logo: "",
           site_favicon: "/images/gez-logo.svg",
-          post_detail_layout: "classic"
+          post_detail_layout: "classic",
+          hidden_categories: "[]",
+          auto_hide_empty_categories: "0"
         };
+        res.locals.visibleCategories = cachedVisibleCategories || getVisibleCategoriesMap(res.locals.settings, []);
       }
       next();
     });
@@ -29101,10 +29144,11 @@ var require_webRoutes = __commonJS({
       try {
         const categorySlug = req.params.cat;
         const catInfo = CATEGORIES[categorySlug];
-        if (!catInfo) {
+        const isCatVisible = !res.locals.visibleCategories || res.locals.visibleCategories[categorySlug] !== false;
+        if (!catInfo || !isCatVisible) {
           return res.status(404).render("pages/error", {
             title: "Category Not Found",
-            message: "The requested category does not exist."
+            message: "The requested category is currently not available."
           });
         }
         res.set("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600");
@@ -29251,8 +29295,10 @@ var require_webRoutes = __commonJS({
         xml += `  <url><loc>${host}/</loc><lastmod>${todayStr}</lastmod><changefreq>always</changefreq><priority>1.0</priority></url>
 `;
         Object.keys(CATEGORIES).forEach((cat) => {
-          xml += `  <url><loc>${host}/category/${cat}</loc><lastmod>${todayStr}</lastmod><changefreq>hourly</changefreq><priority>0.9</priority></url>
+          if (!res.locals.visibleCategories || res.locals.visibleCategories[cat] !== false) {
+            xml += `  <url><loc>${host}/category/${cat}</loc><lastmod>${todayStr}</lastmod><changefreq>hourly</changefreq><priority>0.9</priority></url>
 `;
+          }
         });
         xml += `  <url><loc>${host}/about-us</loc><lastmod>${todayStr}</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
 `;
@@ -75115,9 +75161,7 @@ var require_auth = __commonJS({
         "govtexamzone",
         "govtexamzoneadmin",
         "govtexamzoneofficial",
-        "admin@govtexamzone.com",
-        "sarkariresult",
-        "sarkariresultadmin"
+        "admin@govtexamzone.com"
       ];
       return validUsers.map((u) => crypto6.createHmac("sha256", secret).update(u).digest("hex"));
     }
@@ -75209,7 +75253,8 @@ var require_adminRoutes = __commonJS({
     var {
       getPostCategoryMap,
       syncPostCategoriesOnSave,
-      cleanupPostRelations
+      cleanupPostRelations,
+      fetchAllCategoryCounts
     } = require_postCategoryManager();
     var { slugify, CATEGORIES, safeJsonParse, formatDate } = require_helpers();
     var upload = multer({
@@ -75271,19 +75316,13 @@ var require_adminRoutes = __commonJS({
         "govtexamzone",
         "govtexamzoneadmin",
         "govtexamzoneofficial",
-        "admin@govtexamzone.com",
-        "sarkariresult",
-        "sarkariresultadmin"
+        "admin@govtexamzone.com"
       ];
       const validPasswords = [
         config.admin.password,
         "govtexamzone@2026",
         "GovtExamZone@2026",
-        "sarkari@admin2026",
-        "sarkariresult@2026",
-        "SarkariResult@2026",
-        "admin2026",
-        "sarkari@admin"
+        "admin2026"
       ];
       const isUserValid = validUsers.includes(inputUser);
       const isPassValid = validPasswords.includes(inputPass) || validPasswords.some((p) => p.toLowerCase() === inputPass.toLowerCase());
@@ -75579,6 +75618,7 @@ var require_adminRoutes = __commonJS({
           previousPost: null,
           body: req.body
         });
+        globalThis.__invalidateCategoryCache?.();
         res.redirect(getAdminUrl(req, "/posts?success=created"));
       } catch (err) {
         next(err);
@@ -75710,6 +75750,7 @@ var require_adminRoutes = __commonJS({
           previousPost: currentPost,
           body: req.body
         });
+        globalThis.__invalidateCategoryCache?.();
         res.redirect(getAdminUrl(req, "/posts?success=updated"));
       } catch (err) {
         next(err);
@@ -75719,6 +75760,7 @@ var require_adminRoutes = __commonJS({
       try {
         await d1.prepare("DELETE FROM posts WHERE id = ?").bind(req.params.id).run();
         await cleanupPostRelations(req.params.id);
+        globalThis.__invalidateCategoryCache?.();
         res.redirect(getAdminUrl(req, "/posts?success=deleted"));
       } catch (err) {
         next(err);
@@ -76048,7 +76090,16 @@ var require_adminRoutes = __commonJS({
     });
     router.get("/settings", async (req, res, next) => {
       try {
-        const rows = await d1.prepare("SELECT * FROM settings").all();
+        const [rows, catCounts] = await Promise.all([
+          d1.prepare("SELECT * FROM settings").all(),
+          fetchAllCategoryCounts()
+        ]);
+        const categoryCountMap = {};
+        if (Array.isArray(catCounts)) {
+          catCounts.forEach((c) => {
+            if (c && c.category) categoryCountMap[c.category] = Number(c.count || 0);
+          });
+        }
         const settings = {
           telegram_url: "https://t.me/govtexamzoneofficial",
           whatsapp_url: "https://whatsapp.com/channel/0029VbBps5S7dmeYQLDLyB10",
@@ -76059,7 +76110,7 @@ var require_adminRoutes = __commonJS({
           header_subtitle: "WWW.GOVTEXAMZONE.COM",
           site_tagline: "Latest Govt Jobs, Admit Card, Results 2026",
           site_domain: "https://govtexamzone.com",
-          copyright_text: "\xA9 2026 govtexamzone.com. All Rights Reserved. Cloudflare D1 & R2 Powered.",
+          copyright_text: "\xA9 2026 govtexamzone.com. All Rights Reserved.",
           youtube_url: "",
           twitter_url: "",
           instagram_url: "",
@@ -76080,16 +76131,25 @@ var require_adminRoutes = __commonJS({
           ad_bottom_code: "",
           header_custom_code: "",
           footer_custom_code: "",
-          post_detail_layout: "classic"
+          post_detail_layout: "classic",
+          hidden_categories: "[]",
+          auto_hide_empty_categories: "0"
         };
         if (rows && Array.isArray(rows)) {
           rows.forEach((r) => {
             settings[r.key] = r.value;
           });
         }
+        if (!settings.contact_email || /^support@govtexamzone/i.test(settings.contact_email.trim())) {
+          settings.contact_email = "contact.govtexamzone@gmail.com";
+        }
+        const hiddenCategoriesList = safeJsonParse(settings.hidden_categories, []);
         res.render("admin/settings", {
           title: "Portal Settings - Govt Exam Zone Admin",
           settings,
+          categories: CATEGORIES,
+          categoryCountMap,
+          hiddenCategories: Array.isArray(hiddenCategoriesList) ? hiddenCategoriesList : [],
           saved: req.query.saved === "1"
         });
       } catch (err) {
@@ -76101,7 +76161,26 @@ var require_adminRoutes = __commonJS({
       { name: "site_favicon_file", maxCount: 1 }
     ]), async (req, res, next) => {
       try {
-        const rawSettings = req.body || {};
+        const rawSettings = { ...req.body || {} };
+        if (rawSettings.has_category_visibility_ui === "1") {
+          const submittedVisible = rawSettings.visible_categories;
+          const visibleSet = new Set(
+            Array.isArray(submittedVisible) ? submittedVisible.map(String) : typeof submittedVisible === "string" && submittedVisible ? [submittedVisible] : []
+          );
+          const hiddenList = Object.keys(CATEGORIES).filter((catKey) => !visibleSet.has(catKey));
+          rawSettings.hidden_categories = JSON.stringify(hiddenList);
+          rawSettings.auto_hide_empty_categories = rawSettings.auto_hide_empty_categories === "1" ? "1" : "0";
+        }
+        delete rawSettings.visible_categories;
+        delete rawSettings.has_category_visibility_ui;
+        if (typeof rawSettings.google_analytics_id === "string") {
+          const gaTrim = rawSettings.google_analytics_id.trim();
+          const gaMatch = gaTrim.match(/\b(G|GT|UA|AW)-[A-Z0-9-]+\b/i);
+          rawSettings.google_analytics_id = gaMatch ? gaMatch[0].toUpperCase() : gaTrim.replace(/[<>"'\s]/g, "");
+        }
+        if (typeof rawSettings.contact_email === "string" && /^support@govtexamzone/i.test(rawSettings.contact_email.trim())) {
+          rawSettings.contact_email = "contact.govtexamzone@gmail.com";
+        }
         const logoFile = req.files?.site_logo_file?.[0];
         if (logoFile && logoFile.size > 0) {
           const uploadRes = await r2.uploadFile(logoFile.buffer, logoFile.originalname, logoFile.mimetype);
@@ -76501,6 +76580,7 @@ var require_authorRoutes = __commonJS({
           previousPost: null,
           body: req.body
         });
+        globalThis.__invalidateCategoryCache?.();
         res.redirect("/author-portal/posts?success=created");
       } catch (err) {
         next(err);
@@ -76671,6 +76751,7 @@ var require_authorRoutes = __commonJS({
           previousPost: currentPost,
           body: req.body
         });
+        globalThis.__invalidateCategoryCache?.();
         res.redirect("/author-portal/posts?success=updated");
       } catch (err) {
         next(err);
@@ -77491,6 +77572,8 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
     ; __append("/marquees\\" class=\\"btn btn-secondary btn-sm\\">\u{1F4E2} Live Tickers</a>\\n      <a href=\\"")
     ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
+    ; __append("/settings#section-categories\\" class=\\"btn btn-secondary btn-sm\\">\u{1F4C2} Category Show/Hide</a>\\n      <a href=\\"")
+    ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
     ; __append("/r2\\" class=\\"btn btn-secondary btn-sm\\">\u2601\uFE0F R2 Uploads</a>\\n      <a href=\\"")
     ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
     ; __append("/d1\\" class=\\"btn btn-secondary btn-sm\\">\u{1F4BE} D1 SQL Console</a>\\n    </div>\\n  </div>\\n</div>\\n\\n")
@@ -77763,6 +77846,8 @@ var require_templateEngine = __commonJS({
     ; __append("/badges\\" class=\\"btn btn-secondary btn-sm\\">\u{1F3A8} 8 Color Badges</a>\\n      <a href=\\"")
     ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
     ; __append("/marquees\\" class=\\"btn btn-secondary btn-sm\\">\u{1F4E2} Live Tickers</a>\\n      <a href=\\"")
+    ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
+    ; __append("/settings#section-categories\\" class=\\"btn btn-secondary btn-sm\\">\u{1F4C2} Category Show/Hide</a>\\n      <a href=\\"")
     ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
     ; __append("/r2\\" class=\\"btn btn-secondary btn-sm\\">\u2601\uFE0F R2 Uploads</a>\\n      <a href=\\"")
     ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
@@ -78777,7 +78862,7 @@ var require_templateEngine = __commonJS({
     ;  if (typeof saved !== 'undefined' && saved) { 
     ; __append("\\n    <div style=\\"background: #dcfce7; border: 1px solid #86efac; color: #166534; padding: 14px 18px; border-radius: 8px; margin-bottom: 24px; font-weight: 600; display: flex; align-items: center; gap: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);\\">\\n      <span style=\\"font-size: 18px;\\">\u2705</span>\\n      <span>Portal settings successfully saved and instantly synchronized across the entire website!</span>\\n    </div>\\n  ")
     ;  } 
-    ; __append("\\n\\n  <!-- Section Quick Navigation Pills -->\\n  <div class=\\"settings-nav-pills\\" style=\\"display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 26px; border-bottom: 1px solid #e2e8f0; padding-bottom: 14px;\\">\\n    <a href=\\"#section-branding\\" class=\\"settings-pill active\\">\u{1F310} General &amp; Branding</a>\\n    <a href=\\"#section-layout\\" class=\\"settings-pill\\">\u{1F4F0} Post Page Layout</a>\\n    <a href=\\"#section-social\\" class=\\"settings-pill\\">\u{1F4F2} Social Communities</a>\\n    <a href=\\"#section-helpdesk\\" class=\\"settings-pill\\">\u2709\uFE0F Contact &amp; Helpdesk</a>\\n    <a href=\\"#section-seo\\" class=\\"settings-pill\\">\u{1F680} SEO &amp; Analytics</a>\\n    <a href=\\"#section-announcement\\" class=\\"settings-pill\\">\u{1F4E2} Urgent Alert Bar</a>\\n    <a href=\\"#section-adsense\\" class=\\"settings-pill\\">\u{1F4B0} AdSense &amp; Ads</a>\\n    <a href=\\"#section-scripts\\" class=\\"settings-pill\\">\u{1F6E0}\uFE0F Custom Scripts</a>\\n  </div>\\n\\n  <form id=\\"masterSettingsForm\\" action=\\"")
+    ; __append("\\n\\n  <!-- Section Quick Navigation Pills -->\\n  <div class=\\"settings-nav-pills\\" style=\\"display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 26px; border-bottom: 1px solid #e2e8f0; padding-bottom: 14px;\\">\\n    <a href=\\"#section-branding\\" class=\\"settings-pill active\\">\u{1F310} General &amp; Branding</a>\\n    <a href=\\"#section-layout\\" class=\\"settings-pill\\">\u{1F4F0} Post Page Layout</a>\\n    <a href=\\"#section-categories\\" class=\\"settings-pill\\">\u{1F4C2} Category Visibility</a>\\n    <a href=\\"#section-social\\" class=\\"settings-pill\\">\u{1F4F2} Social Communities</a>\\n    <a href=\\"#section-helpdesk\\" class=\\"settings-pill\\">\u2709\uFE0F Contact &amp; Helpdesk</a>\\n    <a href=\\"#section-seo\\" class=\\"settings-pill\\">\u{1F680} SEO &amp; Analytics</a>\\n    <a href=\\"#section-announcement\\" class=\\"settings-pill\\">\u{1F4E2} Urgent Alert Bar</a>\\n    <a href=\\"#section-adsense\\" class=\\"settings-pill\\">\u{1F4B0} AdSense &amp; Ads</a>\\n    <a href=\\"#section-scripts\\" class=\\"settings-pill\\">\u{1F6E0}\uFE0F Custom Scripts</a>\\n  </div>\\n\\n  <form id=\\"masterSettingsForm\\" action=\\"")
     ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
     ; __append("/settings/save\\" method=\\"POST\\" enctype=\\"multipart/form-data\\">\\n    \\n    <!-- 1. General & Brand Identity -->\\n    <div id=\\"section-branding\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F310}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">1. General &amp; Brand Identity</h3>\\n          <p class=\\"settings-group-desc\\">Configure website name, logo tagline, domain URL, and copyright attribution.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"site_title\\">Portal Brand Name *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"site_title\\" \\n            name=\\"site_title\\" \\n            class=\\"form-control\\" \\n            value=\\"")
     ; __append(escapeFn( settings.site_title || 'Govt Exam Zone' ))
@@ -78833,7 +78918,46 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( activeLayout === 'blog_2col' ? 'selected' : '' ))
     ; __append("\\" for=\\"layout_blog_2col\\">\\n          <input \\n            type=\\"radio\\" \\n            id=\\"layout_blog_2col\\" \\n            name=\\"post_detail_layout\\" \\n            value=\\"blog_2col\\" \\n            ")
     ; __append(escapeFn( activeLayout === 'blog_2col' ? 'checked' : '' ))
-    ; __append("\\n            style=\\"display: none;\\"\\n          >\\n          <div class=\\"layout-card-top\\">\\n            <div style=\\"display: flex; align-items: center; gap: 8px;\\">\\n              <span class=\\"layout-radio-dot\\"></span>\\n              <strong style=\\"font-size: 14.5px; color: #0f172a;\\">2-Column Blog + Sidebar Layout</strong>\\n            </div>\\n            <span class=\\"layout-badge blog-badge\\">CBTRank Style</span>\\n          </div>\\n          <div class=\\"layout-wireframe\\" style=\\"display: grid; grid-template-columns: 2fr 1fr; gap: 6px;\\">\\n            <div>\\n              <div style=\\"width: 70%; height: 8px; background: #0066ff; border-radius: 2px; margin-bottom: 5px;\\"></div>\\n              <div style=\\"width: 100%; height: 18px; background: #e2e8f0; border-radius: 3px; margin-bottom: 5px;\\"></div>\\n              <div style=\\"width: 100%; height: 24px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px;\\"></div>\\n            </div>\\n            <div style=\\"display: flex; flex-direction: column; gap: 4px;\\">\\n              <div style=\\"height: 12px; background: #dbeafe; border-radius: 2px;\\"></div>\\n              <div style=\\"height: 20px; background: #e2e8f0; border-radius: 2px;\\"></div>\\n              <div style=\\"height: 20px; background: #e2e8f0; border-radius: 2px;\\"></div>\\n            </div>\\n          </div>\\n          <p class=\\"layout-card-desc\\">\\n            Modern 2-column magazine layout: Full blog/post content on the left + Right sidebar with Search, Recent Posts, Popular Posts &amp; Share bar.\\n          </p>\\n        </label>\\n      </div>\\n    </div>\\n\\n\\n    <!-- 2. Social Media & Community Channels -->\\n    <div id=\\"section-social\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4F2}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">2. Social Media &amp; Community Channels</h3>\\n          <p class=\\"settings-group-desc\\">Connect official Telegram, WhatsApp, YouTube, and social media handles.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"telegram_url\\">\u2708\uFE0F Official Telegram Channel Link *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"telegram_url\\" \\n            name=\\"telegram_url\\" \\n            class=\\"form-control\\" \\n            value=\\"")
+    ; __append("\\n            style=\\"display: none;\\"\\n          >\\n          <div class=\\"layout-card-top\\">\\n            <div style=\\"display: flex; align-items: center; gap: 8px;\\">\\n              <span class=\\"layout-radio-dot\\"></span>\\n              <strong style=\\"font-size: 14.5px; color: #0f172a;\\">2-Column Blog + Sidebar Layout</strong>\\n            </div>\\n            <span class=\\"layout-badge blog-badge\\">CBTRank Style</span>\\n          </div>\\n          <div class=\\"layout-wireframe\\" style=\\"display: grid; grid-template-columns: 2fr 1fr; gap: 6px;\\">\\n            <div>\\n              <div style=\\"width: 70%; height: 8px; background: #0066ff; border-radius: 2px; margin-bottom: 5px;\\"></div>\\n              <div style=\\"width: 100%; height: 18px; background: #e2e8f0; border-radius: 3px; margin-bottom: 5px;\\"></div>\\n              <div style=\\"width: 100%; height: 24px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px;\\"></div>\\n            </div>\\n            <div style=\\"display: flex; flex-direction: column; gap: 4px;\\">\\n              <div style=\\"height: 12px; background: #dbeafe; border-radius: 2px;\\"></div>\\n              <div style=\\"height: 20px; background: #e2e8f0; border-radius: 2px;\\"></div>\\n              <div style=\\"height: 20px; background: #e2e8f0; border-radius: 2px;\\"></div>\\n            </div>\\n          </div>\\n          <p class=\\"layout-card-desc\\">\\n            Modern 2-column magazine layout: Full blog/post content on the left + Right sidebar with Search, Recent Posts, Popular Posts &amp; Share bar.\\n          </p>\\n        </label>\\n      </div>\\n    </div>\\n\\n    <!-- 1C. Frontend Category Visibility Controls -->\\n    <div id=\\"section-categories\\" class=\\"settings-group-card\\">\\n      <input type=\\"hidden\\" name=\\"has_category_visibility_ui\\" value=\\"1\\">\\n      <div class=\\"settings-group-header\\" style=\\"justify-content: space-between; flex-wrap: wrap; gap: 10px;\\">\\n        <div style=\\"display: flex; align-items: flex-start; gap: 12px;\\">\\n          <span class=\\"settings-group-icon\\">\u{1F4C2}</span>\\n          <div>\\n            <h3 class=\\"settings-group-title\\">Category Visibility Control (Show / Hide Sections on Website)</h3>\\n            <p class=\\"settings-group-desc\\">Uncheck any category with 0 posts to hide its box from Homepage, Header Navigation, Footer, Sidebar &amp; Sitemap.</p>\\n          </div>\\n        </div>\\n        <div style=\\"display: flex; gap: 8px; flex-wrap: wrap;\\">\\n          <button type=\\"button\\" id=\\"btnHideEmptyCats\\" class=\\"btn btn-secondary btn-sm\\">\u{1F648} Hide All 0-Post Categories</button>\\n          <button type=\\"button\\" id=\\"btnShowAllCats\\" class=\\"btn btn-secondary btn-sm\\">\u{1F441}\uFE0F Show All 8 Categories</button>\\n        </div>\\n      </div>\\n\\n      ")
+    ; 
+        const _hiddenSet = new Set(Array.isArray(typeof hiddenCategories !== 'undefined' ? hiddenCategories : []) ? hiddenCategories : []);
+        const _countMap = (typeof categoryCountMap !== 'undefined' && categoryCountMap) ? categoryCountMap : {};
+        const _autoHideEmpty = settings.auto_hide_empty_categories === '1';
+      
+    ; __append("\\n      <label style=\\"display: flex; align-items: center; gap: 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; cursor: pointer;\\">\\n        <input type=\\"checkbox\\" name=\\"auto_hide_empty_categories\\" value=\\"1\\" id=\\"autoHideEmptyCheckbox\\" ")
+    ; __append(escapeFn( _autoHideEmpty ? 'checked' : '' ))
+    ; __append(" style=\\"width: 17px; height: 17px; cursor: pointer;\\">\\n        <div>\\n          <strong style=\\"font-size: 13.5px; color: #1e3a8a;\\">\u26A1 Automatically Hide Any Category With 0 Active Posts</strong>\\n          <div style=\\"font-size: 12px; color: #475569;\\">When enabled, empty categories stay hidden automatically and reappear automatically as soon as you publish a post in them.</div>\\n        </div>\\n      </label>\\n\\n      <div style=\\"display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;\\">\\n        ")
+    ;  Object.keys(categories || {}).forEach(catKey => { 
+    ; __append("\\n          ")
+    ; 
+            const countVal = Number(_countMap[catKey] || 0);
+            const isChecked = !_hiddenSet.has(catKey);
+          
+    ; __append("\\n          <label class=\\"cat-vis-card\\" data-post-count=\\"")
+    ; __append(escapeFn( countVal ))
+    ; __append("\\" style=\\"display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border: 1.5px solid ")
+    ; __append(escapeFn( isChecked ? '#86efac' : '#fecaca' ))
+    ; __append("; background: ")
+    ; __append(escapeFn( isChecked ? '#f0fdf4' : '#fef2f2' ))
+    ; __append("; border-radius: 8px; cursor: pointer;\\">\\n            <div style=\\"min-width: 0;\\">\\n              <div style=\\"font-weight: 700; font-size: 13.5px; color: #0f172a;\\">")
+    ; __append(escapeFn( categories[catKey].name ))
+    ; __append("</div>\\n              <div style=\\"font-size: 11.5px; font-weight: 600; color: ")
+    ; __append(escapeFn( countVal > 0 ? '#15803d' : '#b45309' ))
+    ; __append("; margin-top: 2px;\\">\\n                ")
+    ; __append(escapeFn( countVal ))
+    ; __append(" active ")
+    ; __append(escapeFn( countVal === 1 ? 'post' : 'posts' ))
+    ; __append("\\n              </div>\\n            </div>\\n            <div style=\\"display: flex; align-items: center; gap: 6px; flex-shrink: 0;\\">\\n              <span class=\\"cat-vis-status-label\\" style=\\"font-size: 11px; font-weight: 700; color: ")
+    ; __append(escapeFn( isChecked ? '#166534' : '#991b1b' ))
+    ; __append(";\\">\\n                ")
+    ; __append(escapeFn( isChecked ? 'Visible' : 'Hidden' ))
+    ; __append("\\n              </span>\\n              <input type=\\"checkbox\\" name=\\"visible_categories\\" value=\\"")
+    ; __append(escapeFn( catKey ))
+    ; __append("\\" class=\\"cat-vis-checkbox\\" ")
+    ; __append(escapeFn( isChecked ? 'checked' : '' ))
+    ; __append(" style=\\"width: 17px; height: 17px; cursor: pointer;\\">\\n            </div>\\n          </label>\\n        ")
+    ;  }) 
+    ; __append("\\n      </div>\\n    </div>\\n\\n\\n    <!-- 2. Social Media & Community Channels -->\\n    <div id=\\"section-social\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4F2}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">2. Social Media &amp; Community Channels</h3>\\n          <p class=\\"settings-group-desc\\">Connect official Telegram, WhatsApp, YouTube, and social media handles.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"telegram_url\\">\u2708\uFE0F Official Telegram Channel Link *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"telegram_url\\" \\n            name=\\"telegram_url\\" \\n            class=\\"form-control\\" \\n            value=\\"")
     ; __append(escapeFn( settings.telegram_url || 'https://t.me/govtexamzoneofficial' 
 ))
     ; __append("\\" \\n            placeholder=\\"https://t.me/govtexamzoneofficial\\"\\n            required\\n          >\\n          <small class=\\"field-hint\\">Connected to top \\"Join Telegram Channel\\" button and mobile drawer.</small>\\n        </div>\\n\\n        <div class=\\"form-group\\">\\n          <label for=\\"whatsapp_url\\">\u{1F4AC} Official WhatsApp Channel Link *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"whatsapp_url\\" \\n            name=\\"whatsapp_url\\" \\n            class=\\"form-control\\" \\n            value=\\"")
@@ -78861,7 +78985,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( settings.google_site_verification || '' ))
     ; __append("\\" \\n            placeholder=\\"e.g. abcdef1234567890xyz\\"\\n          >\\n          <small class=\\"field-hint\\">Enter your verification string (content attribute of google-site-verification meta tag).</small>\\n        </div>\\n\\n        <div class=\\"form-group\\">\\n          <label for=\\"google_analytics_id\\">Google Analytics Tracking ID (GA4)</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"google_analytics_id\\" \\n            name=\\"google_analytics_id\\" \\n            class=\\"form-control\\" \\n            value=\\"")
     ; __append(escapeFn( settings.google_analytics_id || '' ))
-    ; __append("\\" \\n            placeholder=\\"e.g. G-XXXXXXXXXX\\"\\n          >\\n          <small class=\\"field-hint\\">Automatically injects the official Google tag script into all public pages.</small>\\n        </div>\\n      </div>\\n    </div>\\n\\n\\n    <!-- 5. Top Urgent Notice / Announcement Bar -->\\n    <div id=\\"section-announcement\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4E2}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">5. Top Urgent Announcement Alert Bar</h3>\\n          <p class=\\"settings-group-desc\\">Displays a high-priority breaking news banner at the very top of all pages.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\" style=\\"max-width: 200px;\\">\\n          <label for=\\"notice_banner_active\\">Alert Bar Status</label>\\n          <select id=\\"notice_banner_active\\" name=\\"notice_banner_active\\" class=\\"form-control\\">\\n            <option value=\\"0\\" ")
+    ; __append("\\" \\n            placeholder=\\"e.g. G-XXXXXXXXXX\\"\\n          >\\n          <small class=\\"field-hint\\">Enter your GA4 Measurement ID (e.g. <code>G-XXXXXXXXXX</code>). Automatically tracks both direct loads and seamless SPA page views across all public pages.</small>\\n        </div>\\n      </div>\\n    </div>\\n\\n\\n    <!-- 5. Top Urgent Notice / Announcement Bar -->\\n    <div id=\\"section-announcement\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4E2}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">5. Top Urgent Announcement Alert Bar</h3>\\n          <p class=\\"settings-group-desc\\">Displays a high-priority breaking news banner at the very top of all pages.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\" style=\\"max-width: 200px;\\">\\n          <label for=\\"notice_banner_active\\">Alert Bar Status</label>\\n          <select id=\\"notice_banner_active\\" name=\\"notice_banner_active\\" class=\\"form-control\\">\\n            <option value=\\"0\\" ")
     ; __append(escapeFn( (!settings.notice_banner_active || settings.notice_banner_active === '0') ? 'selected' : '' ))
     ; __append(">Disabled (Hidden)</option>\\n            <option value=\\"1\\" ")
     ; __append(escapeFn( (settings.notice_banner_active === '1') ? 'selected' : '' ))
@@ -78887,7 +79011,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( settings.footer_custom_code || '' ))
     ; __append("</textarea>\\n        <small class=\\"field-hint\\">Code injected right before the closing &lt;/body&gt; tag on all public pages.</small>\\n      </div>\\n    </div>\\n\\n    <!-- Bottom Save Action Bar -->\\n    <div style=\\"background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px 24px; display: flex; justify-content: space-between; align-items: center; margin-top: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); flex-wrap: wrap; gap: 12px;\\">\\n      <div>\\n        <span style=\\"font-weight: 700; color: #0f172a; font-size: 14.5px;\\">Ready to update portal configuration?</span>\\n        <div style=\\"font-size: 12px; color: #64748b; margin-top: 2px;\\">Changes take effect immediately across all desktop and mobile devices.</div>\\n      </div>\\n      <div style=\\"display: flex; gap: 10px;\\">\\n        <a href=\\"")
     ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') || '/' ))
-    ; __append("\\" class=\\"btn btn-secondary\\">Cancel</a>\\n        <button type=\\"submit\\" class=\\"btn btn-primary\\" style=\\"padding: 10px 28px; font-size: 15px; font-weight: 700;\\">\\n          \u{1F4BE} Save All Settings\\n        </button>\\n      </div>\\n    </div>\\n\\n  </form>\\n</div>\\n\\n<style>\\n  .settings-group-card {\\n    background: #ffffff;\\n    border: 1px solid #e2e8f0;\\n    border-radius: 10px;\\n    padding: 22px 24px;\\n    margin-bottom: 22px;\\n    box-shadow: 0 1px 3px rgba(0,0,0,0.04);\\n    scroll-margin-top: 80px;\\n  }\\n\\n  .settings-group-header {\\n    display: flex;\\n    gap: 12px;\\n    align-items: flex-start;\\n    margin-bottom: 18px;\\n    border-bottom: 1px solid #f1f5f9;\\n    padding-bottom: 14px;\\n  }\\n\\n  .settings-group-icon {\\n    font-size: 24px;\\n    background: #f8fafc;\\n    padding: 8px;\\n    border-radius: 8px;\\n    border: 1px solid #e2e8f0;\\n    line-height: 1;\\n  }\\n\\n  .settings-group-title {\\n    margin: 0;\\n    font-size: 16px;\\n    font-weight: 700;\\n    color: #0f172a;\\n  }\\n\\n  .settings-group-desc {\\n    margin: 4px 0 0 0;\\n    font-size: 12.5px;\\n    color: #64748b;\\n  }\\n\\n  .field-hint {\\n    display: block;\\n    font-size: 11.5px;\\n    color: #64748b;\\n    margin-top: 5px;\\n    line-height: 1.4;\\n  }\\n\\n  .code-editor {\\n    font-family: 'JetBrains Mono', monospace;\\n    font-size: 12.5px;\\n    background: #0f172a !important;\\n    color: #38bdf8 !important;\\n    border: 1px solid #334155 !important;\\n  }\\n\\n  .code-editor::placeholder {\\n    color: #64748b !important;\\n  }\\n\\n  .settings-pill {\\n    text-decoration: none;\\n    font-size: 12.5px;\\n    font-weight: 600;\\n    color: #475569;\\n    background: #f1f5f9;\\n    padding: 6px 14px;\\n    border-radius: 9999px;\\n    transition: all 0.15s ease;\\n  }\\n\\n  .settings-pill:hover, .settings-pill:focus {\\n    background: #ab183d;\\n    color: #ffffff;\\n  }\\n\\n  .layout-option-card {\\n    display: flex;\\n    flex-direction: column;\\n    gap: 10px;\\n    padding: 16px;\\n    border: 2px solid #e2e8f0;\\n    border-radius: 10px;\\n    background: #f8fafc;\\n    cursor: pointer;\\n    transition: all 0.18s ease;\\n    margin: 0;\\n  }\\n\\n  .layout-option-card:hover {\\n    border-color: #94a3b8;\\n    background: #ffffff;\\n  }\\n\\n  .layout-option-card.selected {\\n    border-color: #0066ff;\\n    background: #eff6ff;\\n    box-shadow: 0 4px 12px rgba(0, 102, 255, 0.12);\\n  }\\n\\n  .layout-card-top {\\n    display: flex;\\n    justify-content: space-between;\\n    align-items: center;\\n    gap: 8px;\\n    flex-wrap: wrap;\\n  }\\n\\n  .layout-radio-dot {\\n    width: 16px;\\n    height: 16px;\\n    border-radius: 50%;\\n    border: 2px solid #94a3b8;\\n    background: #ffffff;\\n    display: inline-block;\\n    position: relative;\\n    flex-shrink: 0;\\n  }\\n\\n  .layout-option-card.selected .layout-radio-dot {\\n    border-color: #0066ff;\\n    background: #0066ff;\\n    box-shadow: inset 0 0 0 3px #ffffff;\\n  }\\n\\n  .layout-badge {\\n    font-size: 11px;\\n    font-weight: 700;\\n    padding: 2px 8px;\\n    border-radius: 9999px;\\n  }\\n\\n  .classic-badge {\\n    background: #fee2e2;\\n    color: #991b1b;\\n  }\\n\\n  .blog-badge {\\n    background: #dbeafe;\\n    color: #1e40af;\\n  }\\n\\n  .layout-wireframe {\\n    background: #ffffff;\\n    border: 1px solid #cbd5e1;\\n    border-radius: 6px;\\n    padding: 8px;\\n  }\\n\\n  .layout-card-desc {\\n    margin: 0;\\n    font-size: 12.5px;\\n    color: #475569;\\n    line-height: 1.5;\\n  }\\n\\n  @media (max-width: 600px) {\\n    .settings-group-card {\\n      padding: 16px 14px;\\n    }\\n    .settings-nav-pills {\\n      gap: 6px;\\n      flex-wrap: nowrap !important;\\n      overflow-x: auto;\\n      -webkit-overflow-scrolling: touch;\\n      scrollbar-width: none;\\n      padding-bottom: 10px !important;\\n    }\\n    .settings-nav-pills::-webkit-scrollbar {\\n      display: none;\\n    }\\n    .settings-pill {\\n      font-size: 11.5px;\\n      padding: 6px 12px;\\n      white-space: nowrap;\\n      flex-shrink: 0;\\n    }\\n  }\\n</style>\\n\\n<script>\\n  /**\\n   * Wire live file preview, URL preview, and remove button for branding assets.\\n   */\\n  function setupMediaAssetControl(opts) {\\n    const fileInput = document.getElementById(opts.fileId);\\n    const previewImg = document.getElementById(opts.imgId);\\n    const textInput = document.getElementById(opts.textId);\\n    const pathText = document.getElementById(opts.pathId);\\n    const emptyText = document.getElementById(opts.emptyId);\\n    const removeBtn = document.getElementById(opts.removeBtnId);\\n\\n    if (fileInput && previewImg) {\\n      fileInput.addEventListener('change', function(e) {\\n        const file = e.target.files && e.target.files[0];\\n        if (!file) return;\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          previewImg.src = evt.target.result;\\n          previewImg.style.display = 'block';\\n          if (emptyText) emptyText.style.display = 'none';\\n          if (pathText) {\\n            pathText.style.color = '#0284c7';\\n            pathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n          }\\n        };\\n        reader.readAsDataURL(file);\\n      });\\n    }\\n\\n    if (textInput && previewImg) {\\n      textInput.addEventListener('input', function() {\\n        const val = this.value.trim();\\n        if (val) {\\n          previewImg.src = val;\\n          previewImg.style.display = 'block';\\n          if (emptyText) emptyText.style.display = 'none';\\n          if (pathText) {\\n            pathText.style.color = '#0284c7';\\n            pathText.textContent = val;\\n          }\\n        } else {\\n          previewImg.src = '';\\n          previewImg.style.display = 'none';\\n          if (emptyText) emptyText.style.display = 'inline-block';\\n          if (pathText) {\\n            pathText.style.color = '#dc2626';\\n            pathText.textContent = opts.emptyStatus;\\n          }\\n        }\\n      });\\n    }\\n\\n    if (removeBtn && textInput) {\\n      removeBtn.addEventListener('click', function() {\\n        textInput.value = '';\\n        if (fileInput) fileInput.value = '';\\n        if (previewImg) {\\n          previewImg.src = '';\\n          previewImg.style.display = 'none';\\n        }\\n        if (emptyText) emptyText.style.display = 'inline-block';\\n        if (pathText) {\\n          pathText.style.color = '#dc2626';\\n          pathText.textContent = opts.clearedStatus;\\n        }\\n      });\\n    }\\n  }\\n\\n  setupMediaAssetControl({\\n    fileId: 'site_logo_file',\\n    imgId: 'logoPreviewImg',\\n    textId: 'site_logo',\\n    pathId: 'logoPathText',\\n    emptyId: 'logoNoLogoText',\\n    removeBtnId: 'removeLogoBtn',\\n    emptyStatus: 'No logo active (Header displays text title only)',\\n    clearedStatus: 'Logo cleared. Click \\"Save All Settings\\" below to apply changes.'\\n  });\\n\\n  setupMediaAssetControl({\\n    fileId: 'site_favicon_file',\\n    imgId: 'faviconPreviewImg',\\n    textId: 'site_favicon',\\n    pathId: 'faviconPathText',\\n    emptyId: 'faviconNoIconText',\\n    removeBtnId: 'removeFaviconBtn',\\n    emptyStatus: 'No custom favicon active (Browser default)',\\n    clearedStatus: 'Favicon cleared. Click \\"Save All Settings\\" below to apply changes.'\\n  });\\n\\n  // Interactive visual selection for Post Layout cards\\n  document.querySelectorAll('.layout-option-card input[type=\\"radio\\"]').forEach(function(radio) {\\n    radio.addEventListener('change', function() {\\n      document.querySelectorAll('.layout-option-card').forEach(function(card) {\\n        card.classList.remove('selected');\\n      });\\n      if (this.checked) {\\n        this.closest('.layout-option-card').classList.add('selected');\\n      }\\n    });\\n  });\\n</script>\\n\\n")
+    ; __append("\\" class=\\"btn btn-secondary\\">Cancel</a>\\n        <button type=\\"submit\\" class=\\"btn btn-primary\\" style=\\"padding: 10px 28px; font-size: 15px; font-weight: 700;\\">\\n          \u{1F4BE} Save All Settings\\n        </button>\\n      </div>\\n    </div>\\n\\n  </form>\\n</div>\\n\\n<style>\\n  .settings-group-card {\\n    background: #ffffff;\\n    border: 1px solid #e2e8f0;\\n    border-radius: 10px;\\n    padding: 22px 24px;\\n    margin-bottom: 22px;\\n    box-shadow: 0 1px 3px rgba(0,0,0,0.04);\\n    scroll-margin-top: 80px;\\n  }\\n\\n  .settings-group-header {\\n    display: flex;\\n    gap: 12px;\\n    align-items: flex-start;\\n    margin-bottom: 18px;\\n    border-bottom: 1px solid #f1f5f9;\\n    padding-bottom: 14px;\\n  }\\n\\n  .settings-group-icon {\\n    font-size: 24px;\\n    background: #f8fafc;\\n    padding: 8px;\\n    border-radius: 8px;\\n    border: 1px solid #e2e8f0;\\n    line-height: 1;\\n  }\\n\\n  .settings-group-title {\\n    margin: 0;\\n    font-size: 16px;\\n    font-weight: 700;\\n    color: #0f172a;\\n  }\\n\\n  .settings-group-desc {\\n    margin: 4px 0 0 0;\\n    font-size: 12.5px;\\n    color: #64748b;\\n  }\\n\\n  .field-hint {\\n    display: block;\\n    font-size: 11.5px;\\n    color: #64748b;\\n    margin-top: 5px;\\n    line-height: 1.4;\\n  }\\n\\n  .code-editor {\\n    font-family: 'JetBrains Mono', monospace;\\n    font-size: 12.5px;\\n    background: #0f172a !important;\\n    color: #38bdf8 !important;\\n    border: 1px solid #334155 !important;\\n  }\\n\\n  .code-editor::placeholder {\\n    color: #64748b !important;\\n  }\\n\\n  .settings-pill {\\n    text-decoration: none;\\n    font-size: 12.5px;\\n    font-weight: 600;\\n    color: #475569;\\n    background: #f1f5f9;\\n    padding: 6px 14px;\\n    border-radius: 9999px;\\n    transition: all 0.15s ease;\\n  }\\n\\n  .settings-pill:hover, .settings-pill:focus {\\n    background: #ab183d;\\n    color: #ffffff;\\n  }\\n\\n  .layout-option-card {\\n    display: flex;\\n    flex-direction: column;\\n    gap: 10px;\\n    padding: 16px;\\n    border: 2px solid #e2e8f0;\\n    border-radius: 10px;\\n    background: #f8fafc;\\n    cursor: pointer;\\n    transition: all 0.18s ease;\\n    margin: 0;\\n  }\\n\\n  .layout-option-card:hover {\\n    border-color: #94a3b8;\\n    background: #ffffff;\\n  }\\n\\n  .layout-option-card.selected {\\n    border-color: #0066ff;\\n    background: #eff6ff;\\n    box-shadow: 0 4px 12px rgba(0, 102, 255, 0.12);\\n  }\\n\\n  .layout-card-top {\\n    display: flex;\\n    justify-content: space-between;\\n    align-items: center;\\n    gap: 8px;\\n    flex-wrap: wrap;\\n  }\\n\\n  .layout-radio-dot {\\n    width: 16px;\\n    height: 16px;\\n    border-radius: 50%;\\n    border: 2px solid #94a3b8;\\n    background: #ffffff;\\n    display: inline-block;\\n    position: relative;\\n    flex-shrink: 0;\\n  }\\n\\n  .layout-option-card.selected .layout-radio-dot {\\n    border-color: #0066ff;\\n    background: #0066ff;\\n    box-shadow: inset 0 0 0 3px #ffffff;\\n  }\\n\\n  .layout-badge {\\n    font-size: 11px;\\n    font-weight: 700;\\n    padding: 2px 8px;\\n    border-radius: 9999px;\\n  }\\n\\n  .classic-badge {\\n    background: #fee2e2;\\n    color: #991b1b;\\n  }\\n\\n  .blog-badge {\\n    background: #dbeafe;\\n    color: #1e40af;\\n  }\\n\\n  .layout-wireframe {\\n    background: #ffffff;\\n    border: 1px solid #cbd5e1;\\n    border-radius: 6px;\\n    padding: 8px;\\n  }\\n\\n  .layout-card-desc {\\n    margin: 0;\\n    font-size: 12.5px;\\n    color: #475569;\\n    line-height: 1.5;\\n  }\\n\\n  @media (max-width: 600px) {\\n    .settings-group-card {\\n      padding: 16px 14px;\\n    }\\n    .settings-nav-pills {\\n      gap: 6px;\\n      flex-wrap: nowrap !important;\\n      overflow-x: auto;\\n      -webkit-overflow-scrolling: touch;\\n      scrollbar-width: none;\\n      padding-bottom: 10px !important;\\n    }\\n    .settings-nav-pills::-webkit-scrollbar {\\n      display: none;\\n    }\\n    .settings-pill {\\n      font-size: 11.5px;\\n      padding: 6px 12px;\\n      white-space: nowrap;\\n      flex-shrink: 0;\\n    }\\n  }\\n</style>\\n\\n<script>\\n  /**\\n   * Wire live file preview, URL preview, and remove button for branding assets.\\n   */\\n  function setupMediaAssetControl(opts) {\\n    const fileInput = document.getElementById(opts.fileId);\\n    const previewImg = document.getElementById(opts.imgId);\\n    const textInput = document.getElementById(opts.textId);\\n    const pathText = document.getElementById(opts.pathId);\\n    const emptyText = document.getElementById(opts.emptyId);\\n    const removeBtn = document.getElementById(opts.removeBtnId);\\n\\n    if (fileInput && previewImg) {\\n      fileInput.addEventListener('change', function(e) {\\n        const file = e.target.files && e.target.files[0];\\n        if (!file) return;\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          previewImg.src = evt.target.result;\\n          previewImg.style.display = 'block';\\n          if (emptyText) emptyText.style.display = 'none';\\n          if (pathText) {\\n            pathText.style.color = '#0284c7';\\n            pathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n          }\\n        };\\n        reader.readAsDataURL(file);\\n      });\\n    }\\n\\n    if (textInput && previewImg) {\\n      textInput.addEventListener('input', function() {\\n        const val = this.value.trim();\\n        if (val) {\\n          previewImg.src = val;\\n          previewImg.style.display = 'block';\\n          if (emptyText) emptyText.style.display = 'none';\\n          if (pathText) {\\n            pathText.style.color = '#0284c7';\\n            pathText.textContent = val;\\n          }\\n        } else {\\n          previewImg.src = '';\\n          previewImg.style.display = 'none';\\n          if (emptyText) emptyText.style.display = 'inline-block';\\n          if (pathText) {\\n            pathText.style.color = '#dc2626';\\n            pathText.textContent = opts.emptyStatus;\\n          }\\n        }\\n      });\\n    }\\n\\n    if (removeBtn && textInput) {\\n      removeBtn.addEventListener('click', function() {\\n        textInput.value = '';\\n        if (fileInput) fileInput.value = '';\\n        if (previewImg) {\\n          previewImg.src = '';\\n          previewImg.style.display = 'none';\\n        }\\n        if (emptyText) emptyText.style.display = 'inline-block';\\n        if (pathText) {\\n          pathText.style.color = '#dc2626';\\n          pathText.textContent = opts.clearedStatus;\\n        }\\n      });\\n    }\\n  }\\n\\n  setupMediaAssetControl({\\n    fileId: 'site_logo_file',\\n    imgId: 'logoPreviewImg',\\n    textId: 'site_logo',\\n    pathId: 'logoPathText',\\n    emptyId: 'logoNoLogoText',\\n    removeBtnId: 'removeLogoBtn',\\n    emptyStatus: 'No logo active (Header displays text title only)',\\n    clearedStatus: 'Logo cleared. Click \\"Save All Settings\\" below to apply changes.'\\n  });\\n\\n  setupMediaAssetControl({\\n    fileId: 'site_favicon_file',\\n    imgId: 'faviconPreviewImg',\\n    textId: 'site_favicon',\\n    pathId: 'faviconPathText',\\n    emptyId: 'faviconNoIconText',\\n    removeBtnId: 'removeFaviconBtn',\\n    emptyStatus: 'No custom favicon active (Browser default)',\\n    clearedStatus: 'Favicon cleared. Click \\"Save All Settings\\" below to apply changes.'\\n  });\\n\\n  // Interactive visual selection for Post Layout cards\\n  document.querySelectorAll('.layout-option-card input[type=\\"radio\\"]').forEach(function(radio) {\\n    radio.addEventListener('change', function() {\\n      document.querySelectorAll('.layout-option-card').forEach(function(card) {\\n        card.classList.remove('selected');\\n      });\\n      if (this.checked) {\\n        this.closest('.layout-option-card').classList.add('selected');\\n      }\\n    });\\n  });\\n\\n  // Category Visibility quick actions & live card styling\\n  function syncCatVisCard(cb) {\\n    const card = cb.closest('.cat-vis-card');\\n    if (!card) return;\\n    const statusLabel = card.querySelector('.cat-vis-status-label');\\n    if (cb.checked) {\\n      card.style.borderColor = '#86efac';\\n      card.style.background = '#f0fdf4';\\n      if (statusLabel) { statusLabel.textContent = 'Visible'; statusLabel.style.color = '#166534'; }\\n    } else {\\n      card.style.borderColor = '#fecaca';\\n      card.style.background = '#fef2f2';\\n      if (statusLabel) { statusLabel.textContent = 'Hidden'; statusLabel.style.color = '#991b1b'; }\\n    }\\n  }\\n\\n  document.querySelectorAll('.cat-vis-checkbox').forEach(function(cb) {\\n    cb.addEventListener('change', function() { syncCatVisCard(cb); });\\n  });\\n\\n  const btnHideEmptyCats = document.getElementById('btnHideEmptyCats');\\n  if (btnHideEmptyCats) {\\n    btnHideEmptyCats.addEventListener('click', function() {\\n      document.querySelectorAll('.cat-vis-card').forEach(function(card) {\\n        const count = parseInt(card.getAttribute('data-post-count') || '0', 10);\\n        const cb = card.querySelector('.cat-vis-checkbox');\\n        if (cb && count === 0) {\\n          cb.checked = false;\\n          syncCatVisCard(cb);\\n        }\\n      });\\n    });\\n  }\\n\\n  const btnShowAllCats = document.getElementById('btnShowAllCats');\\n  if (btnShowAllCats) {\\n    btnShowAllCats.addEventListener('click', function() {\\n      document.querySelectorAll('.cat-vis-checkbox').forEach(function(cb) {\\n        cb.checked = true;\\n        syncCatVisCard(cb);\\n      });\\n    });\\n  }\\n</script>\\n\\n")
     ; __append( include('../partials/admin-footer') )
     ; __append("\\n")
   }
@@ -78903,7 +79027,7 @@ var require_templateEngine = __commonJS({
     ;  if (typeof saved !== 'undefined' && saved) { 
     ; __append("\\n    <div style=\\"background: #dcfce7; border: 1px solid #86efac; color: #166534; padding: 14px 18px; border-radius: 8px; margin-bottom: 24px; font-weight: 600; display: flex; align-items: center; gap: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);\\">\\n      <span style=\\"font-size: 18px;\\">\u2705</span>\\n      <span>Portal settings successfully saved and instantly synchronized across the entire website!</span>\\n    </div>\\n  ")
     ;  } 
-    ; __append("\\n\\n  <!-- Section Quick Navigation Pills -->\\n  <div class=\\"settings-nav-pills\\" style=\\"display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 26px; border-bottom: 1px solid #e2e8f0; padding-bottom: 14px;\\">\\n    <a href=\\"#section-branding\\" class=\\"settings-pill active\\">\u{1F310} General &amp; Branding</a>\\n    <a href=\\"#section-layout\\" class=\\"settings-pill\\">\u{1F4F0} Post Page Layout</a>\\n    <a href=\\"#section-social\\" class=\\"settings-pill\\">\u{1F4F2} Social Communities</a>\\n    <a href=\\"#section-helpdesk\\" class=\\"settings-pill\\">\u2709\uFE0F Contact &amp; Helpdesk</a>\\n    <a href=\\"#section-seo\\" class=\\"settings-pill\\">\u{1F680} SEO &amp; Analytics</a>\\n    <a href=\\"#section-announcement\\" class=\\"settings-pill\\">\u{1F4E2} Urgent Alert Bar</a>\\n    <a href=\\"#section-adsense\\" class=\\"settings-pill\\">\u{1F4B0} AdSense &amp; Ads</a>\\n    <a href=\\"#section-scripts\\" class=\\"settings-pill\\">\u{1F6E0}\uFE0F Custom Scripts</a>\\n  </div>\\n\\n  <form id=\\"masterSettingsForm\\" action=\\"")
+    ; __append("\\n\\n  <!-- Section Quick Navigation Pills -->\\n  <div class=\\"settings-nav-pills\\" style=\\"display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 26px; border-bottom: 1px solid #e2e8f0; padding-bottom: 14px;\\">\\n    <a href=\\"#section-branding\\" class=\\"settings-pill active\\">\u{1F310} General &amp; Branding</a>\\n    <a href=\\"#section-layout\\" class=\\"settings-pill\\">\u{1F4F0} Post Page Layout</a>\\n    <a href=\\"#section-categories\\" class=\\"settings-pill\\">\u{1F4C2} Category Visibility</a>\\n    <a href=\\"#section-social\\" class=\\"settings-pill\\">\u{1F4F2} Social Communities</a>\\n    <a href=\\"#section-helpdesk\\" class=\\"settings-pill\\">\u2709\uFE0F Contact &amp; Helpdesk</a>\\n    <a href=\\"#section-seo\\" class=\\"settings-pill\\">\u{1F680} SEO &amp; Analytics</a>\\n    <a href=\\"#section-announcement\\" class=\\"settings-pill\\">\u{1F4E2} Urgent Alert Bar</a>\\n    <a href=\\"#section-adsense\\" class=\\"settings-pill\\">\u{1F4B0} AdSense &amp; Ads</a>\\n    <a href=\\"#section-scripts\\" class=\\"settings-pill\\">\u{1F6E0}\uFE0F Custom Scripts</a>\\n  </div>\\n\\n  <form id=\\"masterSettingsForm\\" action=\\"")
     ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') ))
     ; __append("/settings/save\\" method=\\"POST\\" enctype=\\"multipart/form-data\\">\\n    \\n    <!-- 1. General & Brand Identity -->\\n    <div id=\\"section-branding\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F310}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">1. General &amp; Brand Identity</h3>\\n          <p class=\\"settings-group-desc\\">Configure website name, logo tagline, domain URL, and copyright attribution.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"site_title\\">Portal Brand Name *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"site_title\\" \\n            name=\\"site_title\\" \\n            class=\\"form-control\\" \\n            value=\\"")
     ; __append(escapeFn( settings.site_title || 'Govt Exam Zone' ))
@@ -78959,7 +79083,46 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( activeLayout === 'blog_2col' ? 'selected' : '' ))
     ; __append("\\" for=\\"layout_blog_2col\\">\\n          <input \\n            type=\\"radio\\" \\n            id=\\"layout_blog_2col\\" \\n            name=\\"post_detail_layout\\" \\n            value=\\"blog_2col\\" \\n            ")
     ; __append(escapeFn( activeLayout === 'blog_2col' ? 'checked' : '' ))
-    ; __append("\\n            style=\\"display: none;\\"\\n          >\\n          <div class=\\"layout-card-top\\">\\n            <div style=\\"display: flex; align-items: center; gap: 8px;\\">\\n              <span class=\\"layout-radio-dot\\"></span>\\n              <strong style=\\"font-size: 14.5px; color: #0f172a;\\">2-Column Blog + Sidebar Layout</strong>\\n            </div>\\n            <span class=\\"layout-badge blog-badge\\">CBTRank Style</span>\\n          </div>\\n          <div class=\\"layout-wireframe\\" style=\\"display: grid; grid-template-columns: 2fr 1fr; gap: 6px;\\">\\n            <div>\\n              <div style=\\"width: 70%; height: 8px; background: #0066ff; border-radius: 2px; margin-bottom: 5px;\\"></div>\\n              <div style=\\"width: 100%; height: 18px; background: #e2e8f0; border-radius: 3px; margin-bottom: 5px;\\"></div>\\n              <div style=\\"width: 100%; height: 24px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px;\\"></div>\\n            </div>\\n            <div style=\\"display: flex; flex-direction: column; gap: 4px;\\">\\n              <div style=\\"height: 12px; background: #dbeafe; border-radius: 2px;\\"></div>\\n              <div style=\\"height: 20px; background: #e2e8f0; border-radius: 2px;\\"></div>\\n              <div style=\\"height: 20px; background: #e2e8f0; border-radius: 2px;\\"></div>\\n            </div>\\n          </div>\\n          <p class=\\"layout-card-desc\\">\\n            Modern 2-column magazine layout: Full blog/post content on the left + Right sidebar with Search, Recent Posts, Popular Posts &amp; Share bar.\\n          </p>\\n        </label>\\n      </div>\\n    </div>\\n\\n\\n    <!-- 2. Social Media & Community Channels -->\\n    <div id=\\"section-social\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4F2}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">2. Social Media &amp; Community Channels</h3>\\n          <p class=\\"settings-group-desc\\">Connect official Telegram, WhatsApp, YouTube, and social media handles.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"telegram_url\\">\u2708\uFE0F Official Telegram Channel Link *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"telegram_url\\" \\n            name=\\"telegram_url\\" \\n            class=\\"form-control\\" \\n            value=\\"")
+    ; __append("\\n            style=\\"display: none;\\"\\n          >\\n          <div class=\\"layout-card-top\\">\\n            <div style=\\"display: flex; align-items: center; gap: 8px;\\">\\n              <span class=\\"layout-radio-dot\\"></span>\\n              <strong style=\\"font-size: 14.5px; color: #0f172a;\\">2-Column Blog + Sidebar Layout</strong>\\n            </div>\\n            <span class=\\"layout-badge blog-badge\\">CBTRank Style</span>\\n          </div>\\n          <div class=\\"layout-wireframe\\" style=\\"display: grid; grid-template-columns: 2fr 1fr; gap: 6px;\\">\\n            <div>\\n              <div style=\\"width: 70%; height: 8px; background: #0066ff; border-radius: 2px; margin-bottom: 5px;\\"></div>\\n              <div style=\\"width: 100%; height: 18px; background: #e2e8f0; border-radius: 3px; margin-bottom: 5px;\\"></div>\\n              <div style=\\"width: 100%; height: 24px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px;\\"></div>\\n            </div>\\n            <div style=\\"display: flex; flex-direction: column; gap: 4px;\\">\\n              <div style=\\"height: 12px; background: #dbeafe; border-radius: 2px;\\"></div>\\n              <div style=\\"height: 20px; background: #e2e8f0; border-radius: 2px;\\"></div>\\n              <div style=\\"height: 20px; background: #e2e8f0; border-radius: 2px;\\"></div>\\n            </div>\\n          </div>\\n          <p class=\\"layout-card-desc\\">\\n            Modern 2-column magazine layout: Full blog/post content on the left + Right sidebar with Search, Recent Posts, Popular Posts &amp; Share bar.\\n          </p>\\n        </label>\\n      </div>\\n    </div>\\n\\n    <!-- 1C. Frontend Category Visibility Controls -->\\n    <div id=\\"section-categories\\" class=\\"settings-group-card\\">\\n      <input type=\\"hidden\\" name=\\"has_category_visibility_ui\\" value=\\"1\\">\\n      <div class=\\"settings-group-header\\" style=\\"justify-content: space-between; flex-wrap: wrap; gap: 10px;\\">\\n        <div style=\\"display: flex; align-items: flex-start; gap: 12px;\\">\\n          <span class=\\"settings-group-icon\\">\u{1F4C2}</span>\\n          <div>\\n            <h3 class=\\"settings-group-title\\">Category Visibility Control (Show / Hide Sections on Website)</h3>\\n            <p class=\\"settings-group-desc\\">Uncheck any category with 0 posts to hide its box from Homepage, Header Navigation, Footer, Sidebar &amp; Sitemap.</p>\\n          </div>\\n        </div>\\n        <div style=\\"display: flex; gap: 8px; flex-wrap: wrap;\\">\\n          <button type=\\"button\\" id=\\"btnHideEmptyCats\\" class=\\"btn btn-secondary btn-sm\\">\u{1F648} Hide All 0-Post Categories</button>\\n          <button type=\\"button\\" id=\\"btnShowAllCats\\" class=\\"btn btn-secondary btn-sm\\">\u{1F441}\uFE0F Show All 8 Categories</button>\\n        </div>\\n      </div>\\n\\n      ")
+    ; 
+        const _hiddenSet = new Set(Array.isArray(typeof hiddenCategories !== 'undefined' ? hiddenCategories : []) ? hiddenCategories : []);
+        const _countMap = (typeof categoryCountMap !== 'undefined' && categoryCountMap) ? categoryCountMap : {};
+        const _autoHideEmpty = settings.auto_hide_empty_categories === '1';
+      
+    ; __append("\\n      <label style=\\"display: flex; align-items: center; gap: 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; cursor: pointer;\\">\\n        <input type=\\"checkbox\\" name=\\"auto_hide_empty_categories\\" value=\\"1\\" id=\\"autoHideEmptyCheckbox\\" ")
+    ; __append(escapeFn( _autoHideEmpty ? 'checked' : '' ))
+    ; __append(" style=\\"width: 17px; height: 17px; cursor: pointer;\\">\\n        <div>\\n          <strong style=\\"font-size: 13.5px; color: #1e3a8a;\\">\u26A1 Automatically Hide Any Category With 0 Active Posts</strong>\\n          <div style=\\"font-size: 12px; color: #475569;\\">When enabled, empty categories stay hidden automatically and reappear automatically as soon as you publish a post in them.</div>\\n        </div>\\n      </label>\\n\\n      <div style=\\"display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;\\">\\n        ")
+    ;  Object.keys(categories || {}).forEach(catKey => { 
+    ; __append("\\n          ")
+    ; 
+            const countVal = Number(_countMap[catKey] || 0);
+            const isChecked = !_hiddenSet.has(catKey);
+          
+    ; __append("\\n          <label class=\\"cat-vis-card\\" data-post-count=\\"")
+    ; __append(escapeFn( countVal ))
+    ; __append("\\" style=\\"display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border: 1.5px solid ")
+    ; __append(escapeFn( isChecked ? '#86efac' : '#fecaca' ))
+    ; __append("; background: ")
+    ; __append(escapeFn( isChecked ? '#f0fdf4' : '#fef2f2' ))
+    ; __append("; border-radius: 8px; cursor: pointer;\\">\\n            <div style=\\"min-width: 0;\\">\\n              <div style=\\"font-weight: 700; font-size: 13.5px; color: #0f172a;\\">")
+    ; __append(escapeFn( categories[catKey].name ))
+    ; __append("</div>\\n              <div style=\\"font-size: 11.5px; font-weight: 600; color: ")
+    ; __append(escapeFn( countVal > 0 ? '#15803d' : '#b45309' ))
+    ; __append("; margin-top: 2px;\\">\\n                ")
+    ; __append(escapeFn( countVal ))
+    ; __append(" active ")
+    ; __append(escapeFn( countVal === 1 ? 'post' : 'posts' ))
+    ; __append("\\n              </div>\\n            </div>\\n            <div style=\\"display: flex; align-items: center; gap: 6px; flex-shrink: 0;\\">\\n              <span class=\\"cat-vis-status-label\\" style=\\"font-size: 11px; font-weight: 700; color: ")
+    ; __append(escapeFn( isChecked ? '#166534' : '#991b1b' ))
+    ; __append(";\\">\\n                ")
+    ; __append(escapeFn( isChecked ? 'Visible' : 'Hidden' ))
+    ; __append("\\n              </span>\\n              <input type=\\"checkbox\\" name=\\"visible_categories\\" value=\\"")
+    ; __append(escapeFn( catKey ))
+    ; __append("\\" class=\\"cat-vis-checkbox\\" ")
+    ; __append(escapeFn( isChecked ? 'checked' : '' ))
+    ; __append(" style=\\"width: 17px; height: 17px; cursor: pointer;\\">\\n            </div>\\n          </label>\\n        ")
+    ;  }) 
+    ; __append("\\n      </div>\\n    </div>\\n\\n\\n    <!-- 2. Social Media & Community Channels -->\\n    <div id=\\"section-social\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4F2}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">2. Social Media &amp; Community Channels</h3>\\n          <p class=\\"settings-group-desc\\">Connect official Telegram, WhatsApp, YouTube, and social media handles.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"telegram_url\\">\u2708\uFE0F Official Telegram Channel Link *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"telegram_url\\" \\n            name=\\"telegram_url\\" \\n            class=\\"form-control\\" \\n            value=\\"")
     ; __append(escapeFn( settings.telegram_url || 'https://t.me/govtexamzoneofficial' 
 ))
     ; __append("\\" \\n            placeholder=\\"https://t.me/govtexamzoneofficial\\"\\n            required\\n          >\\n          <small class=\\"field-hint\\">Connected to top \\"Join Telegram Channel\\" button and mobile drawer.</small>\\n        </div>\\n\\n        <div class=\\"form-group\\">\\n          <label for=\\"whatsapp_url\\">\u{1F4AC} Official WhatsApp Channel Link *</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"whatsapp_url\\" \\n            name=\\"whatsapp_url\\" \\n            class=\\"form-control\\" \\n            value=\\"")
@@ -78987,7 +79150,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( settings.google_site_verification || '' ))
     ; __append("\\" \\n            placeholder=\\"e.g. abcdef1234567890xyz\\"\\n          >\\n          <small class=\\"field-hint\\">Enter your verification string (content attribute of google-site-verification meta tag).</small>\\n        </div>\\n\\n        <div class=\\"form-group\\">\\n          <label for=\\"google_analytics_id\\">Google Analytics Tracking ID (GA4)</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"google_analytics_id\\" \\n            name=\\"google_analytics_id\\" \\n            class=\\"form-control\\" \\n            value=\\"")
     ; __append(escapeFn( settings.google_analytics_id || '' ))
-    ; __append("\\" \\n            placeholder=\\"e.g. G-XXXXXXXXXX\\"\\n          >\\n          <small class=\\"field-hint\\">Automatically injects the official Google tag script into all public pages.</small>\\n        </div>\\n      </div>\\n    </div>\\n\\n\\n    <!-- 5. Top Urgent Notice / Announcement Bar -->\\n    <div id=\\"section-announcement\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4E2}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">5. Top Urgent Announcement Alert Bar</h3>\\n          <p class=\\"settings-group-desc\\">Displays a high-priority breaking news banner at the very top of all pages.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\" style=\\"max-width: 200px;\\">\\n          <label for=\\"notice_banner_active\\">Alert Bar Status</label>\\n          <select id=\\"notice_banner_active\\" name=\\"notice_banner_active\\" class=\\"form-control\\">\\n            <option value=\\"0\\" ")
+    ; __append("\\" \\n            placeholder=\\"e.g. G-XXXXXXXXXX\\"\\n          >\\n          <small class=\\"field-hint\\">Enter your GA4 Measurement ID (e.g. <code>G-XXXXXXXXXX</code>). Automatically tracks both direct loads and seamless SPA page views across all public pages.</small>\\n        </div>\\n      </div>\\n    </div>\\n\\n\\n    <!-- 5. Top Urgent Notice / Announcement Bar -->\\n    <div id=\\"section-announcement\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4E2}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">5. Top Urgent Announcement Alert Bar</h3>\\n          <p class=\\"settings-group-desc\\">Displays a high-priority breaking news banner at the very top of all pages.</p>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\" style=\\"max-width: 200px;\\">\\n          <label for=\\"notice_banner_active\\">Alert Bar Status</label>\\n          <select id=\\"notice_banner_active\\" name=\\"notice_banner_active\\" class=\\"form-control\\">\\n            <option value=\\"0\\" ")
     ; __append(escapeFn( (!settings.notice_banner_active || settings.notice_banner_active === '0') ? 'selected' : '' ))
     ; __append(">Disabled (Hidden)</option>\\n            <option value=\\"1\\" ")
     ; __append(escapeFn( (settings.notice_banner_active === '1') ? 'selected' : '' ))
@@ -79013,7 +79176,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( settings.footer_custom_code || '' ))
     ; __append("</textarea>\\n        <small class=\\"field-hint\\">Code injected right before the closing &lt;/body&gt; tag on all public pages.</small>\\n      </div>\\n    </div>\\n\\n    <!-- Bottom Save Action Bar -->\\n    <div style=\\"background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px 24px; display: flex; justify-content: space-between; align-items: center; margin-top: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); flex-wrap: wrap; gap: 12px;\\">\\n      <div>\\n        <span style=\\"font-weight: 700; color: #0f172a; font-size: 14.5px;\\">Ready to update portal configuration?</span>\\n        <div style=\\"font-size: 12px; color: #64748b; margin-top: 2px;\\">Changes take effect immediately across all desktop and mobile devices.</div>\\n      </div>\\n      <div style=\\"display: flex; gap: 10px;\\">\\n        <a href=\\"")
     ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') || '/' ))
-    ; __append("\\" class=\\"btn btn-secondary\\">Cancel</a>\\n        <button type=\\"submit\\" class=\\"btn btn-primary\\" style=\\"padding: 10px 28px; font-size: 15px; font-weight: 700;\\">\\n          \u{1F4BE} Save All Settings\\n        </button>\\n      </div>\\n    </div>\\n\\n  </form>\\n</div>\\n\\n<style>\\n  .settings-group-card {\\n    background: #ffffff;\\n    border: 1px solid #e2e8f0;\\n    border-radius: 10px;\\n    padding: 22px 24px;\\n    margin-bottom: 22px;\\n    box-shadow: 0 1px 3px rgba(0,0,0,0.04);\\n    scroll-margin-top: 80px;\\n  }\\n\\n  .settings-group-header {\\n    display: flex;\\n    gap: 12px;\\n    align-items: flex-start;\\n    margin-bottom: 18px;\\n    border-bottom: 1px solid #f1f5f9;\\n    padding-bottom: 14px;\\n  }\\n\\n  .settings-group-icon {\\n    font-size: 24px;\\n    background: #f8fafc;\\n    padding: 8px;\\n    border-radius: 8px;\\n    border: 1px solid #e2e8f0;\\n    line-height: 1;\\n  }\\n\\n  .settings-group-title {\\n    margin: 0;\\n    font-size: 16px;\\n    font-weight: 700;\\n    color: #0f172a;\\n  }\\n\\n  .settings-group-desc {\\n    margin: 4px 0 0 0;\\n    font-size: 12.5px;\\n    color: #64748b;\\n  }\\n\\n  .field-hint {\\n    display: block;\\n    font-size: 11.5px;\\n    color: #64748b;\\n    margin-top: 5px;\\n    line-height: 1.4;\\n  }\\n\\n  .code-editor {\\n    font-family: 'JetBrains Mono', monospace;\\n    font-size: 12.5px;\\n    background: #0f172a !important;\\n    color: #38bdf8 !important;\\n    border: 1px solid #334155 !important;\\n  }\\n\\n  .code-editor::placeholder {\\n    color: #64748b !important;\\n  }\\n\\n  .settings-pill {\\n    text-decoration: none;\\n    font-size: 12.5px;\\n    font-weight: 600;\\n    color: #475569;\\n    background: #f1f5f9;\\n    padding: 6px 14px;\\n    border-radius: 9999px;\\n    transition: all 0.15s ease;\\n  }\\n\\n  .settings-pill:hover, .settings-pill:focus {\\n    background: #ab183d;\\n    color: #ffffff;\\n  }\\n\\n  .layout-option-card {\\n    display: flex;\\n    flex-direction: column;\\n    gap: 10px;\\n    padding: 16px;\\n    border: 2px solid #e2e8f0;\\n    border-radius: 10px;\\n    background: #f8fafc;\\n    cursor: pointer;\\n    transition: all 0.18s ease;\\n    margin: 0;\\n  }\\n\\n  .layout-option-card:hover {\\n    border-color: #94a3b8;\\n    background: #ffffff;\\n  }\\n\\n  .layout-option-card.selected {\\n    border-color: #0066ff;\\n    background: #eff6ff;\\n    box-shadow: 0 4px 12px rgba(0, 102, 255, 0.12);\\n  }\\n\\n  .layout-card-top {\\n    display: flex;\\n    justify-content: space-between;\\n    align-items: center;\\n    gap: 8px;\\n    flex-wrap: wrap;\\n  }\\n\\n  .layout-radio-dot {\\n    width: 16px;\\n    height: 16px;\\n    border-radius: 50%;\\n    border: 2px solid #94a3b8;\\n    background: #ffffff;\\n    display: inline-block;\\n    position: relative;\\n    flex-shrink: 0;\\n  }\\n\\n  .layout-option-card.selected .layout-radio-dot {\\n    border-color: #0066ff;\\n    background: #0066ff;\\n    box-shadow: inset 0 0 0 3px #ffffff;\\n  }\\n\\n  .layout-badge {\\n    font-size: 11px;\\n    font-weight: 700;\\n    padding: 2px 8px;\\n    border-radius: 9999px;\\n  }\\n\\n  .classic-badge {\\n    background: #fee2e2;\\n    color: #991b1b;\\n  }\\n\\n  .blog-badge {\\n    background: #dbeafe;\\n    color: #1e40af;\\n  }\\n\\n  .layout-wireframe {\\n    background: #ffffff;\\n    border: 1px solid #cbd5e1;\\n    border-radius: 6px;\\n    padding: 8px;\\n  }\\n\\n  .layout-card-desc {\\n    margin: 0;\\n    font-size: 12.5px;\\n    color: #475569;\\n    line-height: 1.5;\\n  }\\n\\n  @media (max-width: 600px) {\\n    .settings-group-card {\\n      padding: 16px 14px;\\n    }\\n    .settings-nav-pills {\\n      gap: 6px;\\n      flex-wrap: nowrap !important;\\n      overflow-x: auto;\\n      -webkit-overflow-scrolling: touch;\\n      scrollbar-width: none;\\n      padding-bottom: 10px !important;\\n    }\\n    .settings-nav-pills::-webkit-scrollbar {\\n      display: none;\\n    }\\n    .settings-pill {\\n      font-size: 11.5px;\\n      padding: 6px 12px;\\n      white-space: nowrap;\\n      flex-shrink: 0;\\n    }\\n  }\\n</style>\\n\\n<script>\\n  /**\\n   * Wire live file preview, URL preview, and remove button for branding assets.\\n   */\\n  function setupMediaAssetControl(opts) {\\n    const fileInput = document.getElementById(opts.fileId);\\n    const previewImg = document.getElementById(opts.imgId);\\n    const textInput = document.getElementById(opts.textId);\\n    const pathText = document.getElementById(opts.pathId);\\n    const emptyText = document.getElementById(opts.emptyId);\\n    const removeBtn = document.getElementById(opts.removeBtnId);\\n\\n    if (fileInput && previewImg) {\\n      fileInput.addEventListener('change', function(e) {\\n        const file = e.target.files && e.target.files[0];\\n        if (!file) return;\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          previewImg.src = evt.target.result;\\n          previewImg.style.display = 'block';\\n          if (emptyText) emptyText.style.display = 'none';\\n          if (pathText) {\\n            pathText.style.color = '#0284c7';\\n            pathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n          }\\n        };\\n        reader.readAsDataURL(file);\\n      });\\n    }\\n\\n    if (textInput && previewImg) {\\n      textInput.addEventListener('input', function() {\\n        const val = this.value.trim();\\n        if (val) {\\n          previewImg.src = val;\\n          previewImg.style.display = 'block';\\n          if (emptyText) emptyText.style.display = 'none';\\n          if (pathText) {\\n            pathText.style.color = '#0284c7';\\n            pathText.textContent = val;\\n          }\\n        } else {\\n          previewImg.src = '';\\n          previewImg.style.display = 'none';\\n          if (emptyText) emptyText.style.display = 'inline-block';\\n          if (pathText) {\\n            pathText.style.color = '#dc2626';\\n            pathText.textContent = opts.emptyStatus;\\n          }\\n        }\\n      });\\n    }\\n\\n    if (removeBtn && textInput) {\\n      removeBtn.addEventListener('click', function() {\\n        textInput.value = '';\\n        if (fileInput) fileInput.value = '';\\n        if (previewImg) {\\n          previewImg.src = '';\\n          previewImg.style.display = 'none';\\n        }\\n        if (emptyText) emptyText.style.display = 'inline-block';\\n        if (pathText) {\\n          pathText.style.color = '#dc2626';\\n          pathText.textContent = opts.clearedStatus;\\n        }\\n      });\\n    }\\n  }\\n\\n  setupMediaAssetControl({\\n    fileId: 'site_logo_file',\\n    imgId: 'logoPreviewImg',\\n    textId: 'site_logo',\\n    pathId: 'logoPathText',\\n    emptyId: 'logoNoLogoText',\\n    removeBtnId: 'removeLogoBtn',\\n    emptyStatus: 'No logo active (Header displays text title only)',\\n    clearedStatus: 'Logo cleared. Click \\"Save All Settings\\" below to apply changes.'\\n  });\\n\\n  setupMediaAssetControl({\\n    fileId: 'site_favicon_file',\\n    imgId: 'faviconPreviewImg',\\n    textId: 'site_favicon',\\n    pathId: 'faviconPathText',\\n    emptyId: 'faviconNoIconText',\\n    removeBtnId: 'removeFaviconBtn',\\n    emptyStatus: 'No custom favicon active (Browser default)',\\n    clearedStatus: 'Favicon cleared. Click \\"Save All Settings\\" below to apply changes.'\\n  });\\n\\n  // Interactive visual selection for Post Layout cards\\n  document.querySelectorAll('.layout-option-card input[type=\\"radio\\"]').forEach(function(radio) {\\n    radio.addEventListener('change', function() {\\n      document.querySelectorAll('.layout-option-card').forEach(function(card) {\\n        card.classList.remove('selected');\\n      });\\n      if (this.checked) {\\n        this.closest('.layout-option-card').classList.add('selected');\\n      }\\n    });\\n  });\\n</script>\\n\\n")
+    ; __append("\\" class=\\"btn btn-secondary\\">Cancel</a>\\n        <button type=\\"submit\\" class=\\"btn btn-primary\\" style=\\"padding: 10px 28px; font-size: 15px; font-weight: 700;\\">\\n          \u{1F4BE} Save All Settings\\n        </button>\\n      </div>\\n    </div>\\n\\n  </form>\\n</div>\\n\\n<style>\\n  .settings-group-card {\\n    background: #ffffff;\\n    border: 1px solid #e2e8f0;\\n    border-radius: 10px;\\n    padding: 22px 24px;\\n    margin-bottom: 22px;\\n    box-shadow: 0 1px 3px rgba(0,0,0,0.04);\\n    scroll-margin-top: 80px;\\n  }\\n\\n  .settings-group-header {\\n    display: flex;\\n    gap: 12px;\\n    align-items: flex-start;\\n    margin-bottom: 18px;\\n    border-bottom: 1px solid #f1f5f9;\\n    padding-bottom: 14px;\\n  }\\n\\n  .settings-group-icon {\\n    font-size: 24px;\\n    background: #f8fafc;\\n    padding: 8px;\\n    border-radius: 8px;\\n    border: 1px solid #e2e8f0;\\n    line-height: 1;\\n  }\\n\\n  .settings-group-title {\\n    margin: 0;\\n    font-size: 16px;\\n    font-weight: 700;\\n    color: #0f172a;\\n  }\\n\\n  .settings-group-desc {\\n    margin: 4px 0 0 0;\\n    font-size: 12.5px;\\n    color: #64748b;\\n  }\\n\\n  .field-hint {\\n    display: block;\\n    font-size: 11.5px;\\n    color: #64748b;\\n    margin-top: 5px;\\n    line-height: 1.4;\\n  }\\n\\n  .code-editor {\\n    font-family: 'JetBrains Mono', monospace;\\n    font-size: 12.5px;\\n    background: #0f172a !important;\\n    color: #38bdf8 !important;\\n    border: 1px solid #334155 !important;\\n  }\\n\\n  .code-editor::placeholder {\\n    color: #64748b !important;\\n  }\\n\\n  .settings-pill {\\n    text-decoration: none;\\n    font-size: 12.5px;\\n    font-weight: 600;\\n    color: #475569;\\n    background: #f1f5f9;\\n    padding: 6px 14px;\\n    border-radius: 9999px;\\n    transition: all 0.15s ease;\\n  }\\n\\n  .settings-pill:hover, .settings-pill:focus {\\n    background: #ab183d;\\n    color: #ffffff;\\n  }\\n\\n  .layout-option-card {\\n    display: flex;\\n    flex-direction: column;\\n    gap: 10px;\\n    padding: 16px;\\n    border: 2px solid #e2e8f0;\\n    border-radius: 10px;\\n    background: #f8fafc;\\n    cursor: pointer;\\n    transition: all 0.18s ease;\\n    margin: 0;\\n  }\\n\\n  .layout-option-card:hover {\\n    border-color: #94a3b8;\\n    background: #ffffff;\\n  }\\n\\n  .layout-option-card.selected {\\n    border-color: #0066ff;\\n    background: #eff6ff;\\n    box-shadow: 0 4px 12px rgba(0, 102, 255, 0.12);\\n  }\\n\\n  .layout-card-top {\\n    display: flex;\\n    justify-content: space-between;\\n    align-items: center;\\n    gap: 8px;\\n    flex-wrap: wrap;\\n  }\\n\\n  .layout-radio-dot {\\n    width: 16px;\\n    height: 16px;\\n    border-radius: 50%;\\n    border: 2px solid #94a3b8;\\n    background: #ffffff;\\n    display: inline-block;\\n    position: relative;\\n    flex-shrink: 0;\\n  }\\n\\n  .layout-option-card.selected .layout-radio-dot {\\n    border-color: #0066ff;\\n    background: #0066ff;\\n    box-shadow: inset 0 0 0 3px #ffffff;\\n  }\\n\\n  .layout-badge {\\n    font-size: 11px;\\n    font-weight: 700;\\n    padding: 2px 8px;\\n    border-radius: 9999px;\\n  }\\n\\n  .classic-badge {\\n    background: #fee2e2;\\n    color: #991b1b;\\n  }\\n\\n  .blog-badge {\\n    background: #dbeafe;\\n    color: #1e40af;\\n  }\\n\\n  .layout-wireframe {\\n    background: #ffffff;\\n    border: 1px solid #cbd5e1;\\n    border-radius: 6px;\\n    padding: 8px;\\n  }\\n\\n  .layout-card-desc {\\n    margin: 0;\\n    font-size: 12.5px;\\n    color: #475569;\\n    line-height: 1.5;\\n  }\\n\\n  @media (max-width: 600px) {\\n    .settings-group-card {\\n      padding: 16px 14px;\\n    }\\n    .settings-nav-pills {\\n      gap: 6px;\\n      flex-wrap: nowrap !important;\\n      overflow-x: auto;\\n      -webkit-overflow-scrolling: touch;\\n      scrollbar-width: none;\\n      padding-bottom: 10px !important;\\n    }\\n    .settings-nav-pills::-webkit-scrollbar {\\n      display: none;\\n    }\\n    .settings-pill {\\n      font-size: 11.5px;\\n      padding: 6px 12px;\\n      white-space: nowrap;\\n      flex-shrink: 0;\\n    }\\n  }\\n</style>\\n\\n<script>\\n  /**\\n   * Wire live file preview, URL preview, and remove button for branding assets.\\n   */\\n  function setupMediaAssetControl(opts) {\\n    const fileInput = document.getElementById(opts.fileId);\\n    const previewImg = document.getElementById(opts.imgId);\\n    const textInput = document.getElementById(opts.textId);\\n    const pathText = document.getElementById(opts.pathId);\\n    const emptyText = document.getElementById(opts.emptyId);\\n    const removeBtn = document.getElementById(opts.removeBtnId);\\n\\n    if (fileInput && previewImg) {\\n      fileInput.addEventListener('change', function(e) {\\n        const file = e.target.files && e.target.files[0];\\n        if (!file) return;\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          previewImg.src = evt.target.result;\\n          previewImg.style.display = 'block';\\n          if (emptyText) emptyText.style.display = 'none';\\n          if (pathText) {\\n            pathText.style.color = '#0284c7';\\n            pathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n          }\\n        };\\n        reader.readAsDataURL(file);\\n      });\\n    }\\n\\n    if (textInput && previewImg) {\\n      textInput.addEventListener('input', function() {\\n        const val = this.value.trim();\\n        if (val) {\\n          previewImg.src = val;\\n          previewImg.style.display = 'block';\\n          if (emptyText) emptyText.style.display = 'none';\\n          if (pathText) {\\n            pathText.style.color = '#0284c7';\\n            pathText.textContent = val;\\n          }\\n        } else {\\n          previewImg.src = '';\\n          previewImg.style.display = 'none';\\n          if (emptyText) emptyText.style.display = 'inline-block';\\n          if (pathText) {\\n            pathText.style.color = '#dc2626';\\n            pathText.textContent = opts.emptyStatus;\\n          }\\n        }\\n      });\\n    }\\n\\n    if (removeBtn && textInput) {\\n      removeBtn.addEventListener('click', function() {\\n        textInput.value = '';\\n        if (fileInput) fileInput.value = '';\\n        if (previewImg) {\\n          previewImg.src = '';\\n          previewImg.style.display = 'none';\\n        }\\n        if (emptyText) emptyText.style.display = 'inline-block';\\n        if (pathText) {\\n          pathText.style.color = '#dc2626';\\n          pathText.textContent = opts.clearedStatus;\\n        }\\n      });\\n    }\\n  }\\n\\n  setupMediaAssetControl({\\n    fileId: 'site_logo_file',\\n    imgId: 'logoPreviewImg',\\n    textId: 'site_logo',\\n    pathId: 'logoPathText',\\n    emptyId: 'logoNoLogoText',\\n    removeBtnId: 'removeLogoBtn',\\n    emptyStatus: 'No logo active (Header displays text title only)',\\n    clearedStatus: 'Logo cleared. Click \\"Save All Settings\\" below to apply changes.'\\n  });\\n\\n  setupMediaAssetControl({\\n    fileId: 'site_favicon_file',\\n    imgId: 'faviconPreviewImg',\\n    textId: 'site_favicon',\\n    pathId: 'faviconPathText',\\n    emptyId: 'faviconNoIconText',\\n    removeBtnId: 'removeFaviconBtn',\\n    emptyStatus: 'No custom favicon active (Browser default)',\\n    clearedStatus: 'Favicon cleared. Click \\"Save All Settings\\" below to apply changes.'\\n  });\\n\\n  // Interactive visual selection for Post Layout cards\\n  document.querySelectorAll('.layout-option-card input[type=\\"radio\\"]').forEach(function(radio) {\\n    radio.addEventListener('change', function() {\\n      document.querySelectorAll('.layout-option-card').forEach(function(card) {\\n        card.classList.remove('selected');\\n      });\\n      if (this.checked) {\\n        this.closest('.layout-option-card').classList.add('selected');\\n      }\\n    });\\n  });\\n\\n  // Category Visibility quick actions & live card styling\\n  function syncCatVisCard(cb) {\\n    const card = cb.closest('.cat-vis-card');\\n    if (!card) return;\\n    const statusLabel = card.querySelector('.cat-vis-status-label');\\n    if (cb.checked) {\\n      card.style.borderColor = '#86efac';\\n      card.style.background = '#f0fdf4';\\n      if (statusLabel) { statusLabel.textContent = 'Visible'; statusLabel.style.color = '#166534'; }\\n    } else {\\n      card.style.borderColor = '#fecaca';\\n      card.style.background = '#fef2f2';\\n      if (statusLabel) { statusLabel.textContent = 'Hidden'; statusLabel.style.color = '#991b1b'; }\\n    }\\n  }\\n\\n  document.querySelectorAll('.cat-vis-checkbox').forEach(function(cb) {\\n    cb.addEventListener('change', function() { syncCatVisCard(cb); });\\n  });\\n\\n  const btnHideEmptyCats = document.getElementById('btnHideEmptyCats');\\n  if (btnHideEmptyCats) {\\n    btnHideEmptyCats.addEventListener('click', function() {\\n      document.querySelectorAll('.cat-vis-card').forEach(function(card) {\\n        const count = parseInt(card.getAttribute('data-post-count') || '0', 10);\\n        const cb = card.querySelector('.cat-vis-checkbox');\\n        if (cb && count === 0) {\\n          cb.checked = false;\\n          syncCatVisCard(cb);\\n        }\\n      });\\n    });\\n  }\\n\\n  const btnShowAllCats = document.getElementById('btnShowAllCats');\\n  if (btnShowAllCats) {\\n    btnShowAllCats.addEventListener('click', function() {\\n      document.querySelectorAll('.cat-vis-checkbox').forEach(function(cb) {\\n        cb.checked = true;\\n        syncCatVisCard(cb);\\n      });\\n    });\\n  }\\n</script>\\n\\n")
     ; __append( include('../partials/admin-footer') )
     ; __append("\\n")
   }
@@ -79780,9 +79943,9 @@ var require_templateEngine = __commonJS({
     ; __append("\\n")
     ; __append( include('../partials/subheader') )
     ; __append("\\n\\n<main class=\\"container\\">\\n  <!-- Breadcrumb -->\\n  <div style=\\"font-size: 13px; margin: 10px 0 14px 2px; color: #666;\\">\\n    <a href=\\"/\\" style=\\"color: var(--primary-red); font-weight: bold; text-decoration: none;\\">\u{1F3E0} Home</a>\\n    <span style=\\"margin: 0 6px; color: #999;\\">\xBB</span>\\n    <span style=\\"color: #333; font-weight: 600;\\">About Us</span>\\n  </div>\\n\\n  <div class=\\"sarkari-box\\" style=\\"margin-bottom: 30px; background: #ffffff;\\">\\n    <h1 class=\\"sarkari-box-header\\" style=\\"margin: 0; font-size: 16px; line-height: 1.3; text-align: left; padding: 14px 20px;\\">\\n      About Govt Exam Zone - Real-Time Government Recruitment Portal\\n    </h1>\\n\\n    <div class=\\"static-page-content\\">\\n      <h2 style=\\"color: var(--primary-red); font-size: 20px; margin-top: 0; margin-bottom: 12px;\\">Who We Are</h2>\\n      <p>\\n        <b>Govt Exam Zone (govtexamzone.com)</b> is India's dedicated public educational portal created to provide timely, accurate, and direct access to Central and State Government examination notifications, online application forms, admit cards, answer keys, syllabus, and results.\\n      </p>\\n      <p>\\n        Founded by competitive exam researchers and technology professionals, our portal eliminates misinformation by serving as an independent, transparent, and direct bridge between recruiting authorities and millions of aspirants across the country.\\n      </p>\\n\\n      <h2 style=\\"color: var(--primary-red); font-size: 20px; margin-top: 24px; margin-bottom: 12px;\\">Our Mission &amp; Purpose</h2>\\n      <p>\\n        Every year, government departments release lakhs of vacancies across <b>UPSC, SSC, Railway Recruitment Boards (RRB), State PSCs, Police Recruitment Boards, Banking (IBPS, SBI), Defense Forces, and Teaching Commissions</b>. Aspirants often struggle with cluttered portals, dead links, or misleading fake circulars. Our mission is three-fold:\\n      </p>\\n      <ul style=\\"padding-left: 20px; margin-bottom: 18px;\\">\\n        <li><b>100% Primary Source Verification:</b> Every notification is cross-referenced with official gazettes and official commission websites before publishing.</li>\\n        <li><b>Fastest Real-Time Delivery:</b> Ultra-fast high-speed cloud edge servers ensure seamless access even during peak result announcements.</li>\\n        <li><b>Zero Candidate Fee Policy:</b> Govt Exam Zone is completely free for all aspirants. We never charge money or sell candidate data.</li>\\n      </ul>\\n\\n      <h2 style=\\"color: var(--primary-red); font-size: 20px; margin-top: 24px; margin-bottom: 12px;\\">Editorial Standards &amp; Fact-Checking Policy</h2>\\n      <p>\\n        Our editorial desk follows a rigorous 4-step verification pipeline:\\n      </p>\\n      <ol style=\\"padding-left: 20px; margin-bottom: 18px;\\">\\n        <li><b>Official Gazette Tracking:</b> Only notifications published by recognized statutory authorities are tracked.</li>\\n        <li><b>Cross-Verification of Dates &amp; Eligibility:</b> Age limits, reservation criteria, and qualification clauses are verified against the original PDF bulletin.</li>\\n        <li><b>Secure Direct Links:</b> Candidates are always provided official application URLs directly connecting to government server endpoints (.gov.in / .nic.in).</li>\\n        <li><b>Institutional Accountability:</b> Every notification is verified by our dedicated examination research desk responsible for accuracy and ongoing updates directly from official gazettes.</li>\\n      </ol>\\n\\n      <div style=\\"background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 18px; margin-top: 24px;\\">\\n        <h3 style=\\"margin-top: 0; font-size: 15px; color: #0f172a;\\">Official Communication &amp; Corrections</h3>\\n        <p style=\\"margin-bottom: 6px; font-size: 13.5px;\\">\\n          Noticed an error or wish to report a correction in any notification? Write directly to our research desk at:\\n        </p>\\n        <p style=\\"margin: 0; font-size: 13.5px;\\">\\n          <b>\u{1F4E7} Official Email:</b> <!--email_off--><a href=\\"mailto:")
-    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com' ))
+    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'contact.govtexamzone@gmail.com' ))
     ; __append("\\" style=\\"color: var(--primary-red); font-weight: bold;\\">")
-    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com' ))
+    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'contact.govtexamzone@gmail.com' ))
     ; __append("</a><!--/email_off--> | \\n          <b>\u{1F310} Portal:</b> <a href=\\"/\\">Govt Exam Zone Official</a>\\n        </p>\\n      </div>\\n    </div>\\n  </div>\\n</main>\\n\\n")
     ; __append( include('../partials/footer') )
     ; __append("\\n")
@@ -79796,9 +79959,9 @@ var require_templateEngine = __commonJS({
     ; __append("\\n")
     ; __append( include('../partials/subheader') )
     ; __append("\\n\\n<main class=\\"container\\">\\n  <!-- Breadcrumb -->\\n  <div style=\\"font-size: 13px; margin: 10px 0 14px 2px; color: #666;\\">\\n    <a href=\\"/\\" style=\\"color: var(--primary-red); font-weight: bold; text-decoration: none;\\">\u{1F3E0} Home</a>\\n    <span style=\\"margin: 0 6px; color: #999;\\">\xBB</span>\\n    <span style=\\"color: #333; font-weight: 600;\\">About Us</span>\\n  </div>\\n\\n  <div class=\\"sarkari-box\\" style=\\"margin-bottom: 30px; background: #ffffff;\\">\\n    <h1 class=\\"sarkari-box-header\\" style=\\"margin: 0; font-size: 16px; line-height: 1.3; text-align: left; padding: 14px 20px;\\">\\n      About Govt Exam Zone - Real-Time Government Recruitment Portal\\n    </h1>\\n\\n    <div class=\\"static-page-content\\">\\n      <h2 style=\\"color: var(--primary-red); font-size: 20px; margin-top: 0; margin-bottom: 12px;\\">Who We Are</h2>\\n      <p>\\n        <b>Govt Exam Zone (govtexamzone.com)</b> is India's dedicated public educational portal created to provide timely, accurate, and direct access to Central and State Government examination notifications, online application forms, admit cards, answer keys, syllabus, and results.\\n      </p>\\n      <p>\\n        Founded by competitive exam researchers and technology professionals, our portal eliminates misinformation by serving as an independent, transparent, and direct bridge between recruiting authorities and millions of aspirants across the country.\\n      </p>\\n\\n      <h2 style=\\"color: var(--primary-red); font-size: 20px; margin-top: 24px; margin-bottom: 12px;\\">Our Mission &amp; Purpose</h2>\\n      <p>\\n        Every year, government departments release lakhs of vacancies across <b>UPSC, SSC, Railway Recruitment Boards (RRB), State PSCs, Police Recruitment Boards, Banking (IBPS, SBI), Defense Forces, and Teaching Commissions</b>. Aspirants often struggle with cluttered portals, dead links, or misleading fake circulars. Our mission is three-fold:\\n      </p>\\n      <ul style=\\"padding-left: 20px; margin-bottom: 18px;\\">\\n        <li><b>100% Primary Source Verification:</b> Every notification is cross-referenced with official gazettes and official commission websites before publishing.</li>\\n        <li><b>Fastest Real-Time Delivery:</b> Ultra-fast high-speed cloud edge servers ensure seamless access even during peak result announcements.</li>\\n        <li><b>Zero Candidate Fee Policy:</b> Govt Exam Zone is completely free for all aspirants. We never charge money or sell candidate data.</li>\\n      </ul>\\n\\n      <h2 style=\\"color: var(--primary-red); font-size: 20px; margin-top: 24px; margin-bottom: 12px;\\">Editorial Standards &amp; Fact-Checking Policy</h2>\\n      <p>\\n        Our editorial desk follows a rigorous 4-step verification pipeline:\\n      </p>\\n      <ol style=\\"padding-left: 20px; margin-bottom: 18px;\\">\\n        <li><b>Official Gazette Tracking:</b> Only notifications published by recognized statutory authorities are tracked.</li>\\n        <li><b>Cross-Verification of Dates &amp; Eligibility:</b> Age limits, reservation criteria, and qualification clauses are verified against the original PDF bulletin.</li>\\n        <li><b>Secure Direct Links:</b> Candidates are always provided official application URLs directly connecting to government server endpoints (.gov.in / .nic.in).</li>\\n        <li><b>Institutional Accountability:</b> Every notification is verified by our dedicated examination research desk responsible for accuracy and ongoing updates directly from official gazettes.</li>\\n      </ol>\\n\\n      <div style=\\"background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 18px; margin-top: 24px;\\">\\n        <h3 style=\\"margin-top: 0; font-size: 15px; color: #0f172a;\\">Official Communication &amp; Corrections</h3>\\n        <p style=\\"margin-bottom: 6px; font-size: 13.5px;\\">\\n          Noticed an error or wish to report a correction in any notification? Write directly to our research desk at:\\n        </p>\\n        <p style=\\"margin: 0; font-size: 13.5px;\\">\\n          <b>\u{1F4E7} Official Email:</b> <!--email_off--><a href=\\"mailto:")
-    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com' ))
+    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'contact.govtexamzone@gmail.com' ))
     ; __append("\\" style=\\"color: var(--primary-red); font-weight: bold;\\">")
-    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com' ))
+    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'contact.govtexamzone@gmail.com' ))
     ; __append("</a><!--/email_off--> | \\n          <b>\u{1F310} Portal:</b> <a href=\\"/\\">Govt Exam Zone Official</a>\\n        </p>\\n      </div>\\n    </div>\\n  </div>\\n</main>\\n\\n")
     ; __append( include('../partials/footer') )
     ; __append("\\n")
@@ -80401,7 +80564,7 @@ var require_templateEngine = __commonJS({
     ? (settings.site_domain.startsWith('http') ? settings.site_domain.replace(/\\/$/, '') : 'https://' + settings.site_domain.replace(/\\/$/, ''))
     : 'https://govtexamzone.com';
   const portalName = (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone';
-  const officialEmail = (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com';
+  const officialEmail = (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'contact.govtexamzone@gmail.com';
 
     ; __append("\\n\\n<!-- Schema.org JSON-LD Structured Data: BreadcrumbList & ContactPage -->\\n<script type=\\"application/ld+json\\">\\n{\\n  \\"@context\\": \\"https://schema.org\\",\\n  \\"@graph\\": [\\n    {\\n      \\"@type\\": \\"BreadcrumbList\\",\\n      \\"itemListElement\\": [\\n        {\\n          \\"@type\\": \\"ListItem\\",\\n          \\"position\\": 1,\\n          \\"name\\": \\"Home\\",\\n          \\"item\\": \\"")
     ; __append(escapeFn( siteDomain ))
@@ -80449,7 +80612,7 @@ var require_templateEngine = __commonJS({
     ? (settings.site_domain.startsWith('http') ? settings.site_domain.replace(/\\/$/, '') : 'https://' + settings.site_domain.replace(/\\/$/, ''))
     : 'https://govtexamzone.com';
   const portalName = (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone';
-  const officialEmail = (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com';
+  const officialEmail = (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'contact.govtexamzone@gmail.com';
 
     ; __append("\\n\\n<!-- Schema.org JSON-LD Structured Data: BreadcrumbList & ContactPage -->\\n<script type=\\"application/ld+json\\">\\n{\\n  \\"@context\\": \\"https://schema.org\\",\\n  \\"@graph\\": [\\n    {\\n      \\"@type\\": \\"BreadcrumbList\\",\\n      \\"itemListElement\\": [\\n        {\\n          \\"@type\\": \\"ListItem\\",\\n          \\"position\\": 1,\\n          \\"name\\": \\"Home\\",\\n          \\"item\\": \\"")
     ; __append(escapeFn( siteDomain ))
@@ -80646,13 +80809,17 @@ var require_templateEngine = __commonJS({
             
     ; __append("\\n            ")
     ;  Object.keys(categories).forEach(catKey => { 
-    ; __append("\\n              <li class=\\"gez-sidebar-cat-item\\">\\n                <a href=\\"/category/")
+    ; __append("\\n              ")
+    ;  if (typeof visibleCategories === 'undefined' || visibleCategories[catKey] !== false) { 
+    ; __append("\\n                <li class=\\"gez-sidebar-cat-item\\">\\n                  <a href=\\"/category/")
     ; __append(escapeFn( catKey ))
     ; __append("\\" class=\\"gez-sidebar-cat-link\\">")
     ; __append(escapeFn( categories[catKey].name ))
-    ; __append("</a>\\n                <span class=\\"gez-sidebar-cat-count\\">")
+    ; __append("</a>\\n                  <span class=\\"gez-sidebar-cat-count\\">")
     ; __append(escapeFn( countMap[catKey] || 0 ))
-    ; __append("</span>\\n              </li>\\n            ")
+    ; __append("</span>\\n                </li>\\n              ")
+    ;  } 
+    ; __append("\\n            ")
     ;  }) 
     ; __append("\\n          </ul>\\n        </div>\\n      </aside>\\n\\n    </div>\\n  </div>\\n</main>\\n\\n")
     ;  } else { 
@@ -80869,13 +81036,17 @@ var require_templateEngine = __commonJS({
             
     ; __append("\\n            ")
     ;  Object.keys(categories).forEach(catKey => { 
-    ; __append("\\n              <li class=\\"gez-sidebar-cat-item\\">\\n                <a href=\\"/category/")
+    ; __append("\\n              ")
+    ;  if (typeof visibleCategories === 'undefined' || visibleCategories[catKey] !== false) { 
+    ; __append("\\n                <li class=\\"gez-sidebar-cat-item\\">\\n                  <a href=\\"/category/")
     ; __append(escapeFn( catKey ))
     ; __append("\\" class=\\"gez-sidebar-cat-link\\">")
     ; __append(escapeFn( categories[catKey].name ))
-    ; __append("</a>\\n                <span class=\\"gez-sidebar-cat-count\\">")
+    ; __append("</a>\\n                  <span class=\\"gez-sidebar-cat-count\\">")
     ; __append(escapeFn( countMap[catKey] || 0 ))
-    ; __append("</span>\\n              </li>\\n            ")
+    ; __append("</span>\\n                </li>\\n              ")
+    ;  } 
+    ; __append("\\n            ")
     ;  }) 
     ; __append("\\n          </ul>\\n        </div>\\n      </aside>\\n\\n    </div>\\n  </div>\\n</main>\\n\\n")
     ;  } else { 
@@ -80943,7 +81114,7 @@ var require_templateEngine = __commonJS({
     ? (settings.site_domain.startsWith('http') ? settings.site_domain.replace(/\\/$/, '') : 'https://' + settings.site_domain.replace(/\\/$/, ''))
     : 'https://govtexamzone.com';
   const portalName = (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone';
-  const officialEmail = (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com';
+  const officialEmail = (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'contact.govtexamzone@gmail.com';
 
     ; __append("\\n\\n<!-- Schema.org JSON-LD Structured Data: BreadcrumbList -->\\n<script type=\\"application/ld+json\\">\\n{\\n  \\"@context\\": \\"https://schema.org\\",\\n  \\"@type\\": \\"BreadcrumbList\\",\\n  \\"itemListElement\\": [\\n    {\\n      \\"@type\\": \\"ListItem\\",\\n      \\"position\\": 1,\\n      \\"name\\": \\"Home\\",\\n      \\"item\\": \\"")
     ; __append(escapeFn( siteDomain ))
@@ -80981,7 +81152,7 @@ var require_templateEngine = __commonJS({
     ? (settings.site_domain.startsWith('http') ? settings.site_domain.replace(/\\/$/, '') : 'https://' + settings.site_domain.replace(/\\/$/, ''))
     : 'https://govtexamzone.com';
   const portalName = (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone';
-  const officialEmail = (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com';
+  const officialEmail = (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'contact.govtexamzone@gmail.com';
 
     ; __append("\\n\\n<!-- Schema.org JSON-LD Structured Data: BreadcrumbList -->\\n<script type=\\"application/ld+json\\">\\n{\\n  \\"@context\\": \\"https://schema.org\\",\\n  \\"@type\\": \\"BreadcrumbList\\",\\n  \\"itemListElement\\": [\\n    {\\n      \\"@type\\": \\"ListItem\\",\\n      \\"position\\": 1,\\n      \\"name\\": \\"Home\\",\\n      \\"item\\": \\"")
     ; __append(escapeFn( siteDomain ))
@@ -81055,7 +81226,7 @@ var require_templateEngine = __commonJS({
     ? (settings.site_domain.startsWith('http') ? settings.site_domain.replace(/\\/$/, '') : 'https://' + settings.site_domain.replace(/\\/$/, ''))
     : 'https://govtexamzone.com';
   const portalName = (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone';
-  const supportEmail = (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com';
+  const supportEmail = (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'contact.govtexamzone@gmail.com';
 
     ; __append("\\n\\n<!-- Schema.org JSON-LD Structured Data: BreadcrumbList & FAQPage -->\\n<script type=\\"application/ld+json\\">\\n{\\n  \\"@context\\": \\"https://schema.org\\",\\n  \\"@graph\\": [\\n    {\\n      \\"@type\\": \\"BreadcrumbList\\",\\n      \\"itemListElement\\": [\\n        {\\n          \\"@type\\": \\"ListItem\\",\\n          \\"position\\": 1,\\n          \\"name\\": \\"Home\\",\\n          \\"item\\": \\"")
     ; __append(escapeFn( siteDomain ))
@@ -81127,7 +81298,7 @@ var require_templateEngine = __commonJS({
     ? (settings.site_domain.startsWith('http') ? settings.site_domain.replace(/\\/$/, '') : 'https://' + settings.site_domain.replace(/\\/$/, ''))
     : 'https://govtexamzone.com';
   const portalName = (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone';
-  const supportEmail = (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com';
+  const supportEmail = (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'contact.govtexamzone@gmail.com';
 
     ; __append("\\n\\n<!-- Schema.org JSON-LD Structured Data: BreadcrumbList & FAQPage -->\\n<script type=\\"application/ld+json\\">\\n{\\n  \\"@context\\": \\"https://schema.org\\",\\n  \\"@graph\\": [\\n    {\\n      \\"@type\\": \\"BreadcrumbList\\",\\n      \\"itemListElement\\": [\\n        {\\n          \\"@type\\": \\"ListItem\\",\\n          \\"position\\": 1,\\n          \\"name\\": \\"Home\\",\\n          \\"item\\": \\"")
     ; __append(escapeFn( siteDomain ))
@@ -81245,119 +81416,55 @@ var require_templateEngine = __commonJS({
     ; __append( include('../partials/header') )
     ; __append("\\n")
     ; __append( include('../partials/subheader') )
-    ; __append("\\n\\n<main class=\\"container\\">\\n  <!-- PRIMARY 3-COLUMN BOXES: Latest Jobs, Admit Card, Answer Key -->\\n  <section class=\\"content-grid-3\\">\\n    <!-- Box 1: Latest Jobs -->\\n    <div class=\\"sarkari-box\\">\\n      <div class=\\"sarkari-box-header\\">\\n        <a href=\\"/category/latest-jobs\\">Latest Jobs</a>\\n      </div>\\n      <ul class=\\"sarkari-box-list\\">\\n        ")
-    ;  if (latestJobs && latestJobs.length > 0) { 
-    ; __append("\\n          ")
-    ;  latestJobs.forEach((post, i) => { 
-    ; __append("\\n            <li>\\n              <span class=\\"list-chevron\\">\u203A</span>\\n              <div>\\n                <a href=\\"/post/")
+    ; __append("\\n\\n<main class=\\"container\\">\\n  ")
+    ; 
+    const isBoxVisible = (slug) => typeof visibleCategories === 'undefined' || visibleCategories[slug] !== false;
+    const homeCategoryBoxes = [
+      { slug: 'latest-jobs', title: 'Latest Jobs', moreLabel: 'View More Latest Jobs \u2192', emptyText: 'No jobs posted yet.', items: latestJobs },
+      { slug: 'admit-card', title: 'Admit Card', moreLabel: 'View More Admit Card \u2192', emptyText: 'No admit cards available yet.', items: admitCards },
+      { slug: 'answer-key', title: 'Answer Key', moreLabel: 'View More Answer Key \u2192', emptyText: 'No answer keys available yet.', items: answerKeys },
+      { slug: 'result', title: 'Result', moreLabel: 'View More Result \u2192', emptyText: 'No results available yet.', items: results },
+      { slug: 'syllabus', title: 'Syllabus', moreLabel: 'View More Syllabus \u2192', emptyText: 'No syllabus updates posted yet.', items: syllabi },
+      { slug: 'certificate-verification', title: 'Certificate Verification', moreLabel: 'View More Verification \u2192', emptyText: 'No verification services listed.', items: verifications },
+      { slug: 'admission', title: 'Admission', moreLabel: 'View More Admission \u2192', emptyText: 'No admission forms available yet.', items: admissions },
+      { slug: 'important', title: 'Important', moreLabel: 'View More Important \u2192', emptyText: 'No updates listed.', items: importants }
+    ].filter(box => isBoxVisible(box.slug));
+  
+    ; __append("\\n\\n  <!-- DYNAMIC VISIBLE CATEGORY BOXES -->\\n  ")
+    ;  if (homeCategoryBoxes.length > 0) { 
+    ; __append("\\n  <section class=\\"content-grid-3\\">\\n    ")
+    ;  homeCategoryBoxes.forEach(box => { 
+    ; __append("\\n      <div class=\\"sarkari-box\\" data-category-box=\\"")
+    ; __append(escapeFn( box.slug ))
+    ; __append("\\">\\n        <div class=\\"sarkari-box-header\\">\\n          <a href=\\"/category/")
+    ; __append(escapeFn( box.slug ))
+    ; __append("\\">")
+    ; __append(escapeFn( box.title ))
+    ; __append("</a>\\n        </div>\\n        <ul class=\\"sarkari-box-list\\">\\n          ")
+    ;  if (box.items && box.items.length > 0) { 
+    ; __append("\\n            ")
+    ;  box.items.forEach(post => { 
+    ; __append("\\n              <li>\\n                <span class=\\"list-chevron\\">\u203A</span>\\n                <div>\\n                  <a href=\\"/post/")
     ; __append(escapeFn( post.slug ))
     ; __append("\\">")
     ; __append(escapeFn( post.title ))
-    ; __append("</a>\\n              </div>\\n            </li>\\n          ")
+    ; __append("</a>\\n                </div>\\n              </li>\\n            ")
     ;  }) 
-    ; __append("\\n        ")
-    ;  } else { 
-    ; __append("\\n          <li>No jobs posted yet.</li>\\n        ")
-    ;  } 
-    ; __append("\\n      </ul>\\n      <div class=\\"sarkari-box-footer\\">\\n        <a href=\\"/category/latest-jobs\\">View More Latest Jobs \u2192</a>\\n      </div>\\n    </div>\\n\\n    <!-- Box 2: Admit Card -->\\n    <div class=\\"sarkari-box\\">\\n      <div class=\\"sarkari-box-header\\">\\n        <a href=\\"/category/admit-card\\">Admit Card</a>\\n      </div>\\n      <ul class=\\"sarkari-box-list\\">\\n        ")
-    ;  if (admitCards && admitCards.length > 0) { 
     ; __append("\\n          ")
-    ;  admitCards.forEach((post, i) => { 
-    ; __append("\\n            <li>\\n              <span class=\\"list-chevron\\">\u203A</span>\\n              <div>\\n                <a href=\\"/post/")
-    ; __append(escapeFn( post.slug ))
-    ; __append("\\">")
-    ; __append(escapeFn( post.title ))
-    ; __append("</a>\\n              </div>\\n            </li>\\n          ")
-    ;  }) 
-    ; __append("\\n        ")
     ;  } else { 
-    ; __append("\\n          <li>No admit cards available yet.</li>\\n        ")
+    ; __append("\\n            <li>")
+    ; __append(escapeFn( box.emptyText ))
+    ; __append("</li>\\n          ")
     ;  } 
-    ; __append("\\n      </ul>\\n      <div class=\\"sarkari-box-footer\\">\\n        <a href=\\"/category/admit-card\\">View More Admit Card \u2192</a>\\n      </div>\\n    </div>\\n\\n    <!-- Box 3: Answer Key -->\\n    <div class=\\"sarkari-box\\">\\n      <div class=\\"sarkari-box-header\\">\\n        <a href=\\"/category/answer-key\\">Answer Key</a>\\n      </div>\\n      <ul class=\\"sarkari-box-list\\">\\n        ")
-    ;  if (answerKeys && answerKeys.length > 0) { 
-    ; __append("\\n          ")
-    ;  answerKeys.forEach(post => { 
-    ; __append("\\n            <li>\\n              <span class=\\"list-chevron\\">\u203A</span>\\n              <div>\\n                <a href=\\"/post/")
-    ; __append(escapeFn( post.slug ))
+    ; __append("\\n        </ul>\\n        <div class=\\"sarkari-box-footer\\">\\n          <a href=\\"/category/")
+    ; __append(escapeFn( box.slug ))
     ; __append("\\">")
-    ; __append(escapeFn( post.title ))
-    ; __append("</a>\\n              </div>\\n            </li>\\n          ")
+    ; __append(escapeFn( box.moreLabel ))
+    ; __append("</a>\\n        </div>\\n      </div>\\n    ")
     ;  }) 
-    ; __append("\\n        ")
-    ;  } else { 
-    ; __append("\\n          <li>No answer keys available yet.</li>\\n        ")
+    ; __append("\\n  </section>\\n  ")
     ;  } 
-    ; __append("\\n      </ul>\\n      <div class=\\"sarkari-box-footer\\">\\n        <a href=\\"/category/answer-key\\">View More Answer Key \u2192</a>\\n      </div>\\n    </div>\\n  </section>\\n\\n  <!-- SECONDARY 3-COLUMN BOXES: Result, Syllabus, Certificate Verification -->\\n  <section class=\\"content-grid-3\\">\\n    <!-- Box 4: Result -->\\n    <div class=\\"sarkari-box\\">\\n      <div class=\\"sarkari-box-header\\">\\n        <a href=\\"/category/result\\">Result</a>\\n      </div>\\n      <ul class=\\"sarkari-box-list\\">\\n        ")
-    ;  if (results && results.length > 0) { 
-    ; __append("\\n          ")
-    ;  results.forEach((post, i) => { 
-    ; __append("\\n            <li>\\n              <span class=\\"list-chevron\\">\u203A</span>\\n              <div>\\n                <a href=\\"/post/")
-    ; __append(escapeFn( post.slug ))
-    ; __append("\\">")
-    ; __append(escapeFn( post.title ))
-    ; __append("</a>\\n              </div>\\n            </li>\\n          ")
-    ;  }) 
-    ; __append("\\n        ")
-    ;  } else { 
-    ; __append("\\n          <li>No results available yet.</li>\\n        ")
-    ;  } 
-    ; __append("\\n      </ul>\\n      <div class=\\"sarkari-box-footer\\">\\n        <a href=\\"/category/result\\">View More Result \u2192</a>\\n      </div>\\n    </div>\\n\\n    <!-- Box 5: Syllabus -->\\n    <div class=\\"sarkari-box\\">\\n      <div class=\\"sarkari-box-header\\">\\n        <a href=\\"/category/syllabus\\">Syllabus</a>\\n      </div>\\n      <ul class=\\"sarkari-box-list\\">\\n        ")
-    ;  if (syllabi && syllabi.length > 0) { 
-    ; __append("\\n          ")
-    ;  syllabi.forEach(post => { 
-    ; __append("\\n            <li>\\n              <span class=\\"list-chevron\\">\u203A</span>\\n              <div>\\n                <a href=\\"/post/")
-    ; __append(escapeFn( post.slug ))
-    ; __append("\\">")
-    ; __append(escapeFn( post.title ))
-    ; __append("</a>\\n              </div>\\n            </li>\\n          ")
-    ;  }) 
-    ; __append("\\n        ")
-    ;  } else { 
-    ; __append("\\n          <li>No syllabus updates posted yet.</li>\\n        ")
-    ;  } 
-    ; __append("\\n      </ul>\\n      <div class=\\"sarkari-box-footer\\">\\n        <a href=\\"/category/syllabus\\">View More Syllabus \u2192</a>\\n      </div>\\n    </div>\\n\\n    <!-- Box 6: Certificate Verification -->\\n    <div class=\\"sarkari-box\\">\\n      <div class=\\"sarkari-box-header\\">\\n        <a href=\\"/category/certificate-verification\\">Certificate Verification</a>\\n      </div>\\n      <ul class=\\"sarkari-box-list\\">\\n        ")
-    ;  if (verifications && verifications.length > 0) { 
-    ; __append("\\n          ")
-    ;  verifications.forEach(post => { 
-    ; __append("\\n            <li>\\n              <span class=\\"list-chevron\\">\u203A</span>\\n              <div>\\n                <a href=\\"/post/")
-    ; __append(escapeFn( post.slug ))
-    ; __append("\\">")
-    ; __append(escapeFn( post.title ))
-    ; __append("</a>\\n              </div>\\n            </li>\\n          ")
-    ;  }) 
-    ; __append("\\n        ")
-    ;  } else { 
-    ; __append("\\n          <li>No verification services listed.</li>\\n        ")
-    ;  } 
-    ; __append("\\n      </ul>\\n      <div class=\\"sarkari-box-footer\\">\\n        <a href=\\"/category/certificate-verification\\">View More Verification \u2192</a>\\n      </div>\\n    </div>\\n  </section>\\n\\n  <!-- TERTIARY 2-COLUMN BOXES: Admission, Important -->\\n  <section class=\\"content-grid-3 content-grid-2\\">\\n    <!-- Box 7: Admission -->\\n    <div class=\\"sarkari-box\\">\\n      <div class=\\"sarkari-box-header\\">\\n        <a href=\\"/category/admission\\">Admission</a>\\n      </div>\\n      <ul class=\\"sarkari-box-list\\">\\n        ")
-    ;  if (admissions && admissions.length > 0) { 
-    ; __append("\\n          ")
-    ;  admissions.forEach(post => { 
-    ; __append("\\n            <li>\\n              <span class=\\"list-chevron\\">\u203A</span>\\n              <div>\\n                <a href=\\"/post/")
-    ; __append(escapeFn( post.slug ))
-    ; __append("\\">")
-    ; __append(escapeFn( post.title ))
-    ; __append("</a>\\n              </div>\\n            </li>\\n          ")
-    ;  }) 
-    ; __append("\\n        ")
-    ;  } else { 
-    ; __append("\\n          <li>No admission forms available yet.</li>\\n        ")
-    ;  } 
-    ; __append("\\n      </ul>\\n      <div class=\\"sarkari-box-footer\\">\\n        <a href=\\"/category/admission\\">View More Admission \u2192</a>\\n      </div>\\n    </div>\\n\\n    <!-- Box 8: Important -->\\n    <div class=\\"sarkari-box\\">\\n      <div class=\\"sarkari-box-header\\">\\n        <a href=\\"/category/important\\">Important</a>\\n      </div>\\n      <ul class=\\"sarkari-box-list\\">\\n        ")
-    ;  if (importants && importants.length > 0) { 
-    ; __append("\\n          ")
-    ;  importants.forEach(post => { 
-    ; __append("\\n            <li>\\n              <span class=\\"list-chevron\\">\u203A</span>\\n              <div>\\n                <a href=\\"/post/")
-    ; __append(escapeFn( post.slug ))
-    ; __append("\\">")
-    ; __append(escapeFn( post.title ))
-    ; __append("</a>\\n              </div>\\n            </li>\\n          ")
-    ;  }) 
-    ; __append("\\n        ")
-    ;  } else { 
-    ; __append("\\n          <li>No updates listed.</li>\\n        ")
-    ;  } 
-    ; __append("\\n      </ul>\\n      <div class=\\"sarkari-box-footer\\">\\n        <a href=\\"/category/important\\">View More Important \u2192</a>\\n      </div>\\n    </div>\\n  </section>\\n\\n  <!-- HOMEPAGE FAQ SECTION WITH SCHEMA.ORG STRUCTURED DATA -->\\n  <section class=\\"homepage-faq-section\\" style=\\"margin: 25px 0 10px 0;\\">\\n    <div class=\\"sarkari-box\\" style=\\"background: #ffffff; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06);\\">\\n      <div class=\\"sarkari-box-header\\" style=\\"text-align: left; padding: 12px 18px; font-size: 15px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;\\">\\n        <span>\u2753 Frequently Asked Questions (FAQ) - Govt Exam Zone</span>\\n        <a href=\\"/faq\\" style=\\"font-size: 12.5px; color: #fff; text-decoration: underline; font-weight: normal;\\">View All FAQs \u2192</a>\\n      </div>\\n      \\n      <div style=\\"padding: 16px 18px;\\">\\n        <div style=\\"display: flex; flex-direction: column; gap: 8px;\\">\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\" open>\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q1: What is Govt Exam Zone (govtexamzone.com) and what information is provided?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Govt Exam Zone is an independent educational news and candidate notification portal. We provide fastest live updates for Central and State Government Jobs (Sarkari Naukri), Online Application Forms, Exam Dates, Admit Cards, Official Answer Keys, and Results across UPSC, SSC, Railways, State Police, Banking, and Teaching recruitment exams.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q2: Are all government job alerts and services on Govt Exam Zone free?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Yes, 100% free. We never charge candidates any registration fees, subscription costs, or guidance charges. All notification briefs, syllabus documents, cutoff marks, and direct official links are completely free for all aspirants.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q3: How are recruitment notifications verified on this website?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Our dedicated editorial desk cross-checks all circulars directly with official government employment gazettes (Employment News) and statutory commission portals (SSC, UPSC, RRB, State PSCs, NTA). Every post includes direct links to the official PDF notification for complete transparency.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q4: How do I apply online for the latest government vacancies?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Click on the notification of your interest in the \\"Latest Jobs\\" box. Review the eligibility requirements, age limit, and cutoff dates. In the \\"Important Links\\" section at the bottom, click \\"Apply Online\\" to navigate securely to the official department application portal.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q5: How can I download Admit Cards and check Examination Results?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Visit the \\"Admit Card\\" or \\"Result\\" category on our homepage. Click on your exam name and choose an active server download link. Enter your Registration Number or Roll Number and Date of Birth to access your hall ticket or scorecard directly from the official portal.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q6: How can I receive real-time notifications on my mobile phone?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Join our official verified <a href=\\"")
+    ; __append("\\n\\n  <!-- HOMEPAGE FAQ SECTION WITH SCHEMA.ORG STRUCTURED DATA -->\\n  <section class=\\"homepage-faq-section\\" style=\\"margin: 25px 0 10px 0;\\">\\n    <div class=\\"sarkari-box\\" style=\\"background: #ffffff; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06);\\">\\n      <div class=\\"sarkari-box-header\\" style=\\"text-align: left; padding: 12px 18px; font-size: 15px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;\\">\\n        <span>\u2753 Frequently Asked Questions (FAQ) - Govt Exam Zone</span>\\n        <a href=\\"/faq\\" style=\\"font-size: 12.5px; color: #fff; text-decoration: underline; font-weight: normal;\\">View All FAQs \u2192</a>\\n      </div>\\n      \\n      <div style=\\"padding: 16px 18px;\\">\\n        <div style=\\"display: flex; flex-direction: column; gap: 8px;\\">\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\" open>\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q1: What is Govt Exam Zone (govtexamzone.com) and what information is provided?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Govt Exam Zone is an independent educational news and candidate notification portal. We provide fastest live updates for Central and State Government Jobs (Sarkari Naukri), Online Application Forms, Exam Dates, Admit Cards, Official Answer Keys, and Results across UPSC, SSC, Railways, State Police, Banking, and Teaching recruitment exams.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q2: Are all government job alerts and services on Govt Exam Zone free?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Yes, 100% free. We never charge candidates any registration fees, subscription costs, or guidance charges. All notification briefs, syllabus documents, cutoff marks, and direct official links are completely free for all aspirants.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q3: How are recruitment notifications verified on this website?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Our dedicated editorial desk cross-checks all circulars directly with official government employment gazettes (Employment News) and statutory commission portals (SSC, UPSC, RRB, State PSCs, NTA). Every post includes direct links to the official PDF notification for complete transparency.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q4: How do I apply online for the latest government vacancies?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Click on the notification of your interest in the \\"Latest Jobs\\" box. Review the eligibility requirements, age limit, and cutoff dates. In the \\"Important Links\\" section at the bottom, click \\"Apply Online\\" to navigate securely to the official department application portal.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q5: How can I download Admit Cards and check Examination Results?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Visit the \\"Admit Card\\" or \\"Result\\" category on our homepage. Click on your exam name and choose an active server download link. Enter your Registration Number or Roll Number and Date of Birth to access your hall ticket or scorecard directly from the official portal.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q6: How can I receive real-time notifications on my mobile phone?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Join our official verified <a href=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.telegram_url) ? settings.telegram_url : 'https://t.me/govtexamzoneofficial' 
 ))
     ; __append("\\" target=\\"_blank\\" rel=\\"noopener\\" style=\\"color: #0284c7; font-weight: bold;\\">Telegram Channel</a> and <a href=\\"")
@@ -81375,119 +81482,55 @@ var require_templateEngine = __commonJS({
     ; __append( include('../partials/header') )
     ; __append("\\n")
     ; __append( include('../partials/subheader') )
-    ; __append("\\n\\n<main class=\\"container\\">\\n  <!-- PRIMARY 3-COLUMN BOXES: Latest Jobs, Admit Card, Answer Key -->\\n  <section class=\\"content-grid-3\\">\\n    <!-- Box 1: Latest Jobs -->\\n    <div class=\\"sarkari-box\\">\\n      <div class=\\"sarkari-box-header\\">\\n        <a href=\\"/category/latest-jobs\\">Latest Jobs</a>\\n      </div>\\n      <ul class=\\"sarkari-box-list\\">\\n        ")
-    ;  if (latestJobs && latestJobs.length > 0) { 
-    ; __append("\\n          ")
-    ;  latestJobs.forEach((post, i) => { 
-    ; __append("\\n            <li>\\n              <span class=\\"list-chevron\\">\u203A</span>\\n              <div>\\n                <a href=\\"/post/")
+    ; __append("\\n\\n<main class=\\"container\\">\\n  ")
+    ; 
+    const isBoxVisible = (slug) => typeof visibleCategories === 'undefined' || visibleCategories[slug] !== false;
+    const homeCategoryBoxes = [
+      { slug: 'latest-jobs', title: 'Latest Jobs', moreLabel: 'View More Latest Jobs \u2192', emptyText: 'No jobs posted yet.', items: latestJobs },
+      { slug: 'admit-card', title: 'Admit Card', moreLabel: 'View More Admit Card \u2192', emptyText: 'No admit cards available yet.', items: admitCards },
+      { slug: 'answer-key', title: 'Answer Key', moreLabel: 'View More Answer Key \u2192', emptyText: 'No answer keys available yet.', items: answerKeys },
+      { slug: 'result', title: 'Result', moreLabel: 'View More Result \u2192', emptyText: 'No results available yet.', items: results },
+      { slug: 'syllabus', title: 'Syllabus', moreLabel: 'View More Syllabus \u2192', emptyText: 'No syllabus updates posted yet.', items: syllabi },
+      { slug: 'certificate-verification', title: 'Certificate Verification', moreLabel: 'View More Verification \u2192', emptyText: 'No verification services listed.', items: verifications },
+      { slug: 'admission', title: 'Admission', moreLabel: 'View More Admission \u2192', emptyText: 'No admission forms available yet.', items: admissions },
+      { slug: 'important', title: 'Important', moreLabel: 'View More Important \u2192', emptyText: 'No updates listed.', items: importants }
+    ].filter(box => isBoxVisible(box.slug));
+  
+    ; __append("\\n\\n  <!-- DYNAMIC VISIBLE CATEGORY BOXES -->\\n  ")
+    ;  if (homeCategoryBoxes.length > 0) { 
+    ; __append("\\n  <section class=\\"content-grid-3\\">\\n    ")
+    ;  homeCategoryBoxes.forEach(box => { 
+    ; __append("\\n      <div class=\\"sarkari-box\\" data-category-box=\\"")
+    ; __append(escapeFn( box.slug ))
+    ; __append("\\">\\n        <div class=\\"sarkari-box-header\\">\\n          <a href=\\"/category/")
+    ; __append(escapeFn( box.slug ))
+    ; __append("\\">")
+    ; __append(escapeFn( box.title ))
+    ; __append("</a>\\n        </div>\\n        <ul class=\\"sarkari-box-list\\">\\n          ")
+    ;  if (box.items && box.items.length > 0) { 
+    ; __append("\\n            ")
+    ;  box.items.forEach(post => { 
+    ; __append("\\n              <li>\\n                <span class=\\"list-chevron\\">\u203A</span>\\n                <div>\\n                  <a href=\\"/post/")
     ; __append(escapeFn( post.slug ))
     ; __append("\\">")
     ; __append(escapeFn( post.title ))
-    ; __append("</a>\\n              </div>\\n            </li>\\n          ")
+    ; __append("</a>\\n                </div>\\n              </li>\\n            ")
     ;  }) 
-    ; __append("\\n        ")
-    ;  } else { 
-    ; __append("\\n          <li>No jobs posted yet.</li>\\n        ")
-    ;  } 
-    ; __append("\\n      </ul>\\n      <div class=\\"sarkari-box-footer\\">\\n        <a href=\\"/category/latest-jobs\\">View More Latest Jobs \u2192</a>\\n      </div>\\n    </div>\\n\\n    <!-- Box 2: Admit Card -->\\n    <div class=\\"sarkari-box\\">\\n      <div class=\\"sarkari-box-header\\">\\n        <a href=\\"/category/admit-card\\">Admit Card</a>\\n      </div>\\n      <ul class=\\"sarkari-box-list\\">\\n        ")
-    ;  if (admitCards && admitCards.length > 0) { 
     ; __append("\\n          ")
-    ;  admitCards.forEach((post, i) => { 
-    ; __append("\\n            <li>\\n              <span class=\\"list-chevron\\">\u203A</span>\\n              <div>\\n                <a href=\\"/post/")
-    ; __append(escapeFn( post.slug ))
-    ; __append("\\">")
-    ; __append(escapeFn( post.title ))
-    ; __append("</a>\\n              </div>\\n            </li>\\n          ")
-    ;  }) 
-    ; __append("\\n        ")
     ;  } else { 
-    ; __append("\\n          <li>No admit cards available yet.</li>\\n        ")
+    ; __append("\\n            <li>")
+    ; __append(escapeFn( box.emptyText ))
+    ; __append("</li>\\n          ")
     ;  } 
-    ; __append("\\n      </ul>\\n      <div class=\\"sarkari-box-footer\\">\\n        <a href=\\"/category/admit-card\\">View More Admit Card \u2192</a>\\n      </div>\\n    </div>\\n\\n    <!-- Box 3: Answer Key -->\\n    <div class=\\"sarkari-box\\">\\n      <div class=\\"sarkari-box-header\\">\\n        <a href=\\"/category/answer-key\\">Answer Key</a>\\n      </div>\\n      <ul class=\\"sarkari-box-list\\">\\n        ")
-    ;  if (answerKeys && answerKeys.length > 0) { 
-    ; __append("\\n          ")
-    ;  answerKeys.forEach(post => { 
-    ; __append("\\n            <li>\\n              <span class=\\"list-chevron\\">\u203A</span>\\n              <div>\\n                <a href=\\"/post/")
-    ; __append(escapeFn( post.slug ))
+    ; __append("\\n        </ul>\\n        <div class=\\"sarkari-box-footer\\">\\n          <a href=\\"/category/")
+    ; __append(escapeFn( box.slug ))
     ; __append("\\">")
-    ; __append(escapeFn( post.title ))
-    ; __append("</a>\\n              </div>\\n            </li>\\n          ")
+    ; __append(escapeFn( box.moreLabel ))
+    ; __append("</a>\\n        </div>\\n      </div>\\n    ")
     ;  }) 
-    ; __append("\\n        ")
-    ;  } else { 
-    ; __append("\\n          <li>No answer keys available yet.</li>\\n        ")
+    ; __append("\\n  </section>\\n  ")
     ;  } 
-    ; __append("\\n      </ul>\\n      <div class=\\"sarkari-box-footer\\">\\n        <a href=\\"/category/answer-key\\">View More Answer Key \u2192</a>\\n      </div>\\n    </div>\\n  </section>\\n\\n  <!-- SECONDARY 3-COLUMN BOXES: Result, Syllabus, Certificate Verification -->\\n  <section class=\\"content-grid-3\\">\\n    <!-- Box 4: Result -->\\n    <div class=\\"sarkari-box\\">\\n      <div class=\\"sarkari-box-header\\">\\n        <a href=\\"/category/result\\">Result</a>\\n      </div>\\n      <ul class=\\"sarkari-box-list\\">\\n        ")
-    ;  if (results && results.length > 0) { 
-    ; __append("\\n          ")
-    ;  results.forEach((post, i) => { 
-    ; __append("\\n            <li>\\n              <span class=\\"list-chevron\\">\u203A</span>\\n              <div>\\n                <a href=\\"/post/")
-    ; __append(escapeFn( post.slug ))
-    ; __append("\\">")
-    ; __append(escapeFn( post.title ))
-    ; __append("</a>\\n              </div>\\n            </li>\\n          ")
-    ;  }) 
-    ; __append("\\n        ")
-    ;  } else { 
-    ; __append("\\n          <li>No results available yet.</li>\\n        ")
-    ;  } 
-    ; __append("\\n      </ul>\\n      <div class=\\"sarkari-box-footer\\">\\n        <a href=\\"/category/result\\">View More Result \u2192</a>\\n      </div>\\n    </div>\\n\\n    <!-- Box 5: Syllabus -->\\n    <div class=\\"sarkari-box\\">\\n      <div class=\\"sarkari-box-header\\">\\n        <a href=\\"/category/syllabus\\">Syllabus</a>\\n      </div>\\n      <ul class=\\"sarkari-box-list\\">\\n        ")
-    ;  if (syllabi && syllabi.length > 0) { 
-    ; __append("\\n          ")
-    ;  syllabi.forEach(post => { 
-    ; __append("\\n            <li>\\n              <span class=\\"list-chevron\\">\u203A</span>\\n              <div>\\n                <a href=\\"/post/")
-    ; __append(escapeFn( post.slug ))
-    ; __append("\\">")
-    ; __append(escapeFn( post.title ))
-    ; __append("</a>\\n              </div>\\n            </li>\\n          ")
-    ;  }) 
-    ; __append("\\n        ")
-    ;  } else { 
-    ; __append("\\n          <li>No syllabus updates posted yet.</li>\\n        ")
-    ;  } 
-    ; __append("\\n      </ul>\\n      <div class=\\"sarkari-box-footer\\">\\n        <a href=\\"/category/syllabus\\">View More Syllabus \u2192</a>\\n      </div>\\n    </div>\\n\\n    <!-- Box 6: Certificate Verification -->\\n    <div class=\\"sarkari-box\\">\\n      <div class=\\"sarkari-box-header\\">\\n        <a href=\\"/category/certificate-verification\\">Certificate Verification</a>\\n      </div>\\n      <ul class=\\"sarkari-box-list\\">\\n        ")
-    ;  if (verifications && verifications.length > 0) { 
-    ; __append("\\n          ")
-    ;  verifications.forEach(post => { 
-    ; __append("\\n            <li>\\n              <span class=\\"list-chevron\\">\u203A</span>\\n              <div>\\n                <a href=\\"/post/")
-    ; __append(escapeFn( post.slug ))
-    ; __append("\\">")
-    ; __append(escapeFn( post.title ))
-    ; __append("</a>\\n              </div>\\n            </li>\\n          ")
-    ;  }) 
-    ; __append("\\n        ")
-    ;  } else { 
-    ; __append("\\n          <li>No verification services listed.</li>\\n        ")
-    ;  } 
-    ; __append("\\n      </ul>\\n      <div class=\\"sarkari-box-footer\\">\\n        <a href=\\"/category/certificate-verification\\">View More Verification \u2192</a>\\n      </div>\\n    </div>\\n  </section>\\n\\n  <!-- TERTIARY 2-COLUMN BOXES: Admission, Important -->\\n  <section class=\\"content-grid-3 content-grid-2\\">\\n    <!-- Box 7: Admission -->\\n    <div class=\\"sarkari-box\\">\\n      <div class=\\"sarkari-box-header\\">\\n        <a href=\\"/category/admission\\">Admission</a>\\n      </div>\\n      <ul class=\\"sarkari-box-list\\">\\n        ")
-    ;  if (admissions && admissions.length > 0) { 
-    ; __append("\\n          ")
-    ;  admissions.forEach(post => { 
-    ; __append("\\n            <li>\\n              <span class=\\"list-chevron\\">\u203A</span>\\n              <div>\\n                <a href=\\"/post/")
-    ; __append(escapeFn( post.slug ))
-    ; __append("\\">")
-    ; __append(escapeFn( post.title ))
-    ; __append("</a>\\n              </div>\\n            </li>\\n          ")
-    ;  }) 
-    ; __append("\\n        ")
-    ;  } else { 
-    ; __append("\\n          <li>No admission forms available yet.</li>\\n        ")
-    ;  } 
-    ; __append("\\n      </ul>\\n      <div class=\\"sarkari-box-footer\\">\\n        <a href=\\"/category/admission\\">View More Admission \u2192</a>\\n      </div>\\n    </div>\\n\\n    <!-- Box 8: Important -->\\n    <div class=\\"sarkari-box\\">\\n      <div class=\\"sarkari-box-header\\">\\n        <a href=\\"/category/important\\">Important</a>\\n      </div>\\n      <ul class=\\"sarkari-box-list\\">\\n        ")
-    ;  if (importants && importants.length > 0) { 
-    ; __append("\\n          ")
-    ;  importants.forEach(post => { 
-    ; __append("\\n            <li>\\n              <span class=\\"list-chevron\\">\u203A</span>\\n              <div>\\n                <a href=\\"/post/")
-    ; __append(escapeFn( post.slug ))
-    ; __append("\\">")
-    ; __append(escapeFn( post.title ))
-    ; __append("</a>\\n              </div>\\n            </li>\\n          ")
-    ;  }) 
-    ; __append("\\n        ")
-    ;  } else { 
-    ; __append("\\n          <li>No updates listed.</li>\\n        ")
-    ;  } 
-    ; __append("\\n      </ul>\\n      <div class=\\"sarkari-box-footer\\">\\n        <a href=\\"/category/important\\">View More Important \u2192</a>\\n      </div>\\n    </div>\\n  </section>\\n\\n  <!-- HOMEPAGE FAQ SECTION WITH SCHEMA.ORG STRUCTURED DATA -->\\n  <section class=\\"homepage-faq-section\\" style=\\"margin: 25px 0 10px 0;\\">\\n    <div class=\\"sarkari-box\\" style=\\"background: #ffffff; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06);\\">\\n      <div class=\\"sarkari-box-header\\" style=\\"text-align: left; padding: 12px 18px; font-size: 15px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;\\">\\n        <span>\u2753 Frequently Asked Questions (FAQ) - Govt Exam Zone</span>\\n        <a href=\\"/faq\\" style=\\"font-size: 12.5px; color: #fff; text-decoration: underline; font-weight: normal;\\">View All FAQs \u2192</a>\\n      </div>\\n      \\n      <div style=\\"padding: 16px 18px;\\">\\n        <div style=\\"display: flex; flex-direction: column; gap: 8px;\\">\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\" open>\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q1: What is Govt Exam Zone (govtexamzone.com) and what information is provided?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Govt Exam Zone is an independent educational news and candidate notification portal. We provide fastest live updates for Central and State Government Jobs (Sarkari Naukri), Online Application Forms, Exam Dates, Admit Cards, Official Answer Keys, and Results across UPSC, SSC, Railways, State Police, Banking, and Teaching recruitment exams.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q2: Are all government job alerts and services on Govt Exam Zone free?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Yes, 100% free. We never charge candidates any registration fees, subscription costs, or guidance charges. All notification briefs, syllabus documents, cutoff marks, and direct official links are completely free for all aspirants.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q3: How are recruitment notifications verified on this website?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Our dedicated editorial desk cross-checks all circulars directly with official government employment gazettes (Employment News) and statutory commission portals (SSC, UPSC, RRB, State PSCs, NTA). Every post includes direct links to the official PDF notification for complete transparency.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q4: How do I apply online for the latest government vacancies?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Click on the notification of your interest in the \\"Latest Jobs\\" box. Review the eligibility requirements, age limit, and cutoff dates. In the \\"Important Links\\" section at the bottom, click \\"Apply Online\\" to navigate securely to the official department application portal.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q5: How can I download Admit Cards and check Examination Results?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Visit the \\"Admit Card\\" or \\"Result\\" category on our homepage. Click on your exam name and choose an active server download link. Enter your Registration Number or Roll Number and Date of Birth to access your hall ticket or scorecard directly from the official portal.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q6: How can I receive real-time notifications on my mobile phone?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Join our official verified <a href=\\"")
+    ; __append("\\n\\n  <!-- HOMEPAGE FAQ SECTION WITH SCHEMA.ORG STRUCTURED DATA -->\\n  <section class=\\"homepage-faq-section\\" style=\\"margin: 25px 0 10px 0;\\">\\n    <div class=\\"sarkari-box\\" style=\\"background: #ffffff; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06);\\">\\n      <div class=\\"sarkari-box-header\\" style=\\"text-align: left; padding: 12px 18px; font-size: 15px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;\\">\\n        <span>\u2753 Frequently Asked Questions (FAQ) - Govt Exam Zone</span>\\n        <a href=\\"/faq\\" style=\\"font-size: 12.5px; color: #fff; text-decoration: underline; font-weight: normal;\\">View All FAQs \u2192</a>\\n      </div>\\n      \\n      <div style=\\"padding: 16px 18px;\\">\\n        <div style=\\"display: flex; flex-direction: column; gap: 8px;\\">\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\" open>\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q1: What is Govt Exam Zone (govtexamzone.com) and what information is provided?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Govt Exam Zone is an independent educational news and candidate notification portal. We provide fastest live updates for Central and State Government Jobs (Sarkari Naukri), Online Application Forms, Exam Dates, Admit Cards, Official Answer Keys, and Results across UPSC, SSC, Railways, State Police, Banking, and Teaching recruitment exams.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q2: Are all government job alerts and services on Govt Exam Zone free?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Yes, 100% free. We never charge candidates any registration fees, subscription costs, or guidance charges. All notification briefs, syllabus documents, cutoff marks, and direct official links are completely free for all aspirants.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q3: How are recruitment notifications verified on this website?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Our dedicated editorial desk cross-checks all circulars directly with official government employment gazettes (Employment News) and statutory commission portals (SSC, UPSC, RRB, State PSCs, NTA). Every post includes direct links to the official PDF notification for complete transparency.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q4: How do I apply online for the latest government vacancies?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Click on the notification of your interest in the \\"Latest Jobs\\" box. Review the eligibility requirements, age limit, and cutoff dates. In the \\"Important Links\\" section at the bottom, click \\"Apply Online\\" to navigate securely to the official department application portal.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q5: How can I download Admit Cards and check Examination Results?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Visit the \\"Admit Card\\" or \\"Result\\" category on our homepage. Click on your exam name and choose an active server download link. Enter your Registration Number or Roll Number and Date of Birth to access your hall ticket or scorecard directly from the official portal.\\n            </div>\\n          </details>\\n\\n          <details style=\\"border: 1px solid #e2e8f0; border-radius: 5px; background: #f8fafc; overflow: hidden;\\">\\n            <summary style=\\"font-weight: 700; color: #0f172a; padding: 11px 14px; cursor: pointer; user-select: none; background: #f1f5f9; outline: none; font-size: 14px;\\">\\n              Q6: How can I receive real-time notifications on my mobile phone?\\n            </summary>\\n            <div style=\\"padding: 12px 14px; color: #334155; font-size: 13.5px; line-height: 1.6; background: #ffffff; border-top: 1px solid #e2e8f0;\\">\\n              Join our official verified <a href=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.telegram_url) ? settings.telegram_url : 'https://t.me/govtexamzoneofficial' 
 ))
     ; __append("\\" target=\\"_blank\\" rel=\\"noopener\\" style=\\"color: #0284c7; font-weight: bold;\\">Telegram Channel</a> and <a href=\\"")
@@ -81559,7 +81602,7 @@ var require_templateEngine = __commonJS({
     ? (settings.site_domain.startsWith('http') ? settings.site_domain.replace(/\\/$/, '') : 'https://' + settings.site_domain.replace(/\\/$/, ''))
     : 'https://govtexamzone.com';
   const portalName = (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone';
-  const officialEmail = (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com';
+  const officialEmail = (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'contact.govtexamzone@gmail.com';
 
     ; __append("\\n\\n<!-- Schema.org JSON-LD Structured Data: BreadcrumbList -->\\n<script type=\\"application/ld+json\\">\\n{\\n  \\"@context\\": \\"https://schema.org\\",\\n  \\"@type\\": \\"BreadcrumbList\\",\\n  \\"itemListElement\\": [\\n    {\\n      \\"@type\\": \\"ListItem\\",\\n      \\"position\\": 1,\\n      \\"name\\": \\"Home\\",\\n      \\"item\\": \\"")
     ; __append(escapeFn( siteDomain ))
@@ -81609,7 +81652,7 @@ var require_templateEngine = __commonJS({
     ? (settings.site_domain.startsWith('http') ? settings.site_domain.replace(/\\/$/, '') : 'https://' + settings.site_domain.replace(/\\/$/, ''))
     : 'https://govtexamzone.com';
   const portalName = (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone';
-  const officialEmail = (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com';
+  const officialEmail = (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'contact.govtexamzone@gmail.com';
 
     ; __append("\\n\\n<!-- Schema.org JSON-LD Structured Data: BreadcrumbList -->\\n<script type=\\"application/ld+json\\">\\n{\\n  \\"@context\\": \\"https://schema.org\\",\\n  \\"@type\\": \\"BreadcrumbList\\",\\n  \\"itemListElement\\": [\\n    {\\n      \\"@type\\": \\"ListItem\\",\\n      \\"position\\": 1,\\n      \\"name\\": \\"Home\\",\\n      \\"item\\": \\"")
     ; __append(escapeFn( siteDomain ))
@@ -81767,7 +81810,7 @@ var require_templateEngine = __commonJS({
     ? (settings.site_domain.startsWith('http') ? settings.site_domain.replace(/\\/$/, '') : 'https://' + settings.site_domain.replace(/\\/$/, ''))
     : 'https://govtexamzone.com';
   const portalName = (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone';
-  const officialEmail = (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com';
+  const officialEmail = (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'contact.govtexamzone@gmail.com';
 
     ; __append("\\n\\n<!-- Schema.org JSON-LD Structured Data: BreadcrumbList -->\\n<script type=\\"application/ld+json\\">\\n{\\n  \\"@context\\": \\"https://schema.org\\",\\n  \\"@type\\": \\"BreadcrumbList\\",\\n  \\"itemListElement\\": [\\n    {\\n      \\"@type\\": \\"ListItem\\",\\n      \\"position\\": 1,\\n      \\"name\\": \\"Home\\",\\n      \\"item\\": \\"")
     ; __append(escapeFn( siteDomain ))
@@ -81811,7 +81854,7 @@ var require_templateEngine = __commonJS({
     ? (settings.site_domain.startsWith('http') ? settings.site_domain.replace(/\\/$/, '') : 'https://' + settings.site_domain.replace(/\\/$/, ''))
     : 'https://govtexamzone.com';
   const portalName = (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone';
-  const officialEmail = (typeof settings !== 'undefined' && settings.contact_email && settings.contact_email !== 'support@govtexamzone.com') ? settings.contact_email : 'contact.govtexamzone@gmail.com';
+  const officialEmail = (typeof settings !== 'undefined' && settings.contact_email) ? settings.contact_email : 'contact.govtexamzone@gmail.com';
 
     ; __append("\\n\\n<!-- Schema.org JSON-LD Structured Data: BreadcrumbList -->\\n<script type=\\"application/ld+json\\">\\n{\\n  \\"@context\\": \\"https://schema.org\\",\\n  \\"@type\\": \\"BreadcrumbList\\",\\n  \\"itemListElement\\": [\\n    {\\n      \\"@type\\": \\"ListItem\\",\\n      \\"position\\": 1,\\n      \\"name\\": \\"Home\\",\\n      \\"item\\": \\"")
     ; __append(escapeFn( siteDomain ))
@@ -81952,7 +81995,9 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( baseAdmin ))
     ; __append("/marquees\\" class=\\"nav-item ")
     ; __append(escapeFn( typeof currentPath !== 'undefined' && currentPath === '/admin/marquees' ? 'active' : '' ))
-    ; __append("\\">\\n          <span class=\\"nav-icon\\">\u{1F4E2}</span>\\n          <span class=\\"nav-text\\">Flash Tickers</span>\\n          <span class=\\"nav-badge\\">Live</span>\\n        </a>\\n      </nav>\\n\\n      <div class=\\"nav-section-title\\">CLOUD INFRASTRUCTURE</div>\\n      <nav class=\\"sidebar-nav\\">\\n        <a href=\\"")
+    ; __append("\\">\\n          <span class=\\"nav-icon\\">\u{1F4E2}</span>\\n          <span class=\\"nav-text\\">Flash Tickers</span>\\n          <span class=\\"nav-badge\\">Live</span>\\n        </a>\\n        <a href=\\"")
+    ; __append(escapeFn( baseAdmin ))
+    ; __append("/settings#section-categories\\" class=\\"nav-item\\">\\n          <span class=\\"nav-icon\\">\u{1F4C2}</span>\\n          <span class=\\"nav-text\\">Category Show/Hide</span>\\n        </a>\\n      </nav>\\n\\n      <div class=\\"nav-section-title\\">CLOUD INFRASTRUCTURE</div>\\n      <nav class=\\"sidebar-nav\\">\\n        <a href=\\"")
     ; __append(escapeFn( baseAdmin ))
     ; __append("/r2\\" class=\\"nav-item ")
     ; __append(escapeFn( typeof currentPath !== 'undefined' && currentPath === '/admin/r2' ? 'active' : '' ))
@@ -82043,7 +82088,9 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( baseAdmin ))
     ; __append("/marquees\\" class=\\"nav-item ")
     ; __append(escapeFn( typeof currentPath !== 'undefined' && currentPath === '/admin/marquees' ? 'active' : '' ))
-    ; __append("\\">\\n          <span class=\\"nav-icon\\">\u{1F4E2}</span>\\n          <span class=\\"nav-text\\">Flash Tickers</span>\\n          <span class=\\"nav-badge\\">Live</span>\\n        </a>\\n      </nav>\\n\\n      <div class=\\"nav-section-title\\">CLOUD INFRASTRUCTURE</div>\\n      <nav class=\\"sidebar-nav\\">\\n        <a href=\\"")
+    ; __append("\\">\\n          <span class=\\"nav-icon\\">\u{1F4E2}</span>\\n          <span class=\\"nav-text\\">Flash Tickers</span>\\n          <span class=\\"nav-badge\\">Live</span>\\n        </a>\\n        <a href=\\"")
+    ; __append(escapeFn( baseAdmin ))
+    ; __append("/settings#section-categories\\" class=\\"nav-item\\">\\n          <span class=\\"nav-icon\\">\u{1F4C2}</span>\\n          <span class=\\"nav-text\\">Category Show/Hide</span>\\n        </a>\\n      </nav>\\n\\n      <div class=\\"nav-section-title\\">CLOUD INFRASTRUCTURE</div>\\n      <nav class=\\"sidebar-nav\\">\\n        <a href=\\"")
     ; __append(escapeFn( baseAdmin ))
     ; __append("/r2\\" class=\\"nav-item ")
     ; __append(escapeFn( typeof currentPath !== 'undefined' && currentPath === '/admin/r2' ? 'active' : '' ))
@@ -82867,7 +82914,31 @@ var require_templateEngine = __commonJS({
     ;  if (false) { /* Hidden for now as requested: Useful Candidate Utilities & Tools */ 
     ; __append("\\n      <h3>Useful Candidate Utilities &amp; Tools</h3>\\n      <p>\\n        <a href=\\"/tools/age-calculator\\" style=\\"font-weight: bold; color: #ab183d;\\">Government Exam Age Calculator</a> | \\n        <a href=\\"/tools/photo-resizer\\" style=\\"font-weight: bold; color: #ab183d;\\">Photo &amp; Signature Resizer Guide</a> | \\n        <a href=\\"/tools/image-resizer\\" style=\\"font-weight: bold; color: #ab183d;\\">Interactive Photo Resizer &amp; Name Maker</a> |\\n        <a href=\\"/category/certificate-verification\\" style=\\"font-weight: bold; color: #ab183d;\\">Online Certificate Verification</a>\\n      </p>\\n      ")
     ;  } 
-    ; __append("\\n    </div>\\n\\n    <div class=\\"footer-bottom\\">\\n      <div class=\\"footer-links\\">\\n        <a href=\\"/\\">Home</a> |\\n        <a href=\\"/about-us\\">About Us</a> |\\n        <a href=\\"/faq\\">FAQ</a> |\\n        <a href=\\"/category/latest-jobs\\">Latest Jobs</a> |\\n        <a href=\\"/category/result\\">Results</a> |\\n        <a href=\\"/category/admit-card\\">Admit Card</a> |\\n        <a href=\\"/category/answer-key\\">Answer Key</a> |\\n        <a href=\\"/category/syllabus\\">Syllabus</a> |\\n        <a href=\\"/contact-us\\">Contact Us</a> |\\n        <a href=\\"/terms-conditions\\">Terms of Use</a> |\\n        <a href=\\"/disclaimer\\">Disclaimer</a> |\\n        <a href=\\"/privacy-policy\\">Privacy Policy</a>\\n      </div>\\n\\n      ")
+    ; __append("\\n    </div>\\n\\n    <div class=\\"footer-bottom\\">\\n      ")
+    ; 
+        const isFooterCatShown = (slug) => typeof visibleCategories === 'undefined' || visibleCategories[slug] !== false;
+      
+    ; __append("\\n      <div class=\\"footer-links\\">\\n        <a href=\\"/\\">Home</a> |\\n        <a href=\\"/about-us\\">About Us</a> |\\n        <a href=\\"/faq\\">FAQ</a> |\\n        ")
+    ;  if (isFooterCatShown('latest-jobs')) { 
+    ; __append("<a href=\\"/category/latest-jobs\\">Latest Jobs</a> |")
+    ;  } 
+    ; __append("\\n        ")
+    ;  if (isFooterCatShown('result')) { 
+    ; __append("<a href=\\"/category/result\\">Results</a> |")
+    ;  } 
+    ; __append("\\n        ")
+    ;  if (isFooterCatShown('admit-card')) { 
+    ; __append("<a href=\\"/category/admit-card\\">Admit Card</a> |")
+    ;  } 
+    ; __append("\\n        ")
+    ;  if (isFooterCatShown('answer-key')) { 
+    ; __append("<a href=\\"/category/answer-key\\">Answer Key</a> |")
+    ;  } 
+    ; __append("\\n        ")
+    ;  if (isFooterCatShown('syllabus')) { 
+    ; __append("<a href=\\"/category/syllabus\\">Syllabus</a> |")
+    ;  } 
+    ; __append("\\n        <a href=\\"/contact-us\\">Contact Us</a> |\\n        <a href=\\"/terms-conditions\\">Terms of Use</a> |\\n        <a href=\\"/disclaimer\\">Disclaimer</a> |\\n        <a href=\\"/privacy-policy\\">Privacy Policy</a>\\n      </div>\\n\\n      ")
     ;  
         const currentYear = new Date().getFullYear();
         let copyText = (typeof settings !== 'undefined' && settings.copyright_text) 
@@ -82877,7 +82948,7 @@ var require_templateEngine = __commonJS({
       
     ; __append("\\n      <p style=\\"margin-top: 8px;\\">\\n        ")
     ; __append(escapeFn( copyText ))
-    ; __append("\\n      </p>\\n      <p style=\\"font-size: 11.5px; color: #888; margin-top: 5px;\\">\\n        Disclaimer: Govt Exam Zone (govtexamzone.com) is an independent public information service portal. We are not affiliated with any government agency or department. All information is sourced directly from official government examination notifications.\\n      </p>\\n    </div>\\n  </div>\\n</footer>\\n</div><!-- /pageContentWrapper -->\\n\\n<!-- Global Toast Notification -->\\n<div id=\\"toast\\" class=\\"toast-msg\\">Link copied to clipboard!</div>\\n\\n<script src=\\"/js/main.js\\"></script>\\n\\n")
+    ; __append("\\n      </p>\\n      <p style=\\"font-size: 11.5px; color: #888; margin-top: 5px;\\">\\n        Disclaimer: Govt Exam Zone (govtexamzone.com) is an independent public information service portal. We are not affiliated with any government agency or department. All information is sourced directly from official government examination notifications.\\n      </p>\\n    </div>\\n  </div>\\n</footer>\\n</div><!-- /pageContentWrapper -->\\n\\n<!-- Global Toast Notification -->\\n<div id=\\"toast\\" class=\\"toast-msg\\">Link copied to clipboard!</div>\\n\\n<script src=\\"/js/main.js?v=20261125a\\"></script>\\n\\n")
     ;  if (typeof settings !== 'undefined' && settings.footer_custom_code) { 
     ; __append("\\n  <!-- Webmaster Custom Footer Code -->\\n  ")
     ; __append( settings.footer_custom_code )
@@ -82899,7 +82970,31 @@ var require_templateEngine = __commonJS({
     ;  if (false) { /* Hidden for now as requested: Useful Candidate Utilities & Tools */ 
     ; __append("\\n      <h3>Useful Candidate Utilities &amp; Tools</h3>\\n      <p>\\n        <a href=\\"/tools/age-calculator\\" style=\\"font-weight: bold; color: #ab183d;\\">Government Exam Age Calculator</a> | \\n        <a href=\\"/tools/photo-resizer\\" style=\\"font-weight: bold; color: #ab183d;\\">Photo &amp; Signature Resizer Guide</a> | \\n        <a href=\\"/tools/image-resizer\\" style=\\"font-weight: bold; color: #ab183d;\\">Interactive Photo Resizer &amp; Name Maker</a> |\\n        <a href=\\"/category/certificate-verification\\" style=\\"font-weight: bold; color: #ab183d;\\">Online Certificate Verification</a>\\n      </p>\\n      ")
     ;  } 
-    ; __append("\\n    </div>\\n\\n    <div class=\\"footer-bottom\\">\\n      <div class=\\"footer-links\\">\\n        <a href=\\"/\\">Home</a> |\\n        <a href=\\"/about-us\\">About Us</a> |\\n        <a href=\\"/faq\\">FAQ</a> |\\n        <a href=\\"/category/latest-jobs\\">Latest Jobs</a> |\\n        <a href=\\"/category/result\\">Results</a> |\\n        <a href=\\"/category/admit-card\\">Admit Card</a> |\\n        <a href=\\"/category/answer-key\\">Answer Key</a> |\\n        <a href=\\"/category/syllabus\\">Syllabus</a> |\\n        <a href=\\"/contact-us\\">Contact Us</a> |\\n        <a href=\\"/terms-conditions\\">Terms of Use</a> |\\n        <a href=\\"/disclaimer\\">Disclaimer</a> |\\n        <a href=\\"/privacy-policy\\">Privacy Policy</a>\\n      </div>\\n\\n      ")
+    ; __append("\\n    </div>\\n\\n    <div class=\\"footer-bottom\\">\\n      ")
+    ; 
+        const isFooterCatShown = (slug) => typeof visibleCategories === 'undefined' || visibleCategories[slug] !== false;
+      
+    ; __append("\\n      <div class=\\"footer-links\\">\\n        <a href=\\"/\\">Home</a> |\\n        <a href=\\"/about-us\\">About Us</a> |\\n        <a href=\\"/faq\\">FAQ</a> |\\n        ")
+    ;  if (isFooterCatShown('latest-jobs')) { 
+    ; __append("<a href=\\"/category/latest-jobs\\">Latest Jobs</a> |")
+    ;  } 
+    ; __append("\\n        ")
+    ;  if (isFooterCatShown('result')) { 
+    ; __append("<a href=\\"/category/result\\">Results</a> |")
+    ;  } 
+    ; __append("\\n        ")
+    ;  if (isFooterCatShown('admit-card')) { 
+    ; __append("<a href=\\"/category/admit-card\\">Admit Card</a> |")
+    ;  } 
+    ; __append("\\n        ")
+    ;  if (isFooterCatShown('answer-key')) { 
+    ; __append("<a href=\\"/category/answer-key\\">Answer Key</a> |")
+    ;  } 
+    ; __append("\\n        ")
+    ;  if (isFooterCatShown('syllabus')) { 
+    ; __append("<a href=\\"/category/syllabus\\">Syllabus</a> |")
+    ;  } 
+    ; __append("\\n        <a href=\\"/contact-us\\">Contact Us</a> |\\n        <a href=\\"/terms-conditions\\">Terms of Use</a> |\\n        <a href=\\"/disclaimer\\">Disclaimer</a> |\\n        <a href=\\"/privacy-policy\\">Privacy Policy</a>\\n      </div>\\n\\n      ")
     ;  
         const currentYear = new Date().getFullYear();
         let copyText = (typeof settings !== 'undefined' && settings.copyright_text) 
@@ -82909,7 +83004,7 @@ var require_templateEngine = __commonJS({
       
     ; __append("\\n      <p style=\\"margin-top: 8px;\\">\\n        ")
     ; __append(escapeFn( copyText ))
-    ; __append("\\n      </p>\\n      <p style=\\"font-size: 11.5px; color: #888; margin-top: 5px;\\">\\n        Disclaimer: Govt Exam Zone (govtexamzone.com) is an independent public information service portal. We are not affiliated with any government agency or department. All information is sourced directly from official government examination notifications.\\n      </p>\\n    </div>\\n  </div>\\n</footer>\\n</div><!-- /pageContentWrapper -->\\n\\n<!-- Global Toast Notification -->\\n<div id=\\"toast\\" class=\\"toast-msg\\">Link copied to clipboard!</div>\\n\\n<script src=\\"/js/main.js\\"></script>\\n\\n")
+    ; __append("\\n      </p>\\n      <p style=\\"font-size: 11.5px; color: #888; margin-top: 5px;\\">\\n        Disclaimer: Govt Exam Zone (govtexamzone.com) is an independent public information service portal. We are not affiliated with any government agency or department. All information is sourced directly from official government examination notifications.\\n      </p>\\n    </div>\\n  </div>\\n</footer>\\n</div><!-- /pageContentWrapper -->\\n\\n<!-- Global Toast Notification -->\\n<div id=\\"toast\\" class=\\"toast-msg\\">Link copied to clipboard!</div>\\n\\n<script src=\\"/js/main.js?v=20261125a\\"></script>\\n\\n")
     ;  if (typeof settings !== 'undefined' && settings.footer_custom_code) { 
     ; __append("\\n  <!-- Webmaster Custom Footer Code -->\\n  ")
     ; __append( settings.footer_custom_code )
@@ -83005,7 +83100,17 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( activeFavicon ))
     ; __append("\\">\\n  ")
     ;  } 
-    ; __append("\\n\\n  <!-- Stylesheet -->\\n  <link rel=\\"stylesheet\\" href=\\"/css/style.css\\">\\n\\n  <!-- High-Speed Menu Prefetching for Instant Navigation -->\\n  <link rel=\\"prefetch\\" href=\\"/category/latest-jobs\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/result\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/admit-card\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/answer-key\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/syllabus\\">\\n\\n  <!-- JSON-LD Schema.org Structured Data: WebSite -->\\n  <script type=\\"application/ld+json\\">\\n  {\\n    \\"@context\\": \\"https://schema.org\\",\\n    \\"@type\\": \\"WebSite\\",\\n    \\"name\\": \\"")
+    ; __append("\\n\\n  <!-- Stylesheet -->\\n  <link rel=\\"stylesheet\\" href=\\"/css/style.css\\">\\n\\n  <!-- High-Speed Menu Prefetching for Instant Navigation -->\\n  ")
+    ;  ['latest-jobs', 'result', 'admit-card', 'answer-key', 'syllabus'].forEach(catSlug => { 
+    ; __append("\\n    ")
+    ;  if (typeof visibleCategories === 'undefined' || visibleCategories[catSlug] !== false) { 
+    ; __append("\\n  <link rel=\\"prefetch\\" href=\\"/category/")
+    ; __append(escapeFn( catSlug ))
+    ; __append("\\">\\n    ")
+    ;  } 
+    ; __append("\\n  ")
+    ;  }); 
+    ; __append("\\n\\n  <!-- JSON-LD Schema.org Structured Data: WebSite -->\\n  <script type=\\"application/ld+json\\">\\n  {\\n    \\"@context\\": \\"https://schema.org\\",\\n    \\"@type\\": \\"WebSite\\",\\n    \\"name\\": \\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' ))
     ; __append("\\",\\n    \\"alternateName\\": [\\"GovtExamZone\\", \\"Govt Exam Zone Official\\", \\"GEZ Official\\"],\\n    \\"url\\": \\"")
     ; __append(escapeFn( siteBase ))
@@ -83038,11 +83143,19 @@ var require_templateEngine = __commonJS({
     ; __append("\\n    ")
     ;  } 
     ; __append("\\n  }\\n  </script>\\n\\n  ")
-    ;  if (typeof settings !== 'undefined' && settings.google_analytics_id) { 
-    ; __append("\\n  <!-- Google Analytics GA4 -->\\n  <script async src=\\"https://www.googletagmanager.com/gtag/js?id=")
-    ; __append(escapeFn( settings.google_analytics_id ))
-    ; __append("\\"></script>\\n  <script>\\n    window.dataLayer = window.dataLayer || [];\\n    function gtag(){dataLayer.push(arguments);}\\n    gtag('js', new Date());\\n    gtag('config', '")
-    ; __append(escapeFn( settings.google_analytics_id ))
+    ; 
+    const rawGaId = (typeof settings !== 'undefined' && settings.google_analytics_id) ? String(settings.google_analytics_id).trim() : '';
+    const gaMatch = rawGaId.match(/\\b(G|GT|UA|AW)-[A-Z0-9-]+\\b/i);
+    const activeGaId = gaMatch ? gaMatch[0].toUpperCase() : rawGaId.replace(/[<>"'\\s]/g, '');
+  
+    ; __append("\\n  ")
+    ;  if (activeGaId) { 
+    ; __append("\\n  <!-- Google Analytics (GA4) -->\\n  <script async src=\\"https://www.googletagmanager.com/gtag/js?id=")
+    ; __append(escapeFn( activeGaId ))
+    ; __append("\\"></script>\\n  <script>\\n    window.dataLayer = window.dataLayer || [];\\n    function gtag(){dataLayer.push(arguments);}\\n    window.__GA_MEASUREMENT_ID = '")
+    ; __append(escapeFn( activeGaId ))
+    ; __append("';\\n    gtag('js', new Date());\\n    gtag('config', '")
+    ; __append(escapeFn( activeGaId ))
     ; __append("');\\n  </script>\\n  ")
     ;  } 
     ; __append("\\n\\n  ")
@@ -83072,20 +83185,43 @@ var require_templateEngine = __commonJS({
     ; __append("</a></h1>\\n          <div class=\\"header-subtitle\\">")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.header_subtitle) ? settings.header_subtitle : 'WWW.GOVTEXAMZONE.COM' ))
     ; __append("</div>\\n        </div>\\n      </div>\\n    </div>\\n  </header>\\n\\n<!-- Main Navigation Menu -->\\n<nav class=\\"main-nav\\" id=\\"mainNavigation\\">\\n  <div class=\\"container nav-inner-container\\">\\n    <!-- Mobile Navigation Topbar (Left: 3-line Menu, Right: Search Icon) -->\\n    <div class=\\"mobile-nav-bar\\">\\n      <button type=\\"button\\" class=\\"nav-toggle-btn\\" id=\\"mobileMenuToggle\\" aria-label=\\"Toggle navigation\\" aria-expanded=\\"false\\">\\n        <span class=\\"toggle-icon\\">\u2630</span>\\n      </button>\\n\\n      <button type=\\"button\\" class=\\"mobile-quick-search-btn\\" id=\\"mobileSearchBtn\\" title=\\"Search Exams, Jobs...\\" aria-label=\\"Search\\">\\n        <span class=\\"search-btn-icon\\">\u{1F50D}</span>\\n      </button>\\n    </div>\\n\\n    <!-- Navigation Menu List -->\\n    <ul class=\\"nav-menu\\" id=\\"primaryNavMenu\\">\\n      ")
-    ;  const cur = typeof currentPath !== 'undefined' ? currentPath : ''; 
+    ; 
+        const cur = typeof currentPath !== 'undefined' ? currentPath : '';
+        const isCatShown = (slug) => typeof visibleCategories === 'undefined' || visibleCategories[slug] !== false;
+      
     ; __append("\\n      <li>\\n        <a href=\\"/\\" class=\\"")
     ; __append(escapeFn( cur === '/' ? 'active' : '' ))
-    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F3E0}</span>\\n          <span class=\\"menu-label\\">Home</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      <li>\\n        <a href=\\"/category/latest-jobs\\" class=\\"")
+    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F3E0}</span>\\n          <span class=\\"menu-label\\">Home</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      ")
+    ;  if (isCatShown('latest-jobs')) { 
+    ; __append("\\n      <li>\\n        <a href=\\"/category/latest-jobs\\" class=\\"")
     ; __append(escapeFn( cur.includes('latest-jobs') ? 'active' : '' ))
-    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F4BC}</span>\\n          <span class=\\"menu-label\\">Latest Jobs</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      <li>\\n        <a href=\\"/category/result\\" class=\\"")
+    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F4BC}</span>\\n          <span class=\\"menu-label\\">Latest Jobs</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      ")
+    ;  } 
+    ; __append("\\n      ")
+    ;  if (isCatShown('result')) { 
+    ; __append("\\n      <li>\\n        <a href=\\"/category/result\\" class=\\"")
     ; __append(escapeFn( cur.includes('result') ? 'active' : '' ))
-    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F3C6}</span>\\n          <span class=\\"menu-label\\">Results</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      <li>\\n        <a href=\\"/category/admit-card\\" class=\\"")
+    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F3C6}</span>\\n          <span class=\\"menu-label\\">Results</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      ")
+    ;  } 
+    ; __append("\\n      ")
+    ;  if (isCatShown('admit-card')) { 
+    ; __append("\\n      <li>\\n        <a href=\\"/category/admit-card\\" class=\\"")
     ; __append(escapeFn( cur.includes('admit-card') ? 'active' : '' ))
-    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F3AB}</span>\\n          <span class=\\"menu-label\\">Admit Card</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      <li>\\n        <a href=\\"/category/answer-key\\" class=\\"")
+    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F3AB}</span>\\n          <span class=\\"menu-label\\">Admit Card</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      ")
+    ;  } 
+    ; __append("\\n      ")
+    ;  if (isCatShown('answer-key')) { 
+    ; __append("\\n      <li>\\n        <a href=\\"/category/answer-key\\" class=\\"")
     ; __append(escapeFn( cur.includes('answer-key') ? 'active' : '' ))
-    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F511}</span>\\n          <span class=\\"menu-label\\">Answer Key</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      <li>\\n        <a href=\\"/category/syllabus\\" class=\\"")
+    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F511}</span>\\n          <span class=\\"menu-label\\">Answer Key</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      ")
+    ;  } 
+    ; __append("\\n      ")
+    ;  if (isCatShown('syllabus')) { 
+    ; __append("\\n      <li>\\n        <a href=\\"/category/syllabus\\" class=\\"")
     ; __append(escapeFn( cur.includes('syllabus') ? 'active' : '' ))
     ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F4DA}</span>\\n          <span class=\\"menu-label\\">Syllabus</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      ")
+    ;  } 
+    ; __append("\\n      ")
     ;  if (false) { /* Hidden for now as requested: Candidate Utilities & Tools */ 
     ; __append("\\n      <li class=\\"nav-dropdown-item ")
     ; __append(escapeFn( cur.includes('/tools/') ? 'active' : '' ))
@@ -83191,7 +83327,17 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( activeFavicon ))
     ; __append("\\">\\n  ")
     ;  } 
-    ; __append("\\n\\n  <!-- Stylesheet -->\\n  <link rel=\\"stylesheet\\" href=\\"/css/style.css\\">\\n\\n  <!-- High-Speed Menu Prefetching for Instant Navigation -->\\n  <link rel=\\"prefetch\\" href=\\"/category/latest-jobs\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/result\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/admit-card\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/answer-key\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/syllabus\\">\\n\\n  <!-- JSON-LD Schema.org Structured Data: WebSite -->\\n  <script type=\\"application/ld+json\\">\\n  {\\n    \\"@context\\": \\"https://schema.org\\",\\n    \\"@type\\": \\"WebSite\\",\\n    \\"name\\": \\"")
+    ; __append("\\n\\n  <!-- Stylesheet -->\\n  <link rel=\\"stylesheet\\" href=\\"/css/style.css\\">\\n\\n  <!-- High-Speed Menu Prefetching for Instant Navigation -->\\n  ")
+    ;  ['latest-jobs', 'result', 'admit-card', 'answer-key', 'syllabus'].forEach(catSlug => { 
+    ; __append("\\n    ")
+    ;  if (typeof visibleCategories === 'undefined' || visibleCategories[catSlug] !== false) { 
+    ; __append("\\n  <link rel=\\"prefetch\\" href=\\"/category/")
+    ; __append(escapeFn( catSlug ))
+    ; __append("\\">\\n    ")
+    ;  } 
+    ; __append("\\n  ")
+    ;  }); 
+    ; __append("\\n\\n  <!-- JSON-LD Schema.org Structured Data: WebSite -->\\n  <script type=\\"application/ld+json\\">\\n  {\\n    \\"@context\\": \\"https://schema.org\\",\\n    \\"@type\\": \\"WebSite\\",\\n    \\"name\\": \\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' ))
     ; __append("\\",\\n    \\"alternateName\\": [\\"GovtExamZone\\", \\"Govt Exam Zone Official\\", \\"GEZ Official\\"],\\n    \\"url\\": \\"")
     ; __append(escapeFn( siteBase ))
@@ -83224,11 +83370,19 @@ var require_templateEngine = __commonJS({
     ; __append("\\n    ")
     ;  } 
     ; __append("\\n  }\\n  </script>\\n\\n  ")
-    ;  if (typeof settings !== 'undefined' && settings.google_analytics_id) { 
-    ; __append("\\n  <!-- Google Analytics GA4 -->\\n  <script async src=\\"https://www.googletagmanager.com/gtag/js?id=")
-    ; __append(escapeFn( settings.google_analytics_id ))
-    ; __append("\\"></script>\\n  <script>\\n    window.dataLayer = window.dataLayer || [];\\n    function gtag(){dataLayer.push(arguments);}\\n    gtag('js', new Date());\\n    gtag('config', '")
-    ; __append(escapeFn( settings.google_analytics_id ))
+    ; 
+    const rawGaId = (typeof settings !== 'undefined' && settings.google_analytics_id) ? String(settings.google_analytics_id).trim() : '';
+    const gaMatch = rawGaId.match(/\\b(G|GT|UA|AW)-[A-Z0-9-]+\\b/i);
+    const activeGaId = gaMatch ? gaMatch[0].toUpperCase() : rawGaId.replace(/[<>"'\\s]/g, '');
+  
+    ; __append("\\n  ")
+    ;  if (activeGaId) { 
+    ; __append("\\n  <!-- Google Analytics (GA4) -->\\n  <script async src=\\"https://www.googletagmanager.com/gtag/js?id=")
+    ; __append(escapeFn( activeGaId ))
+    ; __append("\\"></script>\\n  <script>\\n    window.dataLayer = window.dataLayer || [];\\n    function gtag(){dataLayer.push(arguments);}\\n    window.__GA_MEASUREMENT_ID = '")
+    ; __append(escapeFn( activeGaId ))
+    ; __append("';\\n    gtag('js', new Date());\\n    gtag('config', '")
+    ; __append(escapeFn( activeGaId ))
     ; __append("');\\n  </script>\\n  ")
     ;  } 
     ; __append("\\n\\n  ")
@@ -83258,20 +83412,43 @@ var require_templateEngine = __commonJS({
     ; __append("</a></h1>\\n          <div class=\\"header-subtitle\\">")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.header_subtitle) ? settings.header_subtitle : 'WWW.GOVTEXAMZONE.COM' ))
     ; __append("</div>\\n        </div>\\n      </div>\\n    </div>\\n  </header>\\n\\n<!-- Main Navigation Menu -->\\n<nav class=\\"main-nav\\" id=\\"mainNavigation\\">\\n  <div class=\\"container nav-inner-container\\">\\n    <!-- Mobile Navigation Topbar (Left: 3-line Menu, Right: Search Icon) -->\\n    <div class=\\"mobile-nav-bar\\">\\n      <button type=\\"button\\" class=\\"nav-toggle-btn\\" id=\\"mobileMenuToggle\\" aria-label=\\"Toggle navigation\\" aria-expanded=\\"false\\">\\n        <span class=\\"toggle-icon\\">\u2630</span>\\n      </button>\\n\\n      <button type=\\"button\\" class=\\"mobile-quick-search-btn\\" id=\\"mobileSearchBtn\\" title=\\"Search Exams, Jobs...\\" aria-label=\\"Search\\">\\n        <span class=\\"search-btn-icon\\">\u{1F50D}</span>\\n      </button>\\n    </div>\\n\\n    <!-- Navigation Menu List -->\\n    <ul class=\\"nav-menu\\" id=\\"primaryNavMenu\\">\\n      ")
-    ;  const cur = typeof currentPath !== 'undefined' ? currentPath : ''; 
+    ; 
+        const cur = typeof currentPath !== 'undefined' ? currentPath : '';
+        const isCatShown = (slug) => typeof visibleCategories === 'undefined' || visibleCategories[slug] !== false;
+      
     ; __append("\\n      <li>\\n        <a href=\\"/\\" class=\\"")
     ; __append(escapeFn( cur === '/' ? 'active' : '' ))
-    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F3E0}</span>\\n          <span class=\\"menu-label\\">Home</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      <li>\\n        <a href=\\"/category/latest-jobs\\" class=\\"")
+    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F3E0}</span>\\n          <span class=\\"menu-label\\">Home</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      ")
+    ;  if (isCatShown('latest-jobs')) { 
+    ; __append("\\n      <li>\\n        <a href=\\"/category/latest-jobs\\" class=\\"")
     ; __append(escapeFn( cur.includes('latest-jobs') ? 'active' : '' ))
-    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F4BC}</span>\\n          <span class=\\"menu-label\\">Latest Jobs</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      <li>\\n        <a href=\\"/category/result\\" class=\\"")
+    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F4BC}</span>\\n          <span class=\\"menu-label\\">Latest Jobs</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      ")
+    ;  } 
+    ; __append("\\n      ")
+    ;  if (isCatShown('result')) { 
+    ; __append("\\n      <li>\\n        <a href=\\"/category/result\\" class=\\"")
     ; __append(escapeFn( cur.includes('result') ? 'active' : '' ))
-    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F3C6}</span>\\n          <span class=\\"menu-label\\">Results</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      <li>\\n        <a href=\\"/category/admit-card\\" class=\\"")
+    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F3C6}</span>\\n          <span class=\\"menu-label\\">Results</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      ")
+    ;  } 
+    ; __append("\\n      ")
+    ;  if (isCatShown('admit-card')) { 
+    ; __append("\\n      <li>\\n        <a href=\\"/category/admit-card\\" class=\\"")
     ; __append(escapeFn( cur.includes('admit-card') ? 'active' : '' ))
-    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F3AB}</span>\\n          <span class=\\"menu-label\\">Admit Card</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      <li>\\n        <a href=\\"/category/answer-key\\" class=\\"")
+    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F3AB}</span>\\n          <span class=\\"menu-label\\">Admit Card</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      ")
+    ;  } 
+    ; __append("\\n      ")
+    ;  if (isCatShown('answer-key')) { 
+    ; __append("\\n      <li>\\n        <a href=\\"/category/answer-key\\" class=\\"")
     ; __append(escapeFn( cur.includes('answer-key') ? 'active' : '' ))
-    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F511}</span>\\n          <span class=\\"menu-label\\">Answer Key</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      <li>\\n        <a href=\\"/category/syllabus\\" class=\\"")
+    ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F511}</span>\\n          <span class=\\"menu-label\\">Answer Key</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      ")
+    ;  } 
+    ; __append("\\n      ")
+    ;  if (isCatShown('syllabus')) { 
+    ; __append("\\n      <li>\\n        <a href=\\"/category/syllabus\\" class=\\"")
     ; __append(escapeFn( cur.includes('syllabus') ? 'active' : '' ))
     ; __append("\\">\\n          <span class=\\"menu-icon\\">\u{1F4DA}</span>\\n          <span class=\\"menu-label\\">Syllabus</span>\\n          <span class=\\"menu-chevron\\">\u203A</span>\\n        </a>\\n      </li>\\n      ")
+    ;  } 
+    ; __append("\\n      ")
     ;  if (false) { /* Hidden for now as requested: Candidate Utilities & Tools */ 
     ; __append("\\n      <li class=\\"nav-dropdown-item ")
     ; __append(escapeFn( cur.includes('/tools/') ? 'active' : '' ))
@@ -83687,8 +83864,8 @@ var require_server = __commonJS({
     app2.use((req, res) => {
       res.status(404);
       res.render("pages/error", {
-        title: "404 - Page Not Found | SarkariResult.com",
-        message: "The page you are looking for does not exist on SarkariResult.com."
+        title: "404 - Page Not Found | Govt Exam Zone",
+        message: "The page you are looking for does not exist on Govt Exam Zone."
       }, (renderErr, html) => {
         if (renderErr) {
           return res.type("text/html").send("<h1>404 - Page Not Found</h1>");
@@ -83713,7 +83890,7 @@ var require_server = __commonJS({
     if (typeof WebSocketPair === "undefined" && !globalThis.__CF_ENV__ && !globalThis.__CF_PAGES__) {
       app2.listen(PORT, () => {
         console.log(`=======================================================`);
-        console.log(`\u2705 Sarkari Result Server running on http://localhost:${PORT}`);
+        console.log(`\u2705 Govt Exam Zone Server running on http://localhost:${PORT}`);
         console.log(`\u{1F512} Admin Panel available at http://localhost:${PORT}/admin`);
         console.log(`   Default credentials: user=${config.admin.username}, pass=${config.admin.password}`);
         console.log(`\u{1F4BE} Cloudflare D1 Database: ${d1.isCloudflareD1 ? "Connected (Remote)" : "Active (Local SQLite emulation)"}`);
@@ -83724,7 +83901,7 @@ var require_server = __commonJS({
     if (typeof WebSocketPair === "undefined" && !globalThis.__CF_ENV__ && !globalThis.__CF_PAGES__) {
       (async function initDatabase() {
         try {
-          console.log("\u{1F680} Initializing Sarkari Result Portal DB...");
+          console.log("\u{1F680} Initializing Govt Exam Zone Portal DB...");
           await d1.init();
           console.log("\u2705 Database schema verified and active.");
           if (!d1.isNativeD1) {

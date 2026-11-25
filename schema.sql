@@ -1,4 +1,4 @@
--- Cloudflare D1 Database Schema for Sarkari Result Clone
+-- Cloudflare D1 Database Schema for Govt Exam Zone Portal
 
 CREATE TABLE IF NOT EXISTS posts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

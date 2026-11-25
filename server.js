@@ -160,8 +160,8 @@ app.use('/', webRoutes);
 app.use((req, res) => {
   res.status(404);
   res.render('pages/error', {
-    title: '404 - Page Not Found | SarkariResult.com',
-    message: 'The page you are looking for does not exist on SarkariResult.com.'
+    title: '404 - Page Not Found | Govt Exam Zone',
+    message: 'The page you are looking for does not exist on Govt Exam Zone.'
   }, (renderErr, html) => {
     if (renderErr) {
       return res.type('text/html').send('<h1>404 - Page Not Found</h1>');
@@ -190,7 +190,7 @@ const PORT = config.server.port || 3000;
 if (typeof WebSocketPair === 'undefined' && !globalThis.__CF_ENV__ && !globalThis.__CF_PAGES__) {
   app.listen(PORT, () => {
     console.log(`=======================================================`);
-    console.log(`✅ Sarkari Result Server running on http://localhost:${PORT}`);
+    console.log(`✅ Govt Exam Zone Server running on http://localhost:${PORT}`);
     console.log(`🔒 Admin Panel available at http://localhost:${PORT}/admin`);
     console.log(`   Default credentials: user=${config.admin.username}, pass=${config.admin.password}`);
     console.log(`💾 Cloudflare D1 Database: ${d1.isCloudflareD1 ? 'Connected (Remote)' : 'Active (Local SQLite emulation)'}`);
@@ -203,7 +203,7 @@ if (typeof WebSocketPair === 'undefined' && !globalThis.__CF_ENV__ && !globalThi
 if (typeof WebSocketPair === 'undefined' && !globalThis.__CF_ENV__ && !globalThis.__CF_PAGES__) {
   (async function initDatabase() {
     try {
-      console.log('🚀 Initializing Sarkari Result Portal DB...');
+      console.log('🚀 Initializing Govt Exam Zone Portal DB...');
       await d1.init();
       console.log('✅ Database schema verified and active.');
       if (!d1.isNativeD1) {

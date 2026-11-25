@@ -255,10 +255,12 @@
               }
             %>
             <% Object.keys(categories).forEach(catKey => { %>
-              <li class="gez-sidebar-cat-item">
-                <a href="/category/<%= catKey %>" class="gez-sidebar-cat-link"><%= categories[catKey].name %></a>
-                <span class="gez-sidebar-cat-count"><%= countMap[catKey] || 0 %></span>
-              </li>
+              <% if (typeof visibleCategories === 'undefined' || visibleCategories[catKey] !== false) { %>
+                <li class="gez-sidebar-cat-item">
+                  <a href="/category/<%= catKey %>" class="gez-sidebar-cat-link"><%= categories[catKey].name %></a>
+                  <span class="gez-sidebar-cat-count"><%= countMap[catKey] || 0 %></span>
+                </li>
+              <% } %>
             <% }) %>
           </ul>
         </div>
