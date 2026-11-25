@@ -13,6 +13,13 @@
   );
 %>
 
+<!-- Post Featured Thumbnail Image (if provided) -->
+<% if (post.thumbnail && post.thumbnail.trim()) { %>
+  <div class="post-featured-thumb" style="margin: 0 0 18px 0; text-align: center;">
+    <img src="<%= post.thumbnail.trim() %>" alt="<%= post.title %>" loading="lazy" style="max-width: 100%; height: auto; max-height: 440px; border-radius: 8px; border: 1px solid #e2e8f0; object-fit: cover; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+  </div>
+<% } %>
+
 <!-- Short Information -->
 <% if (post.short_desc) { %>
   <% if (_isBlogMode) { %>
@@ -78,18 +85,36 @@
 <% } %>
 
 <!-- Age Limit Details -->
-<% if (ageLimit && (ageLimit.min_age || ageLimit.max_age || ageLimit.relaxation)) { %>
+<%
+  const hasCategoryAges = Boolean(ageLimit && Array.isArray(ageLimit.categories) && ageLimit.categories.length > 0);
+  const hasLegacyAges = Boolean(ageLimit && (ageLimit.min_age || ageLimit.max_age || ageLimit.relaxation));
+%>
+<% if (hasCategoryAges || hasLegacyAges) { %>
   <div class="info-card" style="margin-bottom: 20px;" id="agelimit">
     <div class="info-card-header" style="background: #006400;">
       <%= post.category === 'syllabus' ? 'Age Limit & Eligibility Overview ' : (post.category === 'admit-card' ? 'Age Limit & Eligibility Criteria ' : 'Age Limit Details ') %><%= ageLimit.as_on ? `(as on ${ageLimit.as_on})` : '' %>
     </div>
     <div class="info-card-body">
       <ul>
-        <% if (ageLimit.min_age) { %>
-          <li><span class="info-label">Minimum Age : </span><b class="important-val-text"><%= ageLimit.min_age %></b></li>
-        <% } %>
-        <% if (ageLimit.max_age) { %>
-          <li><span class="info-label">Maximum Age : </span><b class="important-val-text"><%= ageLimit.max_age %></b></li>
+        <% if (hasCategoryAges) { %>
+          <% ageLimit.categories.forEach(item => { %>
+            <%
+              const rangeParts = [];
+              if (item.min_age) rangeParts.push('Min: ' + item.min_age);
+              if (item.max_age) rangeParts.push('Max: ' + item.max_age);
+            %>
+            <li>
+              <span class="info-label"><%= item.category %> : </span>
+              <b class="important-val-text"><%= rangeParts.join(' | ') %></b>
+            </li>
+          <% }) %>
+        <% } else { %>
+          <% if (ageLimit.min_age) { %>
+            <li><span class="info-label">Minimum Age : </span><b class="important-val-text"><%= ageLimit.min_age %></b></li>
+          <% } %>
+          <% if (ageLimit.max_age) { %>
+            <li><span class="info-label">Maximum Age : </span><b class="important-val-text"><%= ageLimit.max_age %></b></li>
+          <% } %>
         <% } %>
         <% if (ageLimit.relaxation) { %>
           <li><span class="info-label">Age Relaxation : </span><b class="important-val-text"><%= ageLimit.relaxation %></b></li>
@@ -139,7 +164,18 @@
 </div>
 
 <!-- Category-wise Vacancy Distribution Table -->
-<% if (categoryDetails && categoryDetails.length > 0) { %>
+<%
+  const isCustomCatTable = Boolean(
+    categoryDetails &&
+    !Array.isArray(categoryDetails) &&
+    Array.isArray(categoryDetails.columns) &&
+    categoryDetails.columns.length > 0 &&
+    Array.isArray(categoryDetails.rows) &&
+    categoryDetails.rows.length > 0
+  );
+  const isLegacyCatTable = Boolean(Array.isArray(categoryDetails) && categoryDetails.length > 0);
+%>
+<% if (isCustomCatTable || isLegacyCatTable) { %>
   <div style="text-align: center; margin: 15px 0 5px 0;">
     <h3 style="color: #2b547e; font-size: 18px;">
       <%= post.category === 'syllabus' ? 'Category-Wise Minimum Qualifying Marks Standards' : 'Category Wise Vacancy Details' %>
@@ -147,30 +183,54 @@
   </div>
   <div class="table-responsive">
     <table class="detail-table table-wide">
-      <thead>
-        <tr style="background: #2b547e;">
-          <th><%= post.category === 'syllabus' ? 'Stage / Paper' : 'Post Name' %></th>
-          <th>UR / Gen</th>
-          <th>EWS</th>
-          <th>OBC</th>
-          <th>SC</th>
-          <th>ST</th>
-          <th><%= post.category === 'syllabus' ? 'Standard' : 'Total' %></th>
-        </tr>
-      </thead>
-      <tbody>
-        <% categoryDetails.forEach(c => { %>
-          <tr style="text-align: center;">
-            <td style="text-align: left; font-weight: bold;"><%= c.post_name %></td>
-            <td><%= c.ur || '-' %></td>
-            <td><%= c.ews || '-' %></td>
-            <td><%= c.obc || '-' %></td>
-            <td><%= c.sc || '-' %></td>
-            <td><%= c.st || '-' %></td>
-            <td style="font-weight: bold; color: var(--primary-red);"><%= c.total || '-' %></td>
+      <% if (isCustomCatTable) { %>
+        <thead>
+          <tr style="background: #2b547e;">
+            <% categoryDetails.columns.forEach(col => { %>
+              <th><%= col %></th>
+            <% }) %>
           </tr>
-        <% }) %>
-      </tbody>
+        </thead>
+        <tbody>
+          <% categoryDetails.rows.forEach(row => { %>
+            <tr style="text-align: center;">
+              <% categoryDetails.columns.forEach((col, idx) => { %>
+                <%
+                  const cellVal = (Array.isArray(row) && row[idx] !== undefined && row[idx] !== '') ? row[idx] : '-';
+                  const isFirstCol = idx === 0;
+                  const isTotalCol = idx === categoryDetails.columns.length - 1 && /total|standard/i.test(String(col || ''));
+                %>
+                <td style="<%= isFirstCol ? 'text-align: left; font-weight: bold;' : (isTotalCol ? 'font-weight: bold; color: var(--primary-red);' : '') %>"><%= cellVal %></td>
+              <% }) %>
+            </tr>
+          <% }) %>
+        </tbody>
+      <% } else { %>
+        <thead>
+          <tr style="background: #2b547e;">
+            <th><%= post.category === 'syllabus' ? 'Stage / Paper' : 'Post Name' %></th>
+            <th>UR / Gen</th>
+            <th>EWS</th>
+            <th>OBC</th>
+            <th>SC</th>
+            <th>ST</th>
+            <th><%= post.category === 'syllabus' ? 'Standard' : 'Total' %></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% categoryDetails.forEach(c => { %>
+            <tr style="text-align: center;">
+              <td style="text-align: left; font-weight: bold;"><%= c.post_name %></td>
+              <td><%= c.ur || '-' %></td>
+              <td><%= c.ews || '-' %></td>
+              <td><%= c.obc || '-' %></td>
+              <td><%= c.sc || '-' %></td>
+              <td><%= c.st || '-' %></td>
+              <td style="font-weight: bold; color: var(--primary-red);"><%= c.total || '-' %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      <% } %>
     </table>
   </div>
 <% } %>

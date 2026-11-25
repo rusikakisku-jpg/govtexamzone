@@ -146,14 +146,37 @@
 
           <!-- Favicon Management -->
           <div class="form-group" style="flex: 1; min-width: 280px;">
-            <label for="site_favicon">Website Browser Favicon</label>
+            <%
+              const activeFaviconVal = (typeof settings.site_favicon === 'string') ? settings.site_favicon : '/images/gez-logo.svg';
+              const hasFaviconVal = Boolean(activeFaviconVal && activeFaviconVal.trim());
+            %>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label for="site_favicon" style="margin-bottom: 0;">Website Browser Favicon</label>
+              <button 
+                type="button" 
+                id="removeFaviconBtn" 
+                class="btn btn-sm" 
+                style="background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;"
+                title="Remove custom browser favicon"
+              >
+                🗑️ Delete / Remove Favicon
+              </button>
+            </div>
             <div style="display: flex; gap: 14px; align-items: center; margin-bottom: 10px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px;">
-              <div style="width: 70px; height: 70px; background: #ffffff; border: 1px dashed #94a3b8; border-radius: 6px; display: flex; align-items: center; justify-content: center; padding: 5px; flex-shrink: 0;">
-                <img id="faviconPreviewImg" src="<%= settings.site_favicon || '/images/gez-logo.svg' %>" alt="Current Favicon" style="width: 36px; height: 36px; object-fit: contain;">
+              <div style="width: 70px; height: 70px; background: #ffffff; border: 1px dashed #94a3b8; border-radius: 6px; display: flex; align-items: center; justify-content: center; padding: 5px; flex-shrink: 0; text-align: center;">
+                <% if (hasFaviconVal) { %>
+                  <img id="faviconPreviewImg" src="<%= activeFaviconVal %>" alt="Current Favicon" style="width: 36px; height: 36px; object-fit: contain;">
+                  <span id="faviconNoIconText" style="font-size: 10.5px; font-weight: 600; color: #94a3b8; display: none;">No<br>Favicon</span>
+                <% } else { %>
+                  <img id="faviconPreviewImg" src="" alt="Current Favicon" style="width: 36px; height: 36px; object-fit: contain; display: none;">
+                  <span id="faviconNoIconText" style="font-size: 10.5px; font-weight: 600; color: #94a3b8; display: inline-block;">No<br>Favicon</span>
+                <% } %>
               </div>
-              <div style="font-size: 12px; color: #475569; overflow: hidden;">
+              <div style="font-size: 12px; color: #475569; overflow: hidden; flex: 1;">
                 <div style="font-weight: 700; color: #1e293b; margin-bottom: 2px;">Active Browser Tab Icon</div>
-                <div id="faviconPathText" style="word-break: break-all; font-family: monospace; color: #0284c7;"><%= settings.site_favicon || '/images/gez-logo.svg' %></div>
+                <div id="faviconPathText" style="word-break: break-all; font-family: monospace; color: <%= hasFaviconVal ? '#0284c7' : '#dc2626' %>;">
+                  <%= hasFaviconVal ? activeFaviconVal : 'No custom favicon active (Browser default)' %>
+                </div>
               </div>
             </div>
 
@@ -176,10 +199,10 @@
                 id="site_favicon" 
                 name="site_favicon" 
                 class="form-control" 
-                value="<%= settings.site_favicon || '/images/gez-logo.svg' %>" 
-                placeholder="/images/gez-logo.svg or /favicon.ico"
+                value="<%= activeFaviconVal %>" 
+                placeholder="Leave empty for no custom favicon, or enter /images/gez-logo.svg"
               >
-              <small class="field-hint">ICO, PNG, or SVG format (recommended 32x32 or 48x48). Displays in browser tabs and bookmarks.</small>
+              <small class="field-hint">ICO, PNG, or SVG format (recommended 32x32 or 48x48). Click "Delete / Remove Favicon" above to clear it cleanly.</small>
             </div>
           </div>
         </div>
@@ -220,10 +243,10 @@
           id="copyright_text" 
           name="copyright_text" 
           class="form-control" 
-          value="<%= settings.copyright_text || '© 2026 govtexamzone.com. All Rights Reserved.' %>" 
-          placeholder="© 2026 govtexamzone.com. All Rights Reserved."
+          value="<%= settings.copyright_text || '© {year} govtexamzone.com. All Rights Reserved.' %>" 
+          placeholder="© {year} govtexamzone.com. All Rights Reserved."
         >
-        <small class="field-hint">Displayed at the very bottom of every page.</small>
+        <small class="field-hint">Fetched from backend settings on every page. Use <code>{year}</code> or any <code>20xx</code> year — it automatically updates to the current year on the live website.</small>
       </div>
     </div>
 
@@ -882,103 +905,96 @@
 </style>
 
 <script>
-  // Live preview for Logo file input
-  const logoFileInput = document.getElementById('site_logo_file');
-  const logoPreviewImg = document.getElementById('logoPreviewImg');
-  const logoTextInput = document.getElementById('site_logo');
-  const logoPathText = document.getElementById('logoPathText');
-  const logoNoLogoText = document.getElementById('logoNoLogoText');
-  const removeLogoBtn = document.getElementById('removeLogoBtn');
+  /**
+   * Wire live file preview, URL preview, and remove button for branding assets.
+   */
+  function setupMediaAssetControl(opts) {
+    const fileInput = document.getElementById(opts.fileId);
+    const previewImg = document.getElementById(opts.imgId);
+    const textInput = document.getElementById(opts.textId);
+    const pathText = document.getElementById(opts.pathId);
+    const emptyText = document.getElementById(opts.emptyId);
+    const removeBtn = document.getElementById(opts.removeBtnId);
 
-  if (logoFileInput && logoPreviewImg) {
-    logoFileInput.addEventListener('change', function(e) {
-      const file = e.target.files && e.target.files[0];
-      if (file) {
+    if (fileInput && previewImg) {
+      fileInput.addEventListener('change', function(e) {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
         const reader = new FileReader();
         reader.onload = function(evt) {
-          logoPreviewImg.src = evt.target.result;
-          logoPreviewImg.style.display = 'block';
-          if (logoNoLogoText) logoNoLogoText.style.display = 'none';
-          if (logoPathText) {
-            logoPathText.style.color = '#0284c7';
-            logoPathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';
+          previewImg.src = evt.target.result;
+          previewImg.style.display = 'block';
+          if (emptyText) emptyText.style.display = 'none';
+          if (pathText) {
+            pathText.style.color = '#0284c7';
+            pathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';
           }
         };
         reader.readAsDataURL(file);
-      }
-    });
-  }
+      });
+    }
 
-  // Live preview for Logo text input
-  if (logoTextInput && logoPreviewImg) {
-    logoTextInput.addEventListener('input', function() {
-      const val = this.value.trim();
-      if (val) {
-        logoPreviewImg.src = val;
-        logoPreviewImg.style.display = 'block';
-        if (logoNoLogoText) logoNoLogoText.style.display = 'none';
-        if (logoPathText) {
-          logoPathText.style.color = '#0284c7';
-          logoPathText.textContent = val;
+    if (textInput && previewImg) {
+      textInput.addEventListener('input', function() {
+        const val = this.value.trim();
+        if (val) {
+          previewImg.src = val;
+          previewImg.style.display = 'block';
+          if (emptyText) emptyText.style.display = 'none';
+          if (pathText) {
+            pathText.style.color = '#0284c7';
+            pathText.textContent = val;
+          }
+        } else {
+          previewImg.src = '';
+          previewImg.style.display = 'none';
+          if (emptyText) emptyText.style.display = 'inline-block';
+          if (pathText) {
+            pathText.style.color = '#dc2626';
+            pathText.textContent = opts.emptyStatus;
+          }
         }
-      } else {
-        logoPreviewImg.src = '';
-        logoPreviewImg.style.display = 'none';
-        if (logoNoLogoText) logoNoLogoText.style.display = 'inline-block';
-        if (logoPathText) {
-          logoPathText.style.color = '#dc2626';
-          logoPathText.textContent = 'No logo active (Header displays text title only)';
+      });
+    }
+
+    if (removeBtn && textInput) {
+      removeBtn.addEventListener('click', function() {
+        textInput.value = '';
+        if (fileInput) fileInput.value = '';
+        if (previewImg) {
+          previewImg.src = '';
+          previewImg.style.display = 'none';
         }
-      }
-    });
+        if (emptyText) emptyText.style.display = 'inline-block';
+        if (pathText) {
+          pathText.style.color = '#dc2626';
+          pathText.textContent = opts.clearedStatus;
+        }
+      });
+    }
   }
 
-  // Live Remove Logo Button
-  if (removeLogoBtn && logoTextInput) {
-    removeLogoBtn.addEventListener('click', function() {
-      logoTextInput.value = '';
-      if (logoFileInput) logoFileInput.value = '';
-      if (logoPreviewImg) {
-        logoPreviewImg.src = '';
-        logoPreviewImg.style.display = 'none';
-      }
-      if (logoNoLogoText) logoNoLogoText.style.display = 'inline-block';
-      if (logoPathText) {
-        logoPathText.style.color = '#dc2626';
-        logoPathText.textContent = 'Logo cleared. Click "Save Settings" below to apply changes.';
-      }
-    });
-  }
+  setupMediaAssetControl({
+    fileId: 'site_logo_file',
+    imgId: 'logoPreviewImg',
+    textId: 'site_logo',
+    pathId: 'logoPathText',
+    emptyId: 'logoNoLogoText',
+    removeBtnId: 'removeLogoBtn',
+    emptyStatus: 'No logo active (Header displays text title only)',
+    clearedStatus: 'Logo cleared. Click "Save All Settings" below to apply changes.'
+  });
 
-  // Live preview for Favicon file input
-  const faviconFileInput = document.getElementById('site_favicon_file');
-  const faviconPreviewImg = document.getElementById('faviconPreviewImg');
-  const faviconTextInput = document.getElementById('site_favicon');
-  const faviconPathText = document.getElementById('faviconPathText');
-
-  if (faviconFileInput && faviconPreviewImg) {
-    faviconFileInput.addEventListener('change', function(e) {
-      const file = e.target.files && e.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = function(evt) {
-          faviconPreviewImg.src = evt.target.result;
-          if (faviconPathText) faviconPathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';
-        };
-        reader.readAsDataURL(file);
-      }
-    });
-  }
-
-  // Live preview for Favicon text input
-  if (faviconTextInput && faviconPreviewImg) {
-    faviconTextInput.addEventListener('input', function() {
-      if (this.value.trim()) {
-        faviconPreviewImg.src = this.value.trim();
-        if (faviconPathText) faviconPathText.textContent = this.value.trim();
-      }
-    });
-  }
+  setupMediaAssetControl({
+    fileId: 'site_favicon_file',
+    imgId: 'faviconPreviewImg',
+    textId: 'site_favicon',
+    pathId: 'faviconPathText',
+    emptyId: 'faviconNoIconText',
+    removeBtnId: 'removeFaviconBtn',
+    emptyStatus: 'No custom favicon active (Browser default)',
+    clearedStatus: 'Favicon cleared. Click "Save All Settings" below to apply changes.'
+  });
 
   // Interactive visual selection for Post Layout cards
   document.querySelectorAll('.layout-option-card input[type="radio"]').forEach(function(radio) {

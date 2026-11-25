@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS posts (
     category_details TEXT,   -- JSON formatted string
     how_to_apply TEXT,
     article_content TEXT,
+    thumbnail TEXT,
     links TEXT,              -- JSON formatted string
     notification_pdf TEXT,   -- Cloudflare R2 or local storage URL
     admit_card_url TEXT,

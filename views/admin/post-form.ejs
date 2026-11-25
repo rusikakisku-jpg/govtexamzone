@@ -112,6 +112,36 @@
       </div>
     </div>
 
+    <!-- Post Thumbnail / Featured Image -->
+    <div style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+        <div>
+          <h3 style="margin: 0; font-size: 15px; color: #1e293b;">🖼️ Post Thumbnail / Featured Image (Optional)</h3>
+          <small style="color: #64748b;">Displayed on the post page &amp; used for WhatsApp/Telegram/Google social share previews (OG Image)</small>
+        </div>
+        <button type="button" id="removeThumbBtn" class="btn btn-sm" style="background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; font-size: 11.5px; font-weight: 600;">
+          🗑️ Remove Thumbnail
+        </button>
+      </div>
+      <% const hasThumb = Boolean(post && post.thumbnail && post.thumbnail.trim()); %>
+      <div class="form-row" style="align-items: center;">
+        <div class="form-group" style="max-width: 160px; margin-bottom: 0;">
+          <div style="width: 140px; height: 84px; background: #ffffff; border: 1px dashed #94a3b8; border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; text-align: center;">
+            <img id="thumbPreviewImg" src="<%= hasThumb ? post.thumbnail : '' %>" alt="Post Thumbnail Preview" style="width: 100%; height: 100%; object-fit: cover; display: <%= hasThumb ? 'block' : 'none' %>;">
+            <span id="thumbNoImgText" style="font-size: 11px; color: #64748b; font-weight: 600; display: <%= hasThumb ? 'none' : 'inline-block' %>;">No Thumbnail</span>
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label style="font-size: 12px; font-weight: 600; color: #475569;">Upload Thumbnail Image (to R2)</label>
+          <input type="file" id="thumbnail_file" name="thumbnail_file" class="form-control" accept="image/png,image/jpeg,image/webp,image/svg+xml" style="padding: 6px;">
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label for="thumbnail_url" style="font-size: 12px; font-weight: 600; color: #475569;">Or Paste Thumbnail Image URL</label>
+          <input type="text" id="thumbnail_url" name="thumbnail_url" class="form-control" placeholder="https://... or /uploads/..." value="<%= hasThumb ? post.thumbnail : '' %>">
+        </div>
+      </div>
+    </div>
+
     <!-- Cloudflare R2 Document Upload & Link Section -->
     <div style="background: #f0fdf4; border: 1px solid #86efac; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
       <h3 style="color: #166534; font-size: 15px; margin-top: 0; margin-bottom: 12px;">
@@ -212,38 +242,40 @@
 
     <!-- Visual Interactive Builder: Category-Wise Vacancy Details -->
     <div style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
         <div>
           <h3 style="margin: 0; font-size: 15px; color: #1e293b;">📊 Category-Wise Vacancy Distribution</h3>
-          <small style="color: #64748b;">Post / Group Name with UR, EWS, OBC, SC, ST and Total breakdown</small>
+          <small style="color: #64748b;">Create unlimited rows &amp; columns — rename, add, or remove any column header or row</small>
         </div>
-        <button type="button" id="btn-add-cat" class="btn btn-secondary btn-sm">+ Add Category Row</button>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button type="button" id="btn-add-cat-col" class="btn btn-secondary btn-sm">+ Add Column</button>
+          <button type="button" id="btn-add-cat" class="btn btn-primary btn-sm">+ Add Row</button>
+        </div>
       </div>
       <div id="cat-rows-container" style="overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;"></div>
       <input type="hidden" id="category_details" name="category_details" value="<%= post ? (post.category_details || '[]') : '[]' %>">
     </div>
 
-    <!-- Visual Friendly Builder: Age Limit Details -->
+    <!-- Visual Interactive Builder: Category-Wise Age Limit Details -->
     <div style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
-      <h3 style="margin: 0 0 10px 0; font-size: 15px; color: #1e293b;">👤 Age Limit Details</h3>
-      <div class="form-row">
-        <div class="form-group">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+        <div>
+          <h3 style="margin: 0; font-size: 15px; color: #1e293b;">👤 Age Limit Details (Category-Wise)</h3>
+          <small style="color: #64748b;">Add category-wise Minimum &amp; Maximum age limit rows just like Application Fee Details</small>
+        </div>
+        <button type="button" id="btn-add-age" class="btn btn-secondary btn-sm">+ Add Age Row</button>
+      </div>
+      <div class="form-row" style="margin-bottom: 12px;">
+        <div class="form-group" style="margin-bottom: 0;">
           <label for="age_as_on">Age Limit (As on Date)</label>
           <input type="text" id="age_as_on" class="form-control" placeholder="e.g. 01/08/2026">
         </div>
-        <div class="form-group">
-          <label for="age_min">Minimum Age</label>
-          <input type="text" id="age_min" class="form-control" placeholder="e.g. 18 Years">
-        </div>
-        <div class="form-group">
-          <label for="age_max">Maximum Age</label>
-          <input type="text" id="age_max" class="form-control" placeholder="e.g. 27 Years">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label for="age_relaxation">Extra Age Relaxation Note (Optional)</label>
+          <input type="text" id="age_relaxation" class="form-control" placeholder="e.g. Age Relaxation Extra as per Rules">
         </div>
       </div>
-      <div class="form-group" style="margin-bottom: 0;">
-        <label for="age_relaxation">Age Relaxation Details</label>
-        <input type="text" id="age_relaxation" class="form-control" placeholder="e.g. Age Relaxation Extra as per Rules">
-      </div>
+      <div id="age-rows-container" style="overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;"></div>
       <input type="hidden" id="age_limit" name="age_limit" value="<%= post ? (post.age_limit || '{}') : '{}' %>">
     </div>
 

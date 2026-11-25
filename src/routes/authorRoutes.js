@@ -12,6 +12,7 @@ const {
   getAuthorFromToken
 } = require('../middleware/authorAuth');
 const { slugify, CATEGORIES, safeJsonParse, formatDate } = require('../utils/helpers');
+const { saveUploadedAsset } = require('../utils/uploadHelper');
 
 // Multer memory storage for direct R2 streaming
 const upload = multer({
@@ -280,6 +281,7 @@ router.get('/posts/new', (req, res) => {
 
 // Author New Post Submission
 router.post('/posts/new', upload.fields([
+  { name: 'thumbnail_file', maxCount: 1 },
   { name: 'notification_file', maxCount: 1 },
   { name: 'admit_card_file', maxCount: 1 },
   { name: 'result_file', maxCount: 1 }
@@ -302,38 +304,29 @@ router.post('/posts/new', upload.fields([
     }
 
     // Process file uploads to R2 or Local Storage
+    let thumbnail = (req.body.thumbnail_url || '').trim();
     let notificationPdf = req.body.notification_pdf_url || '';
     let admitCardUrl = req.body.admit_card_url || '';
     let resultUrl = req.body.result_url || '';
 
+    if (req.files?.thumbnail_file?.[0]) {
+      const uploadRes = await saveUploadedAsset(req.files.thumbnail_file[0]);
+      thumbnail = uploadRes.fileUrl;
+    }
+
     if (req.files?.notification_file?.[0]) {
-      const f = req.files.notification_file[0];
-      const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+      const uploadRes = await saveUploadedAsset(req.files.notification_file[0]);
       notificationPdf = uploadRes.fileUrl;
-      await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
     }
 
     if (req.files?.admit_card_file?.[0]) {
-      const f = req.files.admit_card_file[0];
-      const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+      const uploadRes = await saveUploadedAsset(req.files.admit_card_file[0]);
       admitCardUrl = uploadRes.fileUrl;
-      await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
     }
 
     if (req.files?.result_file?.[0]) {
-      const f = req.files.result_file[0];
-      const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+      const uploadRes = await saveUploadedAsset(req.files.result_file[0]);
       resultUrl = uploadRes.fileUrl;
-      await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
     }
 
     // Format JSON fields
@@ -351,14 +344,14 @@ router.post('/posts/new', upload.fields([
       INSERT INTO posts (
         title, slug, category, department, post_date, last_date,
         short_desc, total_vacancy, important_dates, application_fee,
-        age_limit, vacancy_details, category_details, how_to_apply, article_content,
+        age_limit, vacancy_details, category_details, how_to_apply, article_content, thumbnail,
         links, notification_pdf, admit_card_url, result_url,
         apply_online_url, official_website_url, is_featured, status,
         author_id
       ) VALUES (
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
-        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?
@@ -366,7 +359,7 @@ router.post('/posts/new', upload.fields([
     `).bind(
       title, finalSlug, category, department || null, post_date || null, last_date || null,
       short_desc || null, total_vacancy || null, importantDates, applicationFee,
-      ageLimit, vacancyDetails, categoryDetails, how_to_apply || null, article_content || null,
+      ageLimit, vacancyDetails, categoryDetails, how_to_apply || null, article_content || null, thumbnail || null,
       links, notificationPdf || null, admitCardUrl || null, resultUrl || null,
       apply_online_url || null, official_website_url || null, 0, postStatus,
       author.id // Strictly assigned to the logged-in author
@@ -407,6 +400,7 @@ router.get('/posts/edit/:id', async (req, res, next) => {
 
 // Author Edit Post Submission
 router.post('/posts/edit/:id', upload.fields([
+  { name: 'thumbnail_file', maxCount: 1 },
   { name: 'notification_file', maxCount: 1 },
   { name: 'admit_card_file', maxCount: 1 },
   { name: 'result_file', maxCount: 1 }
@@ -424,7 +418,7 @@ router.post('/posts/edit/:id', upload.fields([
     }
 
     const {
-      slug, notification_pdf_url, admit_card_url, result_url, status
+      slug, thumbnail_url, notification_pdf_url, admit_card_url, result_url, status
     } = req.body;
 
     const title = req.body.title || currentPost.title;
@@ -442,38 +436,29 @@ router.post('/posts/edit/:id', upload.fields([
 
     let finalSlug = slug ? slugify(slug) : (currentPost.slug || slugify(title));
 
+    let thumbnail = thumbnail_url !== undefined ? (thumbnail_url.trim() || null) : (currentPost.thumbnail || null);
     let notificationPdf = notification_pdf_url !== undefined ? (notification_pdf_url.trim() || null) : (currentPost.notification_pdf || null);
     let admitCardUrl = admit_card_url !== undefined ? (admit_card_url.trim() || null) : (currentPost.admit_card_url || null);
     let resultUrl = result_url !== undefined ? (result_url.trim() || null) : (currentPost.result_url || null);
 
+    if (req.files?.thumbnail_file?.[0]) {
+      const uploadRes = await saveUploadedAsset(req.files.thumbnail_file[0]);
+      thumbnail = uploadRes.fileUrl;
+    }
+
     if (req.files?.notification_file?.[0]) {
-      const f = req.files.notification_file[0];
-      const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+      const uploadRes = await saveUploadedAsset(req.files.notification_file[0]);
       notificationPdf = uploadRes.fileUrl;
-      await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
     }
 
     if (req.files?.admit_card_file?.[0]) {
-      const f = req.files.admit_card_file[0];
-      const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+      const uploadRes = await saveUploadedAsset(req.files.admit_card_file[0]);
       admitCardUrl = uploadRes.fileUrl;
-      await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
     }
 
     if (req.files?.result_file?.[0]) {
-      const f = req.files.result_file[0];
-      const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+      const uploadRes = await saveUploadedAsset(req.files.result_file[0]);
       resultUrl = uploadRes.fileUrl;
-      await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
     }
 
     const importantDates = req.body.important_dates || currentPost.important_dates || '[]';
@@ -488,7 +473,7 @@ router.post('/posts/edit/:id', upload.fields([
         UPDATE posts SET
           title = ?, slug = ?, category = ?, department = ?, post_date = ?, last_date = ?,
           short_desc = ?, total_vacancy = ?, important_dates = ?, application_fee = ?,
-          age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?, article_content = ?,
+          age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?, article_content = ?, thumbnail = ?,
           links = ?, notification_pdf = ?, admit_card_url = ?, result_url = ?,
           apply_online_url = ?, official_website_url = ?, status = ?,
           updated_at = CURRENT_TIMESTAMP
@@ -496,7 +481,7 @@ router.post('/posts/edit/:id', upload.fields([
       `).bind(
         title, finalSlug, category, department, post_date, last_date,
         short_desc, total_vacancy, importantDates, applicationFee,
-        ageLimit, vacancyDetails, categoryDetails, how_to_apply, article_content,
+        ageLimit, vacancyDetails, categoryDetails, how_to_apply, article_content, thumbnail,
         links, notificationPdf, admitCardUrl, resultUrl,
         apply_online_url, official_website_url, postStatus,
         postId
@@ -506,7 +491,7 @@ router.post('/posts/edit/:id', upload.fields([
         UPDATE posts SET
           title = ?, slug = ?, category = ?, department = ?, post_date = ?, last_date = ?,
           short_desc = ?, total_vacancy = ?, important_dates = ?, application_fee = ?,
-          age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?, article_content = ?,
+          age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?, article_content = ?, thumbnail = ?,
           links = ?, notification_pdf = ?, admit_card_url = ?, result_url = ?,
           apply_online_url = ?, official_website_url = ?, status = ?,
           updated_at = CURRENT_TIMESTAMP
@@ -514,7 +499,7 @@ router.post('/posts/edit/:id', upload.fields([
       `).bind(
         title, finalSlug, category, department, post_date, last_date,
         short_desc, total_vacancy, importantDates, applicationFee,
-        ageLimit, vacancyDetails, categoryDetails, how_to_apply, article_content,
+        ageLimit, vacancyDetails, categoryDetails, how_to_apply, article_content, thumbnail,
         links, notificationPdf, admitCardUrl, resultUrl,
         apply_online_url, official_website_url, postStatus,
         postId, author.id

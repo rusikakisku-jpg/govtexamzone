@@ -187,56 +187,275 @@ document.addEventListener('DOMContentLoaded', function() {
     vacContainer.appendChild(row);
   }
 
-  // 4. Category-Wise Vacancy Details Builder
+  // 4. Category-Wise Vacancy Distribution Builder (Dynamic Rows & Columns)
   const catContainer = document.getElementById('cat-rows-container');
   const addCatBtn = document.getElementById('btn-add-cat');
+  const addCatColBtn = document.getElementById('btn-add-cat-col');
   const catJsonInput = document.getElementById('category_details');
+
+  let catColumns = ['Post / Group Name', 'UR / Gen', 'EWS', 'OBC', 'SC', 'ST', 'Total'];
+  let catRows = [];
+
+  function normalizeRowLength(row, len) {
+    const out = Array.isArray(row) ? row.slice(0, len) : [];
+    while (out.length < len) out.push('');
+    return out;
+  }
+
+  function renderCatTable() {
+    if (!catContainer) return;
+    catContainer.innerHTML = '';
+
+    const table = document.createElement('table');
+    table.style.cssText = 'width: 100%; border-collapse: separate; border-spacing: 4px; min-width: ' + Math.max(420, catColumns.length * 115 + 50) + 'px;';
+
+    // Header row with editable column titles and delete column buttons
+    const thead = document.createElement('thead');
+    const headTr = document.createElement('tr');
+    catColumns.forEach((colName, colIdx) => {
+      const th = document.createElement('th');
+      th.style.cssText = 'padding: 2px; vertical-align: middle; font-weight: 600;';
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'display: flex; align-items: center; gap: 4px;';
+
+      const colInput = document.createElement('input');
+      colInput.type = 'text';
+      colInput.className = 'form-control cat-col-header';
+      colInput.style.cssText = 'font-weight: 700; font-size: 12px; background: #eff6ff; border-color: #93c5fd; padding: 6px 8px;';
+      colInput.placeholder = 'Col ' + (colIdx + 1);
+      colInput.value = colName || '';
+      colInput.addEventListener('input', () => {
+        catColumns[colIdx] = colInput.value;
+      });
+      wrap.appendChild(colInput);
+
+      if (catColumns.length > 1) {
+        const delColBtn = document.createElement('button');
+        delColBtn.type = 'button';
+        delColBtn.className = 'btn btn-danger btn-sm';
+        delColBtn.style.cssText = 'padding: 4px 7px; font-size: 11px; flex-shrink: 0;';
+        delColBtn.title = 'Remove column';
+        delColBtn.textContent = '✕';
+        delColBtn.addEventListener('click', () => {
+          if (catColumns.length <= 1) return;
+          catColumns.splice(colIdx, 1);
+          catRows = catRows.map(r => r.filter((_, i) => i !== colIdx));
+          renderCatTable();
+        });
+        wrap.appendChild(delColBtn);
+      }
+
+      th.appendChild(wrap);
+      headTr.appendChild(th);
+    });
+
+    const actionTh = document.createElement('th');
+    actionTh.style.cssText = 'width: 38px; text-align: center; font-size: 11px; color: #64748b;';
+    actionTh.textContent = 'Row';
+    headTr.appendChild(actionTh);
+    thead.appendChild(headTr);
+    table.appendChild(thead);
+
+    // Body rows
+    const tbody = document.createElement('tbody');
+    catRows.forEach((rowVals, rowIdx) => {
+      const tr = document.createElement('tr');
+      catColumns.forEach((_, colIdx) => {
+        const td = document.createElement('td');
+        td.style.cssText = 'padding: 2px;';
+        const cellInput = document.createElement('input');
+        cellInput.type = 'text';
+        cellInput.className = 'form-control cat-cell';
+        cellInput.placeholder = catColumns[colIdx] || 'Value';
+        cellInput.value = rowVals[colIdx] || '';
+        cellInput.addEventListener('input', () => {
+          catRows[rowIdx][colIdx] = cellInput.value;
+        });
+        td.appendChild(cellInput);
+        tr.appendChild(td);
+      });
+
+      const delTd = document.createElement('td');
+      delTd.style.cssText = 'text-align: center; padding: 2px;';
+      const delRowBtn = document.createElement('button');
+      delRowBtn.type = 'button';
+      delRowBtn.className = 'btn btn-danger btn-sm';
+      delRowBtn.style.cssText = 'padding: 6px 10px;';
+      delRowBtn.title = 'Remove row';
+      delRowBtn.textContent = '✕';
+      delRowBtn.addEventListener('click', () => {
+        catRows.splice(rowIdx, 1);
+        if (catRows.length === 0) {
+          catRows.push(new Array(catColumns.length).fill(''));
+        }
+        renderCatTable();
+      });
+      delTd.appendChild(delRowBtn);
+      tr.appendChild(delTd);
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    catContainer.appendChild(table);
+  }
 
   if (catContainer && catJsonInput) {
     try {
-      const initialCat = JSON.parse(catJsonInput.value || '[]');
-      if (Array.isArray(initialCat) && initialCat.length > 0) {
-        initialCat.forEach(c => addCatRow(c.post_name, c.ur, c.ews, c.obc, c.sc, c.st, c.total));
+      const parsedCat = JSON.parse(catJsonInput.value || '[]');
+      if (parsedCat && !Array.isArray(parsedCat) && Array.isArray(parsedCat.columns) && parsedCat.columns.length > 0) {
+        catColumns = parsedCat.columns.map(c => String(c || ''));
+        catRows = Array.isArray(parsedCat.rows) && parsedCat.rows.length > 0
+          ? parsedCat.rows.map(r => normalizeRowLength(r, catColumns.length))
+          : [new Array(catColumns.length).fill('')];
+      } else if (Array.isArray(parsedCat) && parsedCat.length > 0) {
+        catRows = parsedCat.map(c => [
+          c.post_name || '', c.ur || '', c.ews || '', c.obc || '', c.sc || '', c.st || '', c.total || ''
+        ]);
       } else {
-        addCatRow('', '', '', '', '', '', '');
+        catRows = [new Array(catColumns.length).fill('')];
       }
     } catch (e) {
-      addCatRow('', '', '', '', '', '', '');
+      catRows = [new Array(catColumns.length).fill('')];
     }
+
+    renderCatTable();
 
     if (addCatBtn) {
-      addCatBtn.addEventListener('click', () => addCatRow('', '', '', '', '', '', ''));
+      addCatBtn.addEventListener('click', () => {
+        catRows.push(new Array(catColumns.length).fill(''));
+        renderCatTable();
+      });
+    }
+
+    if (addCatColBtn) {
+      addCatColBtn.addEventListener('click', () => {
+        catColumns.push('Col ' + (catColumns.length + 1));
+        catRows = catRows.map(r => [...r, '']);
+        renderCatTable();
+      });
     }
   }
 
-  function addCatRow(nameVal = '', urVal = '', ewsVal = '', obcVal = '', scVal = '', stVal = '', totalVal = '') {
-    const row = document.createElement('div');
-    row.className = 'dynamic-row dynamic-row-cat';
-    row.style.cssText = 'display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 1fr auto; gap: 6px; margin-bottom: 8px; align-items: center; min-width: 580px;';
-    row.innerHTML = `
-      <input type="text" placeholder="Post / Group Name" value="${nameVal || ''}" class="form-control cat-name">
-      <input type="text" placeholder="UR" value="${urVal || ''}" class="form-control cat-ur">
-      <input type="text" placeholder="EWS" value="${ewsVal || ''}" class="form-control cat-ews">
-      <input type="text" placeholder="OBC" value="${obcVal || ''}" class="form-control cat-obc">
-      <input type="text" placeholder="SC" value="${scVal || ''}" class="form-control cat-sc">
-      <input type="text" placeholder="ST" value="${stVal || ''}" class="form-control cat-st">
-      <input type="text" placeholder="Total" value="${totalVal || ''}" class="form-control cat-total">
-      <button type="button" class="btn btn-danger btn-sm" style="padding: 6px 10px;" onclick="this.parentElement.remove()" title="Remove row">✕</button>
-    `;
-    catContainer.appendChild(row);
+  // 4B. Post Thumbnail Preview & Remove Controls
+  const thumbFileInput = document.getElementById('thumbnail_file');
+  const thumbUrlInput = document.getElementById('thumbnail_url');
+  const thumbPreviewImg = document.getElementById('thumbPreviewImg');
+  const thumbNoImgText = document.getElementById('thumbNoImgText');
+  const removeThumbBtn = document.getElementById('removeThumbBtn');
+
+  if (thumbFileInput && thumbPreviewImg) {
+    thumbFileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        thumbPreviewImg.src = evt.target.result;
+        thumbPreviewImg.style.display = 'block';
+        if (thumbNoImgText) thumbNoImgText.style.display = 'none';
+      };
+      reader.readAsDataURL(file);
+    });
   }
 
-  // 5. Age Limit Fields Loader
+  if (thumbUrlInput && thumbPreviewImg) {
+    thumbUrlInput.addEventListener('input', () => {
+      const val = thumbUrlInput.value.trim();
+      if (val) {
+        thumbPreviewImg.src = val;
+        thumbPreviewImg.style.display = 'block';
+        if (thumbNoImgText) thumbNoImgText.style.display = 'none';
+      } else {
+        thumbPreviewImg.src = '';
+        thumbPreviewImg.style.display = 'none';
+        if (thumbNoImgText) thumbNoImgText.style.display = 'inline-block';
+      }
+    });
+  }
+
+  if (removeThumbBtn && thumbUrlInput) {
+    removeThumbBtn.addEventListener('click', () => {
+      thumbUrlInput.value = '';
+      if (thumbFileInput) thumbFileInput.value = '';
+      if (thumbPreviewImg) {
+        thumbPreviewImg.src = '';
+        thumbPreviewImg.style.display = 'none';
+      }
+      if (thumbNoImgText) thumbNoImgText.style.display = 'inline-block';
+    });
+  }
+
+  // 5. Category-Wise Age Limit Builder
+  const ageContainer = document.getElementById('age-rows-container');
+  const addAgeBtn = document.getElementById('btn-add-age');
   const ageJsonInput = document.getElementById('age_limit');
+
+  function addAgeRow(catVal = '', minVal = '', maxVal = '') {
+    if (!ageContainer) return;
+    const row = document.createElement('div');
+    row.className = 'dynamic-row dynamic-row-age';
+    row.style.cssText = 'display: grid; grid-template-columns: 2fr 1.2fr 1.2fr auto; gap: 8px; margin-bottom: 8px; align-items: center; min-width: 440px;';
+
+    const catInput = document.createElement('input');
+    catInput.type = 'text';
+    catInput.placeholder = 'Category (e.g. General / UR, OBC, SC / ST)';
+    catInput.className = 'form-control age-cat';
+    catInput.value = catVal || '';
+
+    const minInput = document.createElement('input');
+    minInput.type = 'text';
+    minInput.placeholder = 'Min Age (e.g. 18 Years)';
+    minInput.className = 'form-control age-min';
+    minInput.value = minVal || '';
+
+    const maxInput = document.createElement('input');
+    maxInput.type = 'text';
+    maxInput.placeholder = 'Max Age (e.g. 27 Years)';
+    maxInput.className = 'form-control age-max';
+    maxInput.value = maxVal || '';
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'btn btn-danger btn-sm';
+    delBtn.style.cssText = 'padding: 6px 10px;';
+    delBtn.title = 'Remove row';
+    delBtn.textContent = '✕';
+    delBtn.addEventListener('click', () => row.remove());
+
+    row.appendChild(catInput);
+    row.appendChild(minInput);
+    row.appendChild(maxInput);
+    row.appendChild(delBtn);
+    ageContainer.appendChild(row);
+  }
+
   if (ageJsonInput) {
     try {
       const ageVal = ageJsonInput.value ? JSON.parse(ageJsonInput.value) : {};
       if (document.getElementById('age_as_on')) document.getElementById('age_as_on').value = ageVal.as_on || '';
-      if (document.getElementById('age_min')) document.getElementById('age_min').value = ageVal.min_age || '';
-      if (document.getElementById('age_max')) document.getElementById('age_max').value = ageVal.max_age || '';
       if (document.getElementById('age_relaxation')) document.getElementById('age_relaxation').value = ageVal.relaxation || '';
+
+      if (ageContainer) {
+        if (Array.isArray(ageVal.categories) && ageVal.categories.length > 0) {
+          ageVal.categories.forEach(item => addAgeRow(item.category, item.min_age, item.max_age));
+        } else if (ageVal.min_age || ageVal.max_age) {
+          addAgeRow('General / All Categories', ageVal.min_age || '', ageVal.max_age || '');
+        } else {
+          addAgeRow('General / UR', '', '');
+          addAgeRow('OBC', '', '');
+          addAgeRow('SC / ST', '', '');
+        }
+      }
     } catch (e) {
       console.error('Error parsing age_limit:', e);
+      if (ageContainer) {
+        addAgeRow('General / UR', '', '');
+        addAgeRow('OBC', '', '');
+        addAgeRow('SC / ST', '', '');
+      }
+    }
+
+    if (addAgeBtn) {
+      addAgeBtn.addEventListener('click', () => addAgeRow('', '', ''));
     }
   }
 
@@ -318,37 +537,43 @@ document.addEventListener('DOMContentLoaded', function() {
       vacJsonInput.value = JSON.stringify(vacArr);
     }
 
-    // Sync category details
+    // Sync category details (dynamic columns & rows)
     if (catContainer && catJsonInput) {
-      const catRows = catContainer.querySelectorAll('.dynamic-row');
-      const catArr = [];
-      catRows.forEach(r => {
-        const nm = r.querySelector('.cat-name')?.value.trim();
-        const ur = r.querySelector('.cat-ur')?.value.trim();
-        const ews = r.querySelector('.cat-ews')?.value.trim();
-        const obc = r.querySelector('.cat-obc')?.value.trim();
-        const sc = r.querySelector('.cat-sc')?.value.trim();
-        const st = r.querySelector('.cat-st')?.value.trim();
-        const tot = r.querySelector('.cat-total')?.value.trim();
-        if (nm || ur || ews || obc || sc || st || tot) {
-          catArr.push({ post_name: nm, ur, ews, obc, sc, st, total: tot });
-        }
-      });
-      catJsonInput.value = JSON.stringify(catArr);
+      const cleanCols = catColumns.map((c, idx) => (c || '').trim() || ('Column ' + (idx + 1)));
+      const nonEmptyRows = catRows
+        .map(r => normalizeRowLength(r, cleanCols.length).map(cell => (cell || '').trim()))
+        .filter(r => r.some(cell => cell.length > 0));
+
+      catJsonInput.value = nonEmptyRows.length > 0
+        ? JSON.stringify({ columns: cleanCols, rows: nonEmptyRows })
+        : '[]';
     }
 
-    // Sync age limit
+    // Sync age limit (category-wise rows + optional as_on & relaxation note)
     if (ageJsonInput) {
       const asOn = document.getElementById('age_as_on')?.value.trim() || '';
-      const minAge = document.getElementById('age_min')?.value.trim() || '';
-      const maxAge = document.getElementById('age_max')?.value.trim() || '';
       const relax = document.getElementById('age_relaxation')?.value.trim() || '';
-      if (asOn || minAge || maxAge || relax) {
+      const categoriesArr = [];
+      if (ageContainer) {
+        ageContainer.querySelectorAll('.dynamic-row-age').forEach(r => {
+          const cat = r.querySelector('.age-cat')?.value.trim() || '';
+          const minAge = r.querySelector('.age-min')?.value.trim() || '';
+          const maxAge = r.querySelector('.age-max')?.value.trim() || '';
+          if (minAge || maxAge) {
+            categoriesArr.push({
+              category: cat || 'General',
+              min_age: minAge,
+              max_age: maxAge
+            });
+          }
+        });
+      }
+
+      if (asOn || relax || categoriesArr.length > 0) {
         ageJsonInput.value = JSON.stringify({
           as_on: asOn,
-          min_age: minAge,
-          max_age: maxAge,
-          relaxation: relax
+          relaxation: relax,
+          categories: categoriesArr
         });
       } else {
         ageJsonInput.value = '{}';

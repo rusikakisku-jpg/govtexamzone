@@ -28229,6 +28229,7 @@ var require_d1Client = __commonJS({
     category_details TEXT,
     how_to_apply TEXT,
     article_content TEXT,
+    thumbnail TEXT,
     links TEXT,
     notification_pdf TEXT,
     admit_card_url TEXT,
@@ -28383,6 +28384,10 @@ var require_d1Client = __commonJS({
               this.localDb.run("ALTER TABLE posts ADD COLUMN article_content TEXT");
               console.log("\u2705 Migrated: added article_content column to posts table.");
             }
+            if (!colNames.includes("thumbnail")) {
+              this.localDb.run("ALTER TABLE posts ADD COLUMN thumbnail TEXT");
+              console.log("\u2705 Migrated: added thumbnail column to posts table.");
+            }
           }
           const resAuthors = this.localDb.exec("PRAGMA table_info(authors)");
           if (resAuthors && resAuthors[0] && resAuthors[0].values) {
@@ -28446,6 +28451,10 @@ var require_d1Client = __commonJS({
             await this.queryRemote("ALTER TABLE posts ADD COLUMN article_content TEXT");
           } catch (migErr) {
           }
+          try {
+            await this.queryRemote("ALTER TABLE posts ADD COLUMN thumbnail TEXT");
+          } catch (migErr) {
+          }
           console.log("\u2705 Cloudflare D1 remote schema verified.");
         } catch (err) {
           console.warn("\u26A0\uFE0F Warning during remote D1 schema initialization:", err.message);
@@ -28479,6 +28488,10 @@ var require_d1Client = __commonJS({
           console.log("\u2705 Native Cloudflare D1 tables and indexes verified.");
           try {
             await nativeD1.prepare("ALTER TABLE posts ADD COLUMN article_content TEXT").run();
+          } catch (colErr) {
+          }
+          try {
+            await nativeD1.prepare("ALTER TABLE posts ADD COLUMN thumbnail TEXT").run();
           } catch (colErr) {
           }
           try {
@@ -74880,6 +74893,32 @@ var require_auth = __commonJS({
   }
 });
 
+// src/utils/uploadHelper.js
+var require_uploadHelper = __commonJS({
+  "src/utils/uploadHelper.js"(exports, module) {
+    var d1 = require_d1Client();
+    var r2 = require_r2Client();
+    async function saveUploadedAsset(file) {
+      const uploadRes = await r2.uploadFile(file.buffer, file.originalname, file.mimetype);
+      await d1.prepare(`
+    INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).bind(
+        uploadRes.originalName,
+        uploadRes.fileKey,
+        uploadRes.fileUrl,
+        uploadRes.storageType,
+        uploadRes.mimeType,
+        uploadRes.size
+      ).run();
+      return uploadRes;
+    }
+    module.exports = {
+      saveUploadedAsset
+    };
+  }
+});
+
 // src/routes/adminRoutes.js
 var require_adminRoutes = __commonJS({
   "src/routes/adminRoutes.js"(exports, module) {
@@ -74892,6 +74931,7 @@ var require_adminRoutes = __commonJS({
     var { requireAuth, setAuthCookie, clearAuthCookie } = require_auth();
     var { hashPassword } = require_authorAuth();
     var { getAdminBase, getPublicBase, getAdminUrl, isAdminSubdomainRequest } = require_adminHost();
+    var { saveUploadedAsset } = require_uploadHelper();
     var { slugify, CATEGORIES, safeJsonParse, formatDate } = require_helpers();
     var upload = multer({
       storage: multer.memoryStorage(),
@@ -75049,6 +75089,7 @@ var require_adminRoutes = __commonJS({
       }
     });
     router.post("/posts/new", upload.fields([
+      { name: "thumbnail_file", maxCount: 1 },
       { name: "notification_file", maxCount: 1 },
       { name: "admit_card_file", maxCount: 1 },
       { name: "result_file", maxCount: 1 }
@@ -75076,35 +75117,25 @@ var require_adminRoutes = __commonJS({
         if (existing) {
           finalSlug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
         }
+        let thumbnail = (req.body.thumbnail_url || "").trim();
         let notificationPdf = req.body.notification_pdf_url || "";
         let admitCardUrl = req.body.admit_card_url || "";
         let resultUrl = req.body.result_url || "";
+        if (req.files?.thumbnail_file?.[0]) {
+          const uploadRes = await saveUploadedAsset(req.files.thumbnail_file[0]);
+          thumbnail = uploadRes.fileUrl;
+        }
         if (req.files?.notification_file?.[0]) {
-          const f = req.files.notification_file[0];
-          const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+          const uploadRes = await saveUploadedAsset(req.files.notification_file[0]);
           notificationPdf = uploadRes.fileUrl;
-          await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
         }
         if (req.files?.admit_card_file?.[0]) {
-          const f = req.files.admit_card_file[0];
-          const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+          const uploadRes = await saveUploadedAsset(req.files.admit_card_file[0]);
           admitCardUrl = uploadRes.fileUrl;
-          await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
         }
         if (req.files?.result_file?.[0]) {
-          const f = req.files.result_file[0];
-          const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+          const uploadRes = await saveUploadedAsset(req.files.result_file[0]);
           resultUrl = uploadRes.fileUrl;
-          await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
         }
         const importantDates = req.body.important_dates ? req.body.important_dates : "[]";
         const applicationFee = req.body.application_fee ? req.body.application_fee : "[]";
@@ -75117,14 +75148,14 @@ var require_adminRoutes = __commonJS({
       INSERT INTO posts (
         title, slug, category, department, post_date, last_date,
         short_desc, total_vacancy, important_dates, application_fee,
-        age_limit, vacancy_details, category_details, how_to_apply, article_content,
+        age_limit, vacancy_details, category_details, how_to_apply, article_content, thumbnail,
         links, notification_pdf, admit_card_url, result_url,
         apply_online_url, official_website_url, is_featured, status,
         author_id
       ) VALUES (
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
-        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?
@@ -75145,6 +75176,7 @@ var require_adminRoutes = __commonJS({
           categoryDetails,
           how_to_apply || null,
           article_content || null,
+          thumbnail || null,
           links,
           notificationPdf || null,
           admitCardUrl || null,
@@ -75179,6 +75211,7 @@ var require_adminRoutes = __commonJS({
       }
     });
     router.post("/posts/edit/:id", upload.fields([
+      { name: "thumbnail_file", maxCount: 1 },
       { name: "notification_file", maxCount: 1 },
       { name: "admit_card_file", maxCount: 1 },
       { name: "result_file", maxCount: 1 }
@@ -75189,6 +75222,7 @@ var require_adminRoutes = __commonJS({
         if (!currentPost) return res.status(404).send("Post not found");
         const {
           slug,
+          thumbnail_url,
           notification_pdf_url,
           admit_card_url,
           result_url,
@@ -75209,35 +75243,25 @@ var require_adminRoutes = __commonJS({
         const is_featured = req.body.is_featured !== void 0 ? req.body.is_featured ? 1 : 0 : currentPost.is_featured;
         const authorId = author_id !== void 0 ? parseInt(author_id, 10) || 1 : currentPost.author_id || 1;
         let finalSlug = slug ? slugify(slug) : currentPost.slug || slugify(title);
+        let thumbnail = thumbnail_url !== void 0 ? thumbnail_url.trim() || null : currentPost.thumbnail || null;
         let notificationPdf = notification_pdf_url !== void 0 ? notification_pdf_url.trim() || null : currentPost.notification_pdf || null;
         let admitCardUrl = admit_card_url !== void 0 ? admit_card_url.trim() || null : currentPost.admit_card_url || null;
         let resultUrl = result_url !== void 0 ? result_url.trim() || null : currentPost.result_url || null;
+        if (req.files?.thumbnail_file?.[0]) {
+          const uploadRes = await saveUploadedAsset(req.files.thumbnail_file[0]);
+          thumbnail = uploadRes.fileUrl;
+        }
         if (req.files?.notification_file?.[0]) {
-          const f = req.files.notification_file[0];
-          const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+          const uploadRes = await saveUploadedAsset(req.files.notification_file[0]);
           notificationPdf = uploadRes.fileUrl;
-          await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
         }
         if (req.files?.admit_card_file?.[0]) {
-          const f = req.files.admit_card_file[0];
-          const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+          const uploadRes = await saveUploadedAsset(req.files.admit_card_file[0]);
           admitCardUrl = uploadRes.fileUrl;
-          await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
         }
         if (req.files?.result_file?.[0]) {
-          const f = req.files.result_file[0];
-          const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+          const uploadRes = await saveUploadedAsset(req.files.result_file[0]);
           resultUrl = uploadRes.fileUrl;
-          await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
         }
         const importantDates = req.body.important_dates || currentPost.important_dates || "[]";
         const applicationFee = req.body.application_fee || currentPost.application_fee || "[]";
@@ -75249,7 +75273,7 @@ var require_adminRoutes = __commonJS({
       UPDATE posts SET
         title = ?, slug = ?, category = ?, department = ?, post_date = ?, last_date = ?,
         short_desc = ?, total_vacancy = ?, important_dates = ?, application_fee = ?,
-        age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?, article_content = ?,
+        age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?, article_content = ?, thumbnail = ?,
         links = ?, notification_pdf = ?, admit_card_url = ?, result_url = ?,
         apply_online_url = ?, official_website_url = ?, is_featured = ?, status = ?,
         author_id = ?,
@@ -75271,6 +75295,7 @@ var require_adminRoutes = __commonJS({
           categoryDetails,
           how_to_apply,
           article_content,
+          thumbnail,
           links,
           notificationPdf,
           admitCardUrl,
@@ -75742,6 +75767,7 @@ var require_authorRoutes = __commonJS({
       getAuthorFromToken
     } = require_authorAuth();
     var { slugify, CATEGORIES, safeJsonParse, formatDate } = require_helpers();
+    var { saveUploadedAsset } = require_uploadHelper();
     var upload = multer({
       storage: multer.memoryStorage(),
       limits: { fileSize: 25 * 1024 * 1024 }
@@ -75959,6 +75985,7 @@ var require_authorRoutes = __commonJS({
       });
     });
     router.post("/posts/new", upload.fields([
+      { name: "thumbnail_file", maxCount: 1 },
       { name: "notification_file", maxCount: 1 },
       { name: "admit_card_file", maxCount: 1 },
       { name: "result_file", maxCount: 1 }
@@ -75985,35 +76012,25 @@ var require_authorRoutes = __commonJS({
         if (existing) {
           finalSlug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
         }
+        let thumbnail = (req.body.thumbnail_url || "").trim();
         let notificationPdf = req.body.notification_pdf_url || "";
         let admitCardUrl = req.body.admit_card_url || "";
         let resultUrl = req.body.result_url || "";
+        if (req.files?.thumbnail_file?.[0]) {
+          const uploadRes = await saveUploadedAsset(req.files.thumbnail_file[0]);
+          thumbnail = uploadRes.fileUrl;
+        }
         if (req.files?.notification_file?.[0]) {
-          const f = req.files.notification_file[0];
-          const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+          const uploadRes = await saveUploadedAsset(req.files.notification_file[0]);
           notificationPdf = uploadRes.fileUrl;
-          await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
         }
         if (req.files?.admit_card_file?.[0]) {
-          const f = req.files.admit_card_file[0];
-          const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+          const uploadRes = await saveUploadedAsset(req.files.admit_card_file[0]);
           admitCardUrl = uploadRes.fileUrl;
-          await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
         }
         if (req.files?.result_file?.[0]) {
-          const f = req.files.result_file[0];
-          const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+          const uploadRes = await saveUploadedAsset(req.files.result_file[0]);
           resultUrl = uploadRes.fileUrl;
-          await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
         }
         const importantDates = req.body.important_dates ? req.body.important_dates : "[]";
         const applicationFee = req.body.application_fee ? req.body.application_fee : "[]";
@@ -76026,14 +76043,14 @@ var require_authorRoutes = __commonJS({
       INSERT INTO posts (
         title, slug, category, department, post_date, last_date,
         short_desc, total_vacancy, important_dates, application_fee,
-        age_limit, vacancy_details, category_details, how_to_apply, article_content,
+        age_limit, vacancy_details, category_details, how_to_apply, article_content, thumbnail,
         links, notification_pdf, admit_card_url, result_url,
         apply_online_url, official_website_url, is_featured, status,
         author_id
       ) VALUES (
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
-        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?
@@ -76054,6 +76071,7 @@ var require_authorRoutes = __commonJS({
           categoryDetails,
           how_to_apply || null,
           article_content || null,
+          thumbnail || null,
           links,
           notificationPdf || null,
           admitCardUrl || null,
@@ -76092,6 +76110,7 @@ var require_authorRoutes = __commonJS({
       }
     });
     router.post("/posts/edit/:id", upload.fields([
+      { name: "thumbnail_file", maxCount: 1 },
       { name: "notification_file", maxCount: 1 },
       { name: "admit_card_file", maxCount: 1 },
       { name: "result_file", maxCount: 1 }
@@ -76106,6 +76125,7 @@ var require_authorRoutes = __commonJS({
         }
         const {
           slug,
+          thumbnail_url,
           notification_pdf_url,
           admit_card_url,
           result_url,
@@ -76124,35 +76144,25 @@ var require_authorRoutes = __commonJS({
         const official_website_url = req.body.official_website_url !== void 0 ? req.body.official_website_url : currentPost.official_website_url || null;
         const postStatus = status || currentPost.status || "active";
         let finalSlug = slug ? slugify(slug) : currentPost.slug || slugify(title);
+        let thumbnail = thumbnail_url !== void 0 ? thumbnail_url.trim() || null : currentPost.thumbnail || null;
         let notificationPdf = notification_pdf_url !== void 0 ? notification_pdf_url.trim() || null : currentPost.notification_pdf || null;
         let admitCardUrl = admit_card_url !== void 0 ? admit_card_url.trim() || null : currentPost.admit_card_url || null;
         let resultUrl = result_url !== void 0 ? result_url.trim() || null : currentPost.result_url || null;
+        if (req.files?.thumbnail_file?.[0]) {
+          const uploadRes = await saveUploadedAsset(req.files.thumbnail_file[0]);
+          thumbnail = uploadRes.fileUrl;
+        }
         if (req.files?.notification_file?.[0]) {
-          const f = req.files.notification_file[0];
-          const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+          const uploadRes = await saveUploadedAsset(req.files.notification_file[0]);
           notificationPdf = uploadRes.fileUrl;
-          await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
         }
         if (req.files?.admit_card_file?.[0]) {
-          const f = req.files.admit_card_file[0];
-          const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+          const uploadRes = await saveUploadedAsset(req.files.admit_card_file[0]);
           admitCardUrl = uploadRes.fileUrl;
-          await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
         }
         if (req.files?.result_file?.[0]) {
-          const f = req.files.result_file[0];
-          const uploadRes = await r2.uploadFile(f.buffer, f.originalname, f.mimetype);
+          const uploadRes = await saveUploadedAsset(req.files.result_file[0]);
           resultUrl = uploadRes.fileUrl;
-          await d1.prepare(`
-        INSERT INTO uploads (original_name, file_key, file_url, storage_type, mime_type, file_size)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(uploadRes.originalName, uploadRes.fileKey, uploadRes.fileUrl, uploadRes.storageType, uploadRes.mimeType, uploadRes.size).run();
         }
         const importantDates = req.body.important_dates || currentPost.important_dates || "[]";
         const applicationFee = req.body.application_fee || currentPost.application_fee || "[]";
@@ -76165,7 +76175,7 @@ var require_authorRoutes = __commonJS({
         UPDATE posts SET
           title = ?, slug = ?, category = ?, department = ?, post_date = ?, last_date = ?,
           short_desc = ?, total_vacancy = ?, important_dates = ?, application_fee = ?,
-          age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?, article_content = ?,
+          age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?, article_content = ?, thumbnail = ?,
           links = ?, notification_pdf = ?, admit_card_url = ?, result_url = ?,
           apply_online_url = ?, official_website_url = ?, status = ?,
           updated_at = CURRENT_TIMESTAMP
@@ -76186,6 +76196,7 @@ var require_authorRoutes = __commonJS({
             categoryDetails,
             how_to_apply,
             article_content,
+            thumbnail,
             links,
             notificationPdf,
             admitCardUrl,
@@ -76200,7 +76211,7 @@ var require_authorRoutes = __commonJS({
         UPDATE posts SET
           title = ?, slug = ?, category = ?, department = ?, post_date = ?, last_date = ?,
           short_desc = ?, total_vacancy = ?, important_dates = ?, application_fee = ?,
-          age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?, article_content = ?,
+          age_limit = ?, vacancy_details = ?, category_details = ?, how_to_apply = ?, article_content = ?, thumbnail = ?,
           links = ?, notification_pdf = ?, admit_card_url = ?, result_url = ?,
           apply_online_url = ?, official_website_url = ?, status = ?,
           updated_at = CURRENT_TIMESTAMP
@@ -76221,6 +76232,7 @@ var require_authorRoutes = __commonJS({
             categoryDetails,
             how_to_apply,
             article_content,
+            thumbnail,
             links,
             notificationPdf,
             admitCardUrl,
@@ -77428,7 +77440,17 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( post ? post.total_vacancy : '' ))
     ; __append("\\"\\n        >\\n      </div>\\n\\n      <div class=\\"form-group\\">\\n        <label for=\\"slug\\">Custom URL Slug (Leave blank for auto)</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"slug\\" \\n          name=\\"slug\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"ssc-cgl-2026-online-form\\" \\n          value=\\"")
     ; __append(escapeFn( post ? post.slug : '' ))
-    ; __append("\\"\\n        >\\n      </div>\\n    </div>\\n\\n    <!-- Cloudflare R2 Document Upload & Link Section -->\\n    <div style=\\"background: #f0fdf4; border: 1px solid #86efac; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <h3 style=\\"color: #166534; font-size: 15px; margin-top: 0; margin-bottom: 12px;\\">\\n        \u2601\uFE0F Documents &amp; External Links (R2 File Upload or Direct Web URL)\\n      </h3>\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label>Notification PDF (URL or File)</label>\\n          <input \\n            type=\\"text\\" \\n            name=\\"notification_pdf_url\\" \\n            class=\\"form-control\\" \\n            placeholder=\\"https://... or /uploads/...\\" \\n            value=\\"")
+    ; __append("\\"\\n        >\\n      </div>\\n    </div>\\n\\n    <!-- Post Thumbnail / Featured Image -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F5BC}\uFE0F Post Thumbnail / Featured Image (Optional)</h3>\\n          <small style=\\"color: #64748b;\\">Displayed on the post page &amp; used for WhatsApp/Telegram/Google social share previews (OG Image)</small>\\n        </div>\\n        <button type=\\"button\\" id=\\"removeThumbBtn\\" class=\\"btn btn-sm\\" style=\\"background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; font-size: 11.5px; font-weight: 600;\\">\\n          \u{1F5D1}\uFE0F Remove Thumbnail\\n        </button>\\n      </div>\\n      ")
+    ;  const hasThumb = Boolean(post && post.thumbnail && post.thumbnail.trim()); 
+    ; __append("\\n      <div class=\\"form-row\\" style=\\"align-items: center;\\">\\n        <div class=\\"form-group\\" style=\\"max-width: 160px; margin-bottom: 0;\\">\\n          <div style=\\"width: 140px; height: 84px; background: #ffffff; border: 1px dashed #94a3b8; border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; text-align: center;\\">\\n            <img id=\\"thumbPreviewImg\\" src=\\"")
+    ; __append(escapeFn( hasThumb ? post.thumbnail : '' ))
+    ; __append("\\" alt=\\"Post Thumbnail Preview\\" style=\\"width: 100%; height: 100%; object-fit: cover; display: ")
+    ; __append(escapeFn( hasThumb ? 'block' : 'none' ))
+    ; __append(";\\">\\n            <span id=\\"thumbNoImgText\\" style=\\"font-size: 11px; color: #64748b; font-weight: 600; display: ")
+    ; __append(escapeFn( hasThumb ? 'none' : 'inline-block' ))
+    ; __append(";\\">No Thumbnail</span>\\n          </div>\\n        </div>\\n        <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n          <label style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Upload Thumbnail Image (to R2)</label>\\n          <input type=\\"file\\" id=\\"thumbnail_file\\" name=\\"thumbnail_file\\" class=\\"form-control\\" accept=\\"image/png,image/jpeg,image/webp,image/svg+xml\\" style=\\"padding: 6px;\\">\\n        </div>\\n        <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n          <label for=\\"thumbnail_url\\" style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Or Paste Thumbnail Image URL</label>\\n          <input type=\\"text\\" id=\\"thumbnail_url\\" name=\\"thumbnail_url\\" class=\\"form-control\\" placeholder=\\"https://... or /uploads/...\\" value=\\"")
+    ; __append(escapeFn( hasThumb ? post.thumbnail : '' ))
+    ; __append("\\">\\n        </div>\\n      </div>\\n    </div>\\n\\n    <!-- Cloudflare R2 Document Upload & Link Section -->\\n    <div style=\\"background: #f0fdf4; border: 1px solid #86efac; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <h3 style=\\"color: #166534; font-size: 15px; margin-top: 0; margin-bottom: 12px;\\">\\n        \u2601\uFE0F Documents &amp; External Links (R2 File Upload or Direct Web URL)\\n      </h3>\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label>Notification PDF (URL or File)</label>\\n          <input \\n            type=\\"text\\" \\n            name=\\"notification_pdf_url\\" \\n            class=\\"form-control\\" \\n            placeholder=\\"https://... or /uploads/...\\" \\n            value=\\"")
     ; __append(escapeFn( post && post.notification_pdf ? post.notification_pdf : '' ))
     ; __append("\\"\\n          >\\n          <div style=\\"margin-top: 6px;\\">\\n            <small style=\\"color: #475569; font-size: 11.5px;\\">Or Upload PDF/Doc to R2:</small>\\n            <input type=\\"file\\" name=\\"notification_file\\" class=\\"form-control\\" style=\\"margin-top: 2px;\\" accept=\\".pdf,.doc,.docx,.jpg,.png\\">\\n          </div>\\n          ")
     ;  if (post && post.notification_pdf) { 
@@ -77458,9 +77480,9 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( post ? (post.application_fee || '[]') : '[]' ))
     ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Vacancy Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;\\">\\n        <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F4CB} Vacancy Details &amp; Eligibility</h3>\\n        <button type=\\"button\\" id=\\"btn-add-vac\\" class=\\"btn btn-secondary btn-sm\\">+ Add Vacancy Row</button>\\n      </div>\\n      <div id=\\"vac-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"vacancy_details\\" name=\\"vacancy_details\\" value=\\"")
     ; __append(escapeFn( post ? (post.vacancy_details || '[]') : '[]' ))
-    ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Category-Wise Vacancy Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F4CA} Category-Wise Vacancy Distribution</h3>\\n          <small style=\\"color: #64748b;\\">Post / Group Name with UR, EWS, OBC, SC, ST and Total breakdown</small>\\n        </div>\\n        <button type=\\"button\\" id=\\"btn-add-cat\\" class=\\"btn btn-secondary btn-sm\\">+ Add Category Row</button>\\n      </div>\\n      <div id=\\"cat-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"category_details\\" name=\\"category_details\\" value=\\"")
+    ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Category-Wise Vacancy Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F4CA} Category-Wise Vacancy Distribution</h3>\\n          <small style=\\"color: #64748b;\\">Create unlimited rows &amp; columns \u2014 rename, add, or remove any column header or row</small>\\n        </div>\\n        <div style=\\"display: flex; gap: 8px; flex-wrap: wrap;\\">\\n          <button type=\\"button\\" id=\\"btn-add-cat-col\\" class=\\"btn btn-secondary btn-sm\\">+ Add Column</button>\\n          <button type=\\"button\\" id=\\"btn-add-cat\\" class=\\"btn btn-primary btn-sm\\">+ Add Row</button>\\n        </div>\\n      </div>\\n      <div id=\\"cat-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"category_details\\" name=\\"category_details\\" value=\\"")
     ; __append(escapeFn( post ? (post.category_details || '[]') : '[]' ))
-    ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Friendly Builder: Age Limit Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <h3 style=\\"margin: 0 0 10px 0; font-size: 15px; color: #1e293b;\\">\u{1F464} Age Limit Details</h3>\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"age_as_on\\">Age Limit (As on Date)</label>\\n          <input type=\\"text\\" id=\\"age_as_on\\" class=\\"form-control\\" placeholder=\\"e.g. 01/08/2026\\">\\n        </div>\\n        <div class=\\"form-group\\">\\n          <label for=\\"age_min\\">Minimum Age</label>\\n          <input type=\\"text\\" id=\\"age_min\\" class=\\"form-control\\" placeholder=\\"e.g. 18 Years\\">\\n        </div>\\n        <div class=\\"form-group\\">\\n          <label for=\\"age_max\\">Maximum Age</label>\\n          <input type=\\"text\\" id=\\"age_max\\" class=\\"form-control\\" placeholder=\\"e.g. 27 Years\\">\\n        </div>\\n      </div>\\n      <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n        <label for=\\"age_relaxation\\">Age Relaxation Details</label>\\n        <input type=\\"text\\" id=\\"age_relaxation\\" class=\\"form-control\\" placeholder=\\"e.g. Age Relaxation Extra as per Rules\\">\\n      </div>\\n      <input type=\\"hidden\\" id=\\"age_limit\\" name=\\"age_limit\\" value=\\"")
+    ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Category-Wise Age Limit Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F464} Age Limit Details (Category-Wise)</h3>\\n          <small style=\\"color: #64748b;\\">Add category-wise Minimum &amp; Maximum age limit rows just like Application Fee Details</small>\\n        </div>\\n        <button type=\\"button\\" id=\\"btn-add-age\\" class=\\"btn btn-secondary btn-sm\\">+ Add Age Row</button>\\n      </div>\\n      <div class=\\"form-row\\" style=\\"margin-bottom: 12px;\\">\\n        <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n          <label for=\\"age_as_on\\">Age Limit (As on Date)</label>\\n          <input type=\\"text\\" id=\\"age_as_on\\" class=\\"form-control\\" placeholder=\\"e.g. 01/08/2026\\">\\n        </div>\\n        <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n          <label for=\\"age_relaxation\\">Extra Age Relaxation Note (Optional)</label>\\n          <input type=\\"text\\" id=\\"age_relaxation\\" class=\\"form-control\\" placeholder=\\"e.g. Age Relaxation Extra as per Rules\\">\\n        </div>\\n      </div>\\n      <div id=\\"age-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"age_limit\\" name=\\"age_limit\\" value=\\"")
     ; __append(escapeFn( post ? (post.age_limit || '{}') : '{}' ))
     ; __append("\\">\\n    </div>\\n\\n    <!-- How to Apply -->\\n    <div class=\\"form-group\\">\\n      <label for=\\"how_to_apply\\">How to Apply Steps</label>\\n      <textarea \\n        id=\\"how_to_apply\\" \\n        name=\\"how_to_apply\\" \\n        class=\\"form-control\\" \\n        rows=\\"4\\" \\n      >")
     ; __append(escapeFn( post ? post.how_to_apply : '1. Candidate Can Apply Online From Official Portal.\\n2. Read Notification Carefully Before Filling Form.\\n3. Keep Ready Photo, Sign & ID Proof.\\n4. Pay Exam Fee and Print Final Application Form.' ))
@@ -77544,7 +77566,17 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( post ? post.total_vacancy : '' ))
     ; __append("\\"\\n        >\\n      </div>\\n\\n      <div class=\\"form-group\\">\\n        <label for=\\"slug\\">Custom URL Slug (Leave blank for auto)</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"slug\\" \\n          name=\\"slug\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"ssc-cgl-2026-online-form\\" \\n          value=\\"")
     ; __append(escapeFn( post ? post.slug : '' ))
-    ; __append("\\"\\n        >\\n      </div>\\n    </div>\\n\\n    <!-- Cloudflare R2 Document Upload & Link Section -->\\n    <div style=\\"background: #f0fdf4; border: 1px solid #86efac; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <h3 style=\\"color: #166534; font-size: 15px; margin-top: 0; margin-bottom: 12px;\\">\\n        \u2601\uFE0F Documents &amp; External Links (R2 File Upload or Direct Web URL)\\n      </h3>\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label>Notification PDF (URL or File)</label>\\n          <input \\n            type=\\"text\\" \\n            name=\\"notification_pdf_url\\" \\n            class=\\"form-control\\" \\n            placeholder=\\"https://... or /uploads/...\\" \\n            value=\\"")
+    ; __append("\\"\\n        >\\n      </div>\\n    </div>\\n\\n    <!-- Post Thumbnail / Featured Image -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F5BC}\uFE0F Post Thumbnail / Featured Image (Optional)</h3>\\n          <small style=\\"color: #64748b;\\">Displayed on the post page &amp; used for WhatsApp/Telegram/Google social share previews (OG Image)</small>\\n        </div>\\n        <button type=\\"button\\" id=\\"removeThumbBtn\\" class=\\"btn btn-sm\\" style=\\"background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; font-size: 11.5px; font-weight: 600;\\">\\n          \u{1F5D1}\uFE0F Remove Thumbnail\\n        </button>\\n      </div>\\n      ")
+    ;  const hasThumb = Boolean(post && post.thumbnail && post.thumbnail.trim()); 
+    ; __append("\\n      <div class=\\"form-row\\" style=\\"align-items: center;\\">\\n        <div class=\\"form-group\\" style=\\"max-width: 160px; margin-bottom: 0;\\">\\n          <div style=\\"width: 140px; height: 84px; background: #ffffff; border: 1px dashed #94a3b8; border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; text-align: center;\\">\\n            <img id=\\"thumbPreviewImg\\" src=\\"")
+    ; __append(escapeFn( hasThumb ? post.thumbnail : '' ))
+    ; __append("\\" alt=\\"Post Thumbnail Preview\\" style=\\"width: 100%; height: 100%; object-fit: cover; display: ")
+    ; __append(escapeFn( hasThumb ? 'block' : 'none' ))
+    ; __append(";\\">\\n            <span id=\\"thumbNoImgText\\" style=\\"font-size: 11px; color: #64748b; font-weight: 600; display: ")
+    ; __append(escapeFn( hasThumb ? 'none' : 'inline-block' ))
+    ; __append(";\\">No Thumbnail</span>\\n          </div>\\n        </div>\\n        <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n          <label style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Upload Thumbnail Image (to R2)</label>\\n          <input type=\\"file\\" id=\\"thumbnail_file\\" name=\\"thumbnail_file\\" class=\\"form-control\\" accept=\\"image/png,image/jpeg,image/webp,image/svg+xml\\" style=\\"padding: 6px;\\">\\n        </div>\\n        <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n          <label for=\\"thumbnail_url\\" style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Or Paste Thumbnail Image URL</label>\\n          <input type=\\"text\\" id=\\"thumbnail_url\\" name=\\"thumbnail_url\\" class=\\"form-control\\" placeholder=\\"https://... or /uploads/...\\" value=\\"")
+    ; __append(escapeFn( hasThumb ? post.thumbnail : '' ))
+    ; __append("\\">\\n        </div>\\n      </div>\\n    </div>\\n\\n    <!-- Cloudflare R2 Document Upload & Link Section -->\\n    <div style=\\"background: #f0fdf4; border: 1px solid #86efac; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <h3 style=\\"color: #166534; font-size: 15px; margin-top: 0; margin-bottom: 12px;\\">\\n        \u2601\uFE0F Documents &amp; External Links (R2 File Upload or Direct Web URL)\\n      </h3>\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label>Notification PDF (URL or File)</label>\\n          <input \\n            type=\\"text\\" \\n            name=\\"notification_pdf_url\\" \\n            class=\\"form-control\\" \\n            placeholder=\\"https://... or /uploads/...\\" \\n            value=\\"")
     ; __append(escapeFn( post && post.notification_pdf ? post.notification_pdf : '' ))
     ; __append("\\"\\n          >\\n          <div style=\\"margin-top: 6px;\\">\\n            <small style=\\"color: #475569; font-size: 11.5px;\\">Or Upload PDF/Doc to R2:</small>\\n            <input type=\\"file\\" name=\\"notification_file\\" class=\\"form-control\\" style=\\"margin-top: 2px;\\" accept=\\".pdf,.doc,.docx,.jpg,.png\\">\\n          </div>\\n          ")
     ;  if (post && post.notification_pdf) { 
@@ -77574,9 +77606,9 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( post ? (post.application_fee || '[]') : '[]' ))
     ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Vacancy Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;\\">\\n        <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F4CB} Vacancy Details &amp; Eligibility</h3>\\n        <button type=\\"button\\" id=\\"btn-add-vac\\" class=\\"btn btn-secondary btn-sm\\">+ Add Vacancy Row</button>\\n      </div>\\n      <div id=\\"vac-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"vacancy_details\\" name=\\"vacancy_details\\" value=\\"")
     ; __append(escapeFn( post ? (post.vacancy_details || '[]') : '[]' ))
-    ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Category-Wise Vacancy Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F4CA} Category-Wise Vacancy Distribution</h3>\\n          <small style=\\"color: #64748b;\\">Post / Group Name with UR, EWS, OBC, SC, ST and Total breakdown</small>\\n        </div>\\n        <button type=\\"button\\" id=\\"btn-add-cat\\" class=\\"btn btn-secondary btn-sm\\">+ Add Category Row</button>\\n      </div>\\n      <div id=\\"cat-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"category_details\\" name=\\"category_details\\" value=\\"")
+    ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Category-Wise Vacancy Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F4CA} Category-Wise Vacancy Distribution</h3>\\n          <small style=\\"color: #64748b;\\">Create unlimited rows &amp; columns \u2014 rename, add, or remove any column header or row</small>\\n        </div>\\n        <div style=\\"display: flex; gap: 8px; flex-wrap: wrap;\\">\\n          <button type=\\"button\\" id=\\"btn-add-cat-col\\" class=\\"btn btn-secondary btn-sm\\">+ Add Column</button>\\n          <button type=\\"button\\" id=\\"btn-add-cat\\" class=\\"btn btn-primary btn-sm\\">+ Add Row</button>\\n        </div>\\n      </div>\\n      <div id=\\"cat-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"category_details\\" name=\\"category_details\\" value=\\"")
     ; __append(escapeFn( post ? (post.category_details || '[]') : '[]' ))
-    ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Friendly Builder: Age Limit Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <h3 style=\\"margin: 0 0 10px 0; font-size: 15px; color: #1e293b;\\">\u{1F464} Age Limit Details</h3>\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"age_as_on\\">Age Limit (As on Date)</label>\\n          <input type=\\"text\\" id=\\"age_as_on\\" class=\\"form-control\\" placeholder=\\"e.g. 01/08/2026\\">\\n        </div>\\n        <div class=\\"form-group\\">\\n          <label for=\\"age_min\\">Minimum Age</label>\\n          <input type=\\"text\\" id=\\"age_min\\" class=\\"form-control\\" placeholder=\\"e.g. 18 Years\\">\\n        </div>\\n        <div class=\\"form-group\\">\\n          <label for=\\"age_max\\">Maximum Age</label>\\n          <input type=\\"text\\" id=\\"age_max\\" class=\\"form-control\\" placeholder=\\"e.g. 27 Years\\">\\n        </div>\\n      </div>\\n      <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n        <label for=\\"age_relaxation\\">Age Relaxation Details</label>\\n        <input type=\\"text\\" id=\\"age_relaxation\\" class=\\"form-control\\" placeholder=\\"e.g. Age Relaxation Extra as per Rules\\">\\n      </div>\\n      <input type=\\"hidden\\" id=\\"age_limit\\" name=\\"age_limit\\" value=\\"")
+    ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Category-Wise Age Limit Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F464} Age Limit Details (Category-Wise)</h3>\\n          <small style=\\"color: #64748b;\\">Add category-wise Minimum &amp; Maximum age limit rows just like Application Fee Details</small>\\n        </div>\\n        <button type=\\"button\\" id=\\"btn-add-age\\" class=\\"btn btn-secondary btn-sm\\">+ Add Age Row</button>\\n      </div>\\n      <div class=\\"form-row\\" style=\\"margin-bottom: 12px;\\">\\n        <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n          <label for=\\"age_as_on\\">Age Limit (As on Date)</label>\\n          <input type=\\"text\\" id=\\"age_as_on\\" class=\\"form-control\\" placeholder=\\"e.g. 01/08/2026\\">\\n        </div>\\n        <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n          <label for=\\"age_relaxation\\">Extra Age Relaxation Note (Optional)</label>\\n          <input type=\\"text\\" id=\\"age_relaxation\\" class=\\"form-control\\" placeholder=\\"e.g. Age Relaxation Extra as per Rules\\">\\n        </div>\\n      </div>\\n      <div id=\\"age-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"age_limit\\" name=\\"age_limit\\" value=\\"")
     ; __append(escapeFn( post ? (post.age_limit || '{}') : '{}' ))
     ; __append("\\">\\n    </div>\\n\\n    <!-- How to Apply -->\\n    <div class=\\"form-group\\">\\n      <label for=\\"how_to_apply\\">How to Apply Steps</label>\\n      <textarea \\n        id=\\"how_to_apply\\" \\n        name=\\"how_to_apply\\" \\n        class=\\"form-control\\" \\n        rows=\\"4\\" \\n      >")
     ; __append(escapeFn( post ? post.how_to_apply : '1. Candidate Can Apply Online From Official Portal.\\n2. Read Notification Carefully Before Filling Form.\\n3. Keep Ready Photo, Sign & ID Proof.\\n4. Pay Exam Fee and Print Final Application Form.' ))
@@ -77968,20 +78000,33 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( (settings.site_logo && settings.site_logo.trim()) ? settings.site_logo : 'No logo active (Header displays text title only)' ))
     ; __append("\\n                </div>\\n              </div>\\n            </div>\\n\\n            <div style=\\"margin-bottom: 8px;\\">\\n              <label style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Upload New Logo File</label>\\n              <input \\n                type=\\"file\\" \\n                id=\\"site_logo_file\\" \\n                name=\\"site_logo_file\\" \\n                class=\\"form-control\\" \\n                accept=\\"image/png,image/jpeg,image/webp,image/svg+xml\\"\\n                style=\\"padding: 6px;\\"\\n              >\\n            </div>\\n\\n            <div>\\n              <label for=\\"site_logo\\" style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Or Direct Logo URL / Relative Path</label>\\n              <input \\n                type=\\"text\\" \\n                id=\\"site_logo\\" \\n                name=\\"site_logo\\" \\n                class=\\"form-control\\" \\n                value=\\"")
     ; __append(escapeFn( settings.site_logo || '' ))
-    ; __append("\\" \\n                placeholder=\\"Leave empty for no logo, or enter image path (e.g. /images/logo.png)\\"\\n              >\\n              <small class=\\"field-hint\\">Leave blank or click \\"Delete / Remove Logo\\" above if you don't want any logo in the header. To add a logo, upload a file or enter a path.</small>\\n            </div>\\n          </div>\\n\\n          <!-- Favicon Management -->\\n          <div class=\\"form-group\\" style=\\"flex: 1; min-width: 280px;\\">\\n            <label for=\\"site_favicon\\">Website Browser Favicon</label>\\n            <div style=\\"display: flex; gap: 14px; align-items: center; margin-bottom: 10px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px;\\">\\n              <div style=\\"width: 70px; height: 70px; background: #ffffff; border: 1px dashed #94a3b8; border-radius: 6px; display: flex; align-items: center; justify-content: center; padding: 5px; flex-shrink: 0;\\">\\n                <img id=\\"faviconPreviewImg\\" src=\\"")
-    ; __append(escapeFn( settings.site_favicon || '/images/gez-logo.svg' ))
-    ; __append("\\" alt=\\"Current Favicon\\" style=\\"width: 36px; height: 36px; object-fit: contain;\\">\\n              </div>\\n              <div style=\\"font-size: 12px; color: #475569; overflow: hidden;\\">\\n                <div style=\\"font-weight: 700; color: #1e293b; margin-bottom: 2px;\\">Active Browser Tab Icon</div>\\n                <div id=\\"faviconPathText\\" style=\\"word-break: break-all; font-family: monospace; color: #0284c7;\\">")
-    ; __append(escapeFn( settings.site_favicon || '/images/gez-logo.svg' ))
-    ; __append("</div>\\n              </div>\\n            </div>\\n\\n            <div style=\\"margin-bottom: 8px;\\">\\n              <label style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Upload New Favicon File</label>\\n              <input \\n                type=\\"file\\" \\n                id=\\"site_favicon_file\\" \\n                name=\\"site_favicon_file\\" \\n                class=\\"form-control\\" \\n                accept=\\"image/x-icon,image/png,image/svg+xml,image/jpeg,image/webp\\"\\n                style=\\"padding: 6px;\\"\\n              >\\n            </div>\\n\\n            <div>\\n              <label for=\\"site_favicon\\" style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Or Direct Favicon URL / Relative Path</label>\\n              <input \\n                type=\\"text\\" \\n                id=\\"site_favicon\\" \\n                name=\\"site_favicon\\" \\n                class=\\"form-control\\" \\n                value=\\"")
-    ; __append(escapeFn( settings.site_favicon || '/images/gez-logo.svg' ))
-    ; __append("\\" \\n                placeholder=\\"/images/gez-logo.svg or /favicon.ico\\"\\n              >\\n              <small class=\\"field-hint\\">ICO, PNG, or SVG format (recommended 32x32 or 48x48). Displays in browser tabs and bookmarks.</small>\\n            </div>\\n          </div>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\" style=\\"margin-top: 14px;\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"site_tagline\\">Portal Tagline / Slogan</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"site_tagline\\" \\n            name=\\"site_tagline\\" \\n            class=\\"form-control\\" \\n            value=\\"")
+    ; __append("\\" \\n                placeholder=\\"Leave empty for no logo, or enter image path (e.g. /images/logo.png)\\"\\n              >\\n              <small class=\\"field-hint\\">Leave blank or click \\"Delete / Remove Logo\\" above if you don't want any logo in the header. To add a logo, upload a file or enter a path.</small>\\n            </div>\\n          </div>\\n\\n          <!-- Favicon Management -->\\n          <div class=\\"form-group\\" style=\\"flex: 1; min-width: 280px;\\">\\n            ")
+    ; 
+              const activeFaviconVal = (typeof settings.site_favicon === 'string') ? settings.site_favicon : '/images/gez-logo.svg';
+              const hasFaviconVal = Boolean(activeFaviconVal && activeFaviconVal.trim());
+            
+    ; __append("\\n            <div style=\\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;\\">\\n              <label for=\\"site_favicon\\" style=\\"margin-bottom: 0;\\">Website Browser Favicon</label>\\n              <button \\n                type=\\"button\\" \\n                id=\\"removeFaviconBtn\\" \\n                class=\\"btn btn-sm\\" \\n                style=\\"background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;\\"\\n                title=\\"Remove custom browser favicon\\"\\n              >\\n                \u{1F5D1}\uFE0F Delete / Remove Favicon\\n              </button>\\n            </div>\\n            <div style=\\"display: flex; gap: 14px; align-items: center; margin-bottom: 10px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px;\\">\\n              <div style=\\"width: 70px; height: 70px; background: #ffffff; border: 1px dashed #94a3b8; border-radius: 6px; display: flex; align-items: center; justify-content: center; padding: 5px; flex-shrink: 0; text-align: center;\\">\\n                ")
+    ;  if (hasFaviconVal) { 
+    ; __append("\\n                  <img id=\\"faviconPreviewImg\\" src=\\"")
+    ; __append(escapeFn( activeFaviconVal ))
+    ; __append("\\" alt=\\"Current Favicon\\" style=\\"width: 36px; height: 36px; object-fit: contain;\\">\\n                  <span id=\\"faviconNoIconText\\" style=\\"font-size: 10.5px; font-weight: 600; color: #94a3b8; display: none;\\">No<br>Favicon</span>\\n                ")
+    ;  } else { 
+    ; __append("\\n                  <img id=\\"faviconPreviewImg\\" src=\\"\\" alt=\\"Current Favicon\\" style=\\"width: 36px; height: 36px; object-fit: contain; display: none;\\">\\n                  <span id=\\"faviconNoIconText\\" style=\\"font-size: 10.5px; font-weight: 600; color: #94a3b8; display: inline-block;\\">No<br>Favicon</span>\\n                ")
+    ;  } 
+    ; __append("\\n              </div>\\n              <div style=\\"font-size: 12px; color: #475569; overflow: hidden; flex: 1;\\">\\n                <div style=\\"font-weight: 700; color: #1e293b; margin-bottom: 2px;\\">Active Browser Tab Icon</div>\\n                <div id=\\"faviconPathText\\" style=\\"word-break: break-all; font-family: monospace; color: ")
+    ; __append(escapeFn( hasFaviconVal ? '#0284c7' : '#dc2626' ))
+    ; __append(";\\">\\n                  ")
+    ; __append(escapeFn( hasFaviconVal ? activeFaviconVal : 'No custom favicon active (Browser default)' ))
+    ; __append("\\n                </div>\\n              </div>\\n            </div>\\n\\n            <div style=\\"margin-bottom: 8px;\\">\\n              <label style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Upload New Favicon File</label>\\n              <input \\n                type=\\"file\\" \\n                id=\\"site_favicon_file\\" \\n                name=\\"site_favicon_file\\" \\n                class=\\"form-control\\" \\n                accept=\\"image/x-icon,image/png,image/svg+xml,image/jpeg,image/webp\\"\\n                style=\\"padding: 6px;\\"\\n              >\\n            </div>\\n\\n            <div>\\n              <label for=\\"site_favicon\\" style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Or Direct Favicon URL / Relative Path</label>\\n              <input \\n                type=\\"text\\" \\n                id=\\"site_favicon\\" \\n                name=\\"site_favicon\\" \\n                class=\\"form-control\\" \\n                value=\\"")
+    ; __append(escapeFn( activeFaviconVal ))
+    ; __append("\\" \\n                placeholder=\\"Leave empty for no custom favicon, or enter /images/gez-logo.svg\\"\\n              >\\n              <small class=\\"field-hint\\">ICO, PNG, or SVG format (recommended 32x32 or 48x48). Click \\"Delete / Remove Favicon\\" above to clear it cleanly.</small>\\n            </div>\\n          </div>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\" style=\\"margin-top: 14px;\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"site_tagline\\">Portal Tagline / Slogan</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"site_tagline\\" \\n            name=\\"site_tagline\\" \\n            class=\\"form-control\\" \\n            value=\\"")
     ; __append(escapeFn( settings.site_tagline || 'Latest Govt Jobs, Admit Card, Results 2026' ))
     ; __append("\\" \\n            placeholder=\\"Latest Govt Jobs, Admit Card, Results 2026\\"\\n          >\\n          <small class=\\"field-hint\\">Used in SEO title suffixes and social link shares.</small>\\n        </div>\\n\\n        <div class=\\"form-group\\">\\n          <label for=\\"site_domain\\">Primary Domain URL</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"site_domain\\" \\n            name=\\"site_domain\\" \\n            class=\\"form-control\\" \\n            value=\\"")
     ; __append(escapeFn( settings.site_domain || 'https://govtexamzone.com' 
 ))
     ; __append("\\" \\n            placeholder=\\"https://govtexamzone.com\\"\\n          >\\n          <small class=\\"field-hint\\">Canonical domain used for generating sitemaps and share links.</small>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-group\\" style=\\"margin-top: 14px;\\">\\n        <label for=\\"copyright_text\\">Footer Copyright Notice</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"copyright_text\\" \\n          name=\\"copyright_text\\" \\n          class=\\"form-control\\" \\n          value=\\"")
-    ; __append(escapeFn( settings.copyright_text || '\xA9 2026 govtexamzone.com. All Rights Reserved.' ))
-    ; __append("\\" \\n          placeholder=\\"\xA9 2026 govtexamzone.com. All Rights Reserved.\\"\\n        >\\n        <small class=\\"field-hint\\">Displayed at the very bottom of every page.</small>\\n      </div>\\n    </div>\\n\\n\\n    <!-- 1B. Full Post / Blog Detail Page Layout Configuration -->\\n    <div id=\\"section-layout\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4F0}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">Post / Full Blog Detail Page Layout (2 UI Modes)</h3>\\n          <p class=\\"settings-group-desc\\">Choose how full post/blog detail pages display on the frontend. Both Classic Sarkari posts and rich Blog articles automatically adapt to your selected layout.</p>\\n        </div>\\n      </div>\\n\\n      ")
+    ; __append(escapeFn( settings.copyright_text || '\xA9 {year} govtexamzone.com. All Rights Reserved.' ))
+    ; __append("\\" \\n          placeholder=\\"\xA9 {year} govtexamzone.com. All Rights Reserved.\\"\\n        >\\n        <small class=\\"field-hint\\">Fetched from backend settings on every page. Use <code>{year}</code> or any <code>20xx</code> year \u2014 it automatically updates to the current year on the live website.</small>\\n      </div>\\n    </div>\\n\\n\\n    <!-- 1B. Full Post / Blog Detail Page Layout Configuration -->\\n    <div id=\\"section-layout\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4F0}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">Post / Full Blog Detail Page Layout (2 UI Modes)</h3>\\n          <p class=\\"settings-group-desc\\">Choose how full post/blog detail pages display on the frontend. Both Classic Sarkari posts and rich Blog articles automatically adapt to your selected layout.</p>\\n        </div>\\n      </div>\\n\\n      ")
     ;  const activeLayout = (settings.post_detail_layout === 'blog_2col') ? 'blog_2col' : 'classic'; 
     ; __append("\\n      <div class=\\"layout-selector-grid\\" style=\\"display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;\\">\\n        <!-- Option 1: Classic Sarkari Single-Column -->\\n        <label class=\\"layout-option-card ")
     ; __append(escapeFn( activeLayout === 'classic' ? 'selected' : '' ))
@@ -78045,7 +78090,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( settings.footer_custom_code || '' ))
     ; __append("</textarea>\\n        <small class=\\"field-hint\\">Code injected right before the closing &lt;/body&gt; tag on all public pages.</small>\\n      </div>\\n    </div>\\n\\n    <!-- Bottom Save Action Bar -->\\n    <div style=\\"background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px 24px; display: flex; justify-content: space-between; align-items: center; margin-top: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); flex-wrap: wrap; gap: 12px;\\">\\n      <div>\\n        <span style=\\"font-weight: 700; color: #0f172a; font-size: 14.5px;\\">Ready to update portal configuration?</span>\\n        <div style=\\"font-size: 12px; color: #64748b; margin-top: 2px;\\">Changes take effect immediately across all desktop and mobile devices.</div>\\n      </div>\\n      <div style=\\"display: flex; gap: 10px;\\">\\n        <a href=\\"")
     ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') || '/' ))
-    ; __append("\\" class=\\"btn btn-secondary\\">Cancel</a>\\n        <button type=\\"submit\\" class=\\"btn btn-primary\\" style=\\"padding: 10px 28px; font-size: 15px; font-weight: 700;\\">\\n          \u{1F4BE} Save All Settings\\n        </button>\\n      </div>\\n    </div>\\n\\n  </form>\\n</div>\\n\\n<style>\\n  .settings-group-card {\\n    background: #ffffff;\\n    border: 1px solid #e2e8f0;\\n    border-radius: 10px;\\n    padding: 22px 24px;\\n    margin-bottom: 22px;\\n    box-shadow: 0 1px 3px rgba(0,0,0,0.04);\\n    scroll-margin-top: 80px;\\n  }\\n\\n  .settings-group-header {\\n    display: flex;\\n    gap: 12px;\\n    align-items: flex-start;\\n    margin-bottom: 18px;\\n    border-bottom: 1px solid #f1f5f9;\\n    padding-bottom: 14px;\\n  }\\n\\n  .settings-group-icon {\\n    font-size: 24px;\\n    background: #f8fafc;\\n    padding: 8px;\\n    border-radius: 8px;\\n    border: 1px solid #e2e8f0;\\n    line-height: 1;\\n  }\\n\\n  .settings-group-title {\\n    margin: 0;\\n    font-size: 16px;\\n    font-weight: 700;\\n    color: #0f172a;\\n  }\\n\\n  .settings-group-desc {\\n    margin: 4px 0 0 0;\\n    font-size: 12.5px;\\n    color: #64748b;\\n  }\\n\\n  .field-hint {\\n    display: block;\\n    font-size: 11.5px;\\n    color: #64748b;\\n    margin-top: 5px;\\n    line-height: 1.4;\\n  }\\n\\n  .code-editor {\\n    font-family: 'JetBrains Mono', monospace;\\n    font-size: 12.5px;\\n    background: #0f172a !important;\\n    color: #38bdf8 !important;\\n    border: 1px solid #334155 !important;\\n  }\\n\\n  .code-editor::placeholder {\\n    color: #64748b !important;\\n  }\\n\\n  .settings-pill {\\n    text-decoration: none;\\n    font-size: 12.5px;\\n    font-weight: 600;\\n    color: #475569;\\n    background: #f1f5f9;\\n    padding: 6px 14px;\\n    border-radius: 9999px;\\n    transition: all 0.15s ease;\\n  }\\n\\n  .settings-pill:hover, .settings-pill:focus {\\n    background: #ab183d;\\n    color: #ffffff;\\n  }\\n\\n  .layout-option-card {\\n    display: flex;\\n    flex-direction: column;\\n    gap: 10px;\\n    padding: 16px;\\n    border: 2px solid #e2e8f0;\\n    border-radius: 10px;\\n    background: #f8fafc;\\n    cursor: pointer;\\n    transition: all 0.18s ease;\\n    margin: 0;\\n  }\\n\\n  .layout-option-card:hover {\\n    border-color: #94a3b8;\\n    background: #ffffff;\\n  }\\n\\n  .layout-option-card.selected {\\n    border-color: #0066ff;\\n    background: #eff6ff;\\n    box-shadow: 0 4px 12px rgba(0, 102, 255, 0.12);\\n  }\\n\\n  .layout-card-top {\\n    display: flex;\\n    justify-content: space-between;\\n    align-items: center;\\n    gap: 8px;\\n    flex-wrap: wrap;\\n  }\\n\\n  .layout-radio-dot {\\n    width: 16px;\\n    height: 16px;\\n    border-radius: 50%;\\n    border: 2px solid #94a3b8;\\n    background: #ffffff;\\n    display: inline-block;\\n    position: relative;\\n    flex-shrink: 0;\\n  }\\n\\n  .layout-option-card.selected .layout-radio-dot {\\n    border-color: #0066ff;\\n    background: #0066ff;\\n    box-shadow: inset 0 0 0 3px #ffffff;\\n  }\\n\\n  .layout-badge {\\n    font-size: 11px;\\n    font-weight: 700;\\n    padding: 2px 8px;\\n    border-radius: 9999px;\\n  }\\n\\n  .classic-badge {\\n    background: #fee2e2;\\n    color: #991b1b;\\n  }\\n\\n  .blog-badge {\\n    background: #dbeafe;\\n    color: #1e40af;\\n  }\\n\\n  .layout-wireframe {\\n    background: #ffffff;\\n    border: 1px solid #cbd5e1;\\n    border-radius: 6px;\\n    padding: 8px;\\n  }\\n\\n  .layout-card-desc {\\n    margin: 0;\\n    font-size: 12.5px;\\n    color: #475569;\\n    line-height: 1.5;\\n  }\\n\\n  @media (max-width: 600px) {\\n    .settings-group-card {\\n      padding: 16px 14px;\\n    }\\n    .settings-nav-pills {\\n      gap: 6px;\\n      flex-wrap: nowrap !important;\\n      overflow-x: auto;\\n      -webkit-overflow-scrolling: touch;\\n      scrollbar-width: none;\\n      padding-bottom: 10px !important;\\n    }\\n    .settings-nav-pills::-webkit-scrollbar {\\n      display: none;\\n    }\\n    .settings-pill {\\n      font-size: 11.5px;\\n      padding: 6px 12px;\\n      white-space: nowrap;\\n      flex-shrink: 0;\\n    }\\n  }\\n</style>\\n\\n<script>\\n  // Live preview for Logo file input\\n  const logoFileInput = document.getElementById('site_logo_file');\\n  const logoPreviewImg = document.getElementById('logoPreviewImg');\\n  const logoTextInput = document.getElementById('site_logo');\\n  const logoPathText = document.getElementById('logoPathText');\\n  const logoNoLogoText = document.getElementById('logoNoLogoText');\\n  const removeLogoBtn = document.getElementById('removeLogoBtn');\\n\\n  if (logoFileInput && logoPreviewImg) {\\n    logoFileInput.addEventListener('change', function(e) {\\n      const file = e.target.files && e.target.files[0];\\n      if (file) {\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          logoPreviewImg.src = evt.target.result;\\n          logoPreviewImg.style.display = 'block';\\n          if (logoNoLogoText) logoNoLogoText.style.display = 'none';\\n          if (logoPathText) {\\n            logoPathText.style.color = '#0284c7';\\n            logoPathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n          }\\n        };\\n        reader.readAsDataURL(file);\\n      }\\n    });\\n  }\\n\\n  // Live preview for Logo text input\\n  if (logoTextInput && logoPreviewImg) {\\n    logoTextInput.addEventListener('input', function() {\\n      const val = this.value.trim();\\n      if (val) {\\n        logoPreviewImg.src = val;\\n        logoPreviewImg.style.display = 'block';\\n        if (logoNoLogoText) logoNoLogoText.style.display = 'none';\\n        if (logoPathText) {\\n          logoPathText.style.color = '#0284c7';\\n          logoPathText.textContent = val;\\n        }\\n      } else {\\n        logoPreviewImg.src = '';\\n        logoPreviewImg.style.display = 'none';\\n        if (logoNoLogoText) logoNoLogoText.style.display = 'inline-block';\\n        if (logoPathText) {\\n          logoPathText.style.color = '#dc2626';\\n          logoPathText.textContent = 'No logo active (Header displays text title only)';\\n        }\\n      }\\n    });\\n  }\\n\\n  // Live Remove Logo Button\\n  if (removeLogoBtn && logoTextInput) {\\n    removeLogoBtn.addEventListener('click', function() {\\n      logoTextInput.value = '';\\n      if (logoFileInput) logoFileInput.value = '';\\n      if (logoPreviewImg) {\\n        logoPreviewImg.src = '';\\n        logoPreviewImg.style.display = 'none';\\n      }\\n      if (logoNoLogoText) logoNoLogoText.style.display = 'inline-block';\\n      if (logoPathText) {\\n        logoPathText.style.color = '#dc2626';\\n        logoPathText.textContent = 'Logo cleared. Click \\"Save Settings\\" below to apply changes.';\\n      }\\n    });\\n  }\\n\\n  // Live preview for Favicon file input\\n  const faviconFileInput = document.getElementById('site_favicon_file');\\n  const faviconPreviewImg = document.getElementById('faviconPreviewImg');\\n  const faviconTextInput = document.getElementById('site_favicon');\\n  const faviconPathText = document.getElementById('faviconPathText');\\n\\n  if (faviconFileInput && faviconPreviewImg) {\\n    faviconFileInput.addEventListener('change', function(e) {\\n      const file = e.target.files && e.target.files[0];\\n      if (file) {\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          faviconPreviewImg.src = evt.target.result;\\n          if (faviconPathText) faviconPathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n        };\\n        reader.readAsDataURL(file);\\n      }\\n    });\\n  }\\n\\n  // Live preview for Favicon text input\\n  if (faviconTextInput && faviconPreviewImg) {\\n    faviconTextInput.addEventListener('input', function() {\\n      if (this.value.trim()) {\\n        faviconPreviewImg.src = this.value.trim();\\n        if (faviconPathText) faviconPathText.textContent = this.value.trim();\\n      }\\n    });\\n  }\\n\\n  // Interactive visual selection for Post Layout cards\\n  document.querySelectorAll('.layout-option-card input[type=\\"radio\\"]').forEach(function(radio) {\\n    radio.addEventListener('change', function() {\\n      document.querySelectorAll('.layout-option-card').forEach(function(card) {\\n        card.classList.remove('selected');\\n      });\\n      if (this.checked) {\\n        this.closest('.layout-option-card').classList.add('selected');\\n      }\\n    });\\n  });\\n</script>\\n\\n")
+    ; __append("\\" class=\\"btn btn-secondary\\">Cancel</a>\\n        <button type=\\"submit\\" class=\\"btn btn-primary\\" style=\\"padding: 10px 28px; font-size: 15px; font-weight: 700;\\">\\n          \u{1F4BE} Save All Settings\\n        </button>\\n      </div>\\n    </div>\\n\\n  </form>\\n</div>\\n\\n<style>\\n  .settings-group-card {\\n    background: #ffffff;\\n    border: 1px solid #e2e8f0;\\n    border-radius: 10px;\\n    padding: 22px 24px;\\n    margin-bottom: 22px;\\n    box-shadow: 0 1px 3px rgba(0,0,0,0.04);\\n    scroll-margin-top: 80px;\\n  }\\n\\n  .settings-group-header {\\n    display: flex;\\n    gap: 12px;\\n    align-items: flex-start;\\n    margin-bottom: 18px;\\n    border-bottom: 1px solid #f1f5f9;\\n    padding-bottom: 14px;\\n  }\\n\\n  .settings-group-icon {\\n    font-size: 24px;\\n    background: #f8fafc;\\n    padding: 8px;\\n    border-radius: 8px;\\n    border: 1px solid #e2e8f0;\\n    line-height: 1;\\n  }\\n\\n  .settings-group-title {\\n    margin: 0;\\n    font-size: 16px;\\n    font-weight: 700;\\n    color: #0f172a;\\n  }\\n\\n  .settings-group-desc {\\n    margin: 4px 0 0 0;\\n    font-size: 12.5px;\\n    color: #64748b;\\n  }\\n\\n  .field-hint {\\n    display: block;\\n    font-size: 11.5px;\\n    color: #64748b;\\n    margin-top: 5px;\\n    line-height: 1.4;\\n  }\\n\\n  .code-editor {\\n    font-family: 'JetBrains Mono', monospace;\\n    font-size: 12.5px;\\n    background: #0f172a !important;\\n    color: #38bdf8 !important;\\n    border: 1px solid #334155 !important;\\n  }\\n\\n  .code-editor::placeholder {\\n    color: #64748b !important;\\n  }\\n\\n  .settings-pill {\\n    text-decoration: none;\\n    font-size: 12.5px;\\n    font-weight: 600;\\n    color: #475569;\\n    background: #f1f5f9;\\n    padding: 6px 14px;\\n    border-radius: 9999px;\\n    transition: all 0.15s ease;\\n  }\\n\\n  .settings-pill:hover, .settings-pill:focus {\\n    background: #ab183d;\\n    color: #ffffff;\\n  }\\n\\n  .layout-option-card {\\n    display: flex;\\n    flex-direction: column;\\n    gap: 10px;\\n    padding: 16px;\\n    border: 2px solid #e2e8f0;\\n    border-radius: 10px;\\n    background: #f8fafc;\\n    cursor: pointer;\\n    transition: all 0.18s ease;\\n    margin: 0;\\n  }\\n\\n  .layout-option-card:hover {\\n    border-color: #94a3b8;\\n    background: #ffffff;\\n  }\\n\\n  .layout-option-card.selected {\\n    border-color: #0066ff;\\n    background: #eff6ff;\\n    box-shadow: 0 4px 12px rgba(0, 102, 255, 0.12);\\n  }\\n\\n  .layout-card-top {\\n    display: flex;\\n    justify-content: space-between;\\n    align-items: center;\\n    gap: 8px;\\n    flex-wrap: wrap;\\n  }\\n\\n  .layout-radio-dot {\\n    width: 16px;\\n    height: 16px;\\n    border-radius: 50%;\\n    border: 2px solid #94a3b8;\\n    background: #ffffff;\\n    display: inline-block;\\n    position: relative;\\n    flex-shrink: 0;\\n  }\\n\\n  .layout-option-card.selected .layout-radio-dot {\\n    border-color: #0066ff;\\n    background: #0066ff;\\n    box-shadow: inset 0 0 0 3px #ffffff;\\n  }\\n\\n  .layout-badge {\\n    font-size: 11px;\\n    font-weight: 700;\\n    padding: 2px 8px;\\n    border-radius: 9999px;\\n  }\\n\\n  .classic-badge {\\n    background: #fee2e2;\\n    color: #991b1b;\\n  }\\n\\n  .blog-badge {\\n    background: #dbeafe;\\n    color: #1e40af;\\n  }\\n\\n  .layout-wireframe {\\n    background: #ffffff;\\n    border: 1px solid #cbd5e1;\\n    border-radius: 6px;\\n    padding: 8px;\\n  }\\n\\n  .layout-card-desc {\\n    margin: 0;\\n    font-size: 12.5px;\\n    color: #475569;\\n    line-height: 1.5;\\n  }\\n\\n  @media (max-width: 600px) {\\n    .settings-group-card {\\n      padding: 16px 14px;\\n    }\\n    .settings-nav-pills {\\n      gap: 6px;\\n      flex-wrap: nowrap !important;\\n      overflow-x: auto;\\n      -webkit-overflow-scrolling: touch;\\n      scrollbar-width: none;\\n      padding-bottom: 10px !important;\\n    }\\n    .settings-nav-pills::-webkit-scrollbar {\\n      display: none;\\n    }\\n    .settings-pill {\\n      font-size: 11.5px;\\n      padding: 6px 12px;\\n      white-space: nowrap;\\n      flex-shrink: 0;\\n    }\\n  }\\n</style>\\n\\n<script>\\n  /**\\n   * Wire live file preview, URL preview, and remove button for branding assets.\\n   */\\n  function setupMediaAssetControl(opts) {\\n    const fileInput = document.getElementById(opts.fileId);\\n    const previewImg = document.getElementById(opts.imgId);\\n    const textInput = document.getElementById(opts.textId);\\n    const pathText = document.getElementById(opts.pathId);\\n    const emptyText = document.getElementById(opts.emptyId);\\n    const removeBtn = document.getElementById(opts.removeBtnId);\\n\\n    if (fileInput && previewImg) {\\n      fileInput.addEventListener('change', function(e) {\\n        const file = e.target.files && e.target.files[0];\\n        if (!file) return;\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          previewImg.src = evt.target.result;\\n          previewImg.style.display = 'block';\\n          if (emptyText) emptyText.style.display = 'none';\\n          if (pathText) {\\n            pathText.style.color = '#0284c7';\\n            pathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n          }\\n        };\\n        reader.readAsDataURL(file);\\n      });\\n    }\\n\\n    if (textInput && previewImg) {\\n      textInput.addEventListener('input', function() {\\n        const val = this.value.trim();\\n        if (val) {\\n          previewImg.src = val;\\n          previewImg.style.display = 'block';\\n          if (emptyText) emptyText.style.display = 'none';\\n          if (pathText) {\\n            pathText.style.color = '#0284c7';\\n            pathText.textContent = val;\\n          }\\n        } else {\\n          previewImg.src = '';\\n          previewImg.style.display = 'none';\\n          if (emptyText) emptyText.style.display = 'inline-block';\\n          if (pathText) {\\n            pathText.style.color = '#dc2626';\\n            pathText.textContent = opts.emptyStatus;\\n          }\\n        }\\n      });\\n    }\\n\\n    if (removeBtn && textInput) {\\n      removeBtn.addEventListener('click', function() {\\n        textInput.value = '';\\n        if (fileInput) fileInput.value = '';\\n        if (previewImg) {\\n          previewImg.src = '';\\n          previewImg.style.display = 'none';\\n        }\\n        if (emptyText) emptyText.style.display = 'inline-block';\\n        if (pathText) {\\n          pathText.style.color = '#dc2626';\\n          pathText.textContent = opts.clearedStatus;\\n        }\\n      });\\n    }\\n  }\\n\\n  setupMediaAssetControl({\\n    fileId: 'site_logo_file',\\n    imgId: 'logoPreviewImg',\\n    textId: 'site_logo',\\n    pathId: 'logoPathText',\\n    emptyId: 'logoNoLogoText',\\n    removeBtnId: 'removeLogoBtn',\\n    emptyStatus: 'No logo active (Header displays text title only)',\\n    clearedStatus: 'Logo cleared. Click \\"Save All Settings\\" below to apply changes.'\\n  });\\n\\n  setupMediaAssetControl({\\n    fileId: 'site_favicon_file',\\n    imgId: 'faviconPreviewImg',\\n    textId: 'site_favicon',\\n    pathId: 'faviconPathText',\\n    emptyId: 'faviconNoIconText',\\n    removeBtnId: 'removeFaviconBtn',\\n    emptyStatus: 'No custom favicon active (Browser default)',\\n    clearedStatus: 'Favicon cleared. Click \\"Save All Settings\\" below to apply changes.'\\n  });\\n\\n  // Interactive visual selection for Post Layout cards\\n  document.querySelectorAll('.layout-option-card input[type=\\"radio\\"]').forEach(function(radio) {\\n    radio.addEventListener('change', function() {\\n      document.querySelectorAll('.layout-option-card').forEach(function(card) {\\n        card.classList.remove('selected');\\n      });\\n      if (this.checked) {\\n        this.closest('.layout-option-card').classList.add('selected');\\n      }\\n    });\\n  });\\n</script>\\n\\n")
     ; __append( include('../partials/admin-footer') )
     ; __append("\\n")
   }
@@ -78081,20 +78126,33 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( (settings.site_logo && settings.site_logo.trim()) ? settings.site_logo : 'No logo active (Header displays text title only)' ))
     ; __append("\\n                </div>\\n              </div>\\n            </div>\\n\\n            <div style=\\"margin-bottom: 8px;\\">\\n              <label style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Upload New Logo File</label>\\n              <input \\n                type=\\"file\\" \\n                id=\\"site_logo_file\\" \\n                name=\\"site_logo_file\\" \\n                class=\\"form-control\\" \\n                accept=\\"image/png,image/jpeg,image/webp,image/svg+xml\\"\\n                style=\\"padding: 6px;\\"\\n              >\\n            </div>\\n\\n            <div>\\n              <label for=\\"site_logo\\" style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Or Direct Logo URL / Relative Path</label>\\n              <input \\n                type=\\"text\\" \\n                id=\\"site_logo\\" \\n                name=\\"site_logo\\" \\n                class=\\"form-control\\" \\n                value=\\"")
     ; __append(escapeFn( settings.site_logo || '' ))
-    ; __append("\\" \\n                placeholder=\\"Leave empty for no logo, or enter image path (e.g. /images/logo.png)\\"\\n              >\\n              <small class=\\"field-hint\\">Leave blank or click \\"Delete / Remove Logo\\" above if you don't want any logo in the header. To add a logo, upload a file or enter a path.</small>\\n            </div>\\n          </div>\\n\\n          <!-- Favicon Management -->\\n          <div class=\\"form-group\\" style=\\"flex: 1; min-width: 280px;\\">\\n            <label for=\\"site_favicon\\">Website Browser Favicon</label>\\n            <div style=\\"display: flex; gap: 14px; align-items: center; margin-bottom: 10px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px;\\">\\n              <div style=\\"width: 70px; height: 70px; background: #ffffff; border: 1px dashed #94a3b8; border-radius: 6px; display: flex; align-items: center; justify-content: center; padding: 5px; flex-shrink: 0;\\">\\n                <img id=\\"faviconPreviewImg\\" src=\\"")
-    ; __append(escapeFn( settings.site_favicon || '/images/gez-logo.svg' ))
-    ; __append("\\" alt=\\"Current Favicon\\" style=\\"width: 36px; height: 36px; object-fit: contain;\\">\\n              </div>\\n              <div style=\\"font-size: 12px; color: #475569; overflow: hidden;\\">\\n                <div style=\\"font-weight: 700; color: #1e293b; margin-bottom: 2px;\\">Active Browser Tab Icon</div>\\n                <div id=\\"faviconPathText\\" style=\\"word-break: break-all; font-family: monospace; color: #0284c7;\\">")
-    ; __append(escapeFn( settings.site_favicon || '/images/gez-logo.svg' ))
-    ; __append("</div>\\n              </div>\\n            </div>\\n\\n            <div style=\\"margin-bottom: 8px;\\">\\n              <label style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Upload New Favicon File</label>\\n              <input \\n                type=\\"file\\" \\n                id=\\"site_favicon_file\\" \\n                name=\\"site_favicon_file\\" \\n                class=\\"form-control\\" \\n                accept=\\"image/x-icon,image/png,image/svg+xml,image/jpeg,image/webp\\"\\n                style=\\"padding: 6px;\\"\\n              >\\n            </div>\\n\\n            <div>\\n              <label for=\\"site_favicon\\" style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Or Direct Favicon URL / Relative Path</label>\\n              <input \\n                type=\\"text\\" \\n                id=\\"site_favicon\\" \\n                name=\\"site_favicon\\" \\n                class=\\"form-control\\" \\n                value=\\"")
-    ; __append(escapeFn( settings.site_favicon || '/images/gez-logo.svg' ))
-    ; __append("\\" \\n                placeholder=\\"/images/gez-logo.svg or /favicon.ico\\"\\n              >\\n              <small class=\\"field-hint\\">ICO, PNG, or SVG format (recommended 32x32 or 48x48). Displays in browser tabs and bookmarks.</small>\\n            </div>\\n          </div>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\" style=\\"margin-top: 14px;\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"site_tagline\\">Portal Tagline / Slogan</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"site_tagline\\" \\n            name=\\"site_tagline\\" \\n            class=\\"form-control\\" \\n            value=\\"")
+    ; __append("\\" \\n                placeholder=\\"Leave empty for no logo, or enter image path (e.g. /images/logo.png)\\"\\n              >\\n              <small class=\\"field-hint\\">Leave blank or click \\"Delete / Remove Logo\\" above if you don't want any logo in the header. To add a logo, upload a file or enter a path.</small>\\n            </div>\\n          </div>\\n\\n          <!-- Favicon Management -->\\n          <div class=\\"form-group\\" style=\\"flex: 1; min-width: 280px;\\">\\n            ")
+    ; 
+              const activeFaviconVal = (typeof settings.site_favicon === 'string') ? settings.site_favicon : '/images/gez-logo.svg';
+              const hasFaviconVal = Boolean(activeFaviconVal && activeFaviconVal.trim());
+            
+    ; __append("\\n            <div style=\\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;\\">\\n              <label for=\\"site_favicon\\" style=\\"margin-bottom: 0;\\">Website Browser Favicon</label>\\n              <button \\n                type=\\"button\\" \\n                id=\\"removeFaviconBtn\\" \\n                class=\\"btn btn-sm\\" \\n                style=\\"background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;\\"\\n                title=\\"Remove custom browser favicon\\"\\n              >\\n                \u{1F5D1}\uFE0F Delete / Remove Favicon\\n              </button>\\n            </div>\\n            <div style=\\"display: flex; gap: 14px; align-items: center; margin-bottom: 10px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px;\\">\\n              <div style=\\"width: 70px; height: 70px; background: #ffffff; border: 1px dashed #94a3b8; border-radius: 6px; display: flex; align-items: center; justify-content: center; padding: 5px; flex-shrink: 0; text-align: center;\\">\\n                ")
+    ;  if (hasFaviconVal) { 
+    ; __append("\\n                  <img id=\\"faviconPreviewImg\\" src=\\"")
+    ; __append(escapeFn( activeFaviconVal ))
+    ; __append("\\" alt=\\"Current Favicon\\" style=\\"width: 36px; height: 36px; object-fit: contain;\\">\\n                  <span id=\\"faviconNoIconText\\" style=\\"font-size: 10.5px; font-weight: 600; color: #94a3b8; display: none;\\">No<br>Favicon</span>\\n                ")
+    ;  } else { 
+    ; __append("\\n                  <img id=\\"faviconPreviewImg\\" src=\\"\\" alt=\\"Current Favicon\\" style=\\"width: 36px; height: 36px; object-fit: contain; display: none;\\">\\n                  <span id=\\"faviconNoIconText\\" style=\\"font-size: 10.5px; font-weight: 600; color: #94a3b8; display: inline-block;\\">No<br>Favicon</span>\\n                ")
+    ;  } 
+    ; __append("\\n              </div>\\n              <div style=\\"font-size: 12px; color: #475569; overflow: hidden; flex: 1;\\">\\n                <div style=\\"font-weight: 700; color: #1e293b; margin-bottom: 2px;\\">Active Browser Tab Icon</div>\\n                <div id=\\"faviconPathText\\" style=\\"word-break: break-all; font-family: monospace; color: ")
+    ; __append(escapeFn( hasFaviconVal ? '#0284c7' : '#dc2626' ))
+    ; __append(";\\">\\n                  ")
+    ; __append(escapeFn( hasFaviconVal ? activeFaviconVal : 'No custom favicon active (Browser default)' ))
+    ; __append("\\n                </div>\\n              </div>\\n            </div>\\n\\n            <div style=\\"margin-bottom: 8px;\\">\\n              <label style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Upload New Favicon File</label>\\n              <input \\n                type=\\"file\\" \\n                id=\\"site_favicon_file\\" \\n                name=\\"site_favicon_file\\" \\n                class=\\"form-control\\" \\n                accept=\\"image/x-icon,image/png,image/svg+xml,image/jpeg,image/webp\\"\\n                style=\\"padding: 6px;\\"\\n              >\\n            </div>\\n\\n            <div>\\n              <label for=\\"site_favicon\\" style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Or Direct Favicon URL / Relative Path</label>\\n              <input \\n                type=\\"text\\" \\n                id=\\"site_favicon\\" \\n                name=\\"site_favicon\\" \\n                class=\\"form-control\\" \\n                value=\\"")
+    ; __append(escapeFn( activeFaviconVal ))
+    ; __append("\\" \\n                placeholder=\\"Leave empty for no custom favicon, or enter /images/gez-logo.svg\\"\\n              >\\n              <small class=\\"field-hint\\">ICO, PNG, or SVG format (recommended 32x32 or 48x48). Click \\"Delete / Remove Favicon\\" above to clear it cleanly.</small>\\n            </div>\\n          </div>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-row\\" style=\\"margin-top: 14px;\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"site_tagline\\">Portal Tagline / Slogan</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"site_tagline\\" \\n            name=\\"site_tagline\\" \\n            class=\\"form-control\\" \\n            value=\\"")
     ; __append(escapeFn( settings.site_tagline || 'Latest Govt Jobs, Admit Card, Results 2026' ))
     ; __append("\\" \\n            placeholder=\\"Latest Govt Jobs, Admit Card, Results 2026\\"\\n          >\\n          <small class=\\"field-hint\\">Used in SEO title suffixes and social link shares.</small>\\n        </div>\\n\\n        <div class=\\"form-group\\">\\n          <label for=\\"site_domain\\">Primary Domain URL</label>\\n          <input \\n            type=\\"text\\" \\n            id=\\"site_domain\\" \\n            name=\\"site_domain\\" \\n            class=\\"form-control\\" \\n            value=\\"")
     ; __append(escapeFn( settings.site_domain || 'https://govtexamzone.com' 
 ))
     ; __append("\\" \\n            placeholder=\\"https://govtexamzone.com\\"\\n          >\\n          <small class=\\"field-hint\\">Canonical domain used for generating sitemaps and share links.</small>\\n        </div>\\n      </div>\\n\\n      <div class=\\"form-group\\" style=\\"margin-top: 14px;\\">\\n        <label for=\\"copyright_text\\">Footer Copyright Notice</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"copyright_text\\" \\n          name=\\"copyright_text\\" \\n          class=\\"form-control\\" \\n          value=\\"")
-    ; __append(escapeFn( settings.copyright_text || '\xA9 2026 govtexamzone.com. All Rights Reserved.' ))
-    ; __append("\\" \\n          placeholder=\\"\xA9 2026 govtexamzone.com. All Rights Reserved.\\"\\n        >\\n        <small class=\\"field-hint\\">Displayed at the very bottom of every page.</small>\\n      </div>\\n    </div>\\n\\n\\n    <!-- 1B. Full Post / Blog Detail Page Layout Configuration -->\\n    <div id=\\"section-layout\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4F0}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">Post / Full Blog Detail Page Layout (2 UI Modes)</h3>\\n          <p class=\\"settings-group-desc\\">Choose how full post/blog detail pages display on the frontend. Both Classic Sarkari posts and rich Blog articles automatically adapt to your selected layout.</p>\\n        </div>\\n      </div>\\n\\n      ")
+    ; __append(escapeFn( settings.copyright_text || '\xA9 {year} govtexamzone.com. All Rights Reserved.' ))
+    ; __append("\\" \\n          placeholder=\\"\xA9 {year} govtexamzone.com. All Rights Reserved.\\"\\n        >\\n        <small class=\\"field-hint\\">Fetched from backend settings on every page. Use <code>{year}</code> or any <code>20xx</code> year \u2014 it automatically updates to the current year on the live website.</small>\\n      </div>\\n    </div>\\n\\n\\n    <!-- 1B. Full Post / Blog Detail Page Layout Configuration -->\\n    <div id=\\"section-layout\\" class=\\"settings-group-card\\">\\n      <div class=\\"settings-group-header\\">\\n        <span class=\\"settings-group-icon\\">\u{1F4F0}</span>\\n        <div>\\n          <h3 class=\\"settings-group-title\\">Post / Full Blog Detail Page Layout (2 UI Modes)</h3>\\n          <p class=\\"settings-group-desc\\">Choose how full post/blog detail pages display on the frontend. Both Classic Sarkari posts and rich Blog articles automatically adapt to your selected layout.</p>\\n        </div>\\n      </div>\\n\\n      ")
     ;  const activeLayout = (settings.post_detail_layout === 'blog_2col') ? 'blog_2col' : 'classic'; 
     ; __append("\\n      <div class=\\"layout-selector-grid\\" style=\\"display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;\\">\\n        <!-- Option 1: Classic Sarkari Single-Column -->\\n        <label class=\\"layout-option-card ")
     ; __append(escapeFn( activeLayout === 'classic' ? 'selected' : '' ))
@@ -78158,7 +78216,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( settings.footer_custom_code || '' ))
     ; __append("</textarea>\\n        <small class=\\"field-hint\\">Code injected right before the closing &lt;/body&gt; tag on all public pages.</small>\\n      </div>\\n    </div>\\n\\n    <!-- Bottom Save Action Bar -->\\n    <div style=\\"background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px 24px; display: flex; justify-content: space-between; align-items: center; margin-top: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); flex-wrap: wrap; gap: 12px;\\">\\n      <div>\\n        <span style=\\"font-weight: 700; color: #0f172a; font-size: 14.5px;\\">Ready to update portal configuration?</span>\\n        <div style=\\"font-size: 12px; color: #64748b; margin-top: 2px;\\">Changes take effect immediately across all desktop and mobile devices.</div>\\n      </div>\\n      <div style=\\"display: flex; gap: 10px;\\">\\n        <a href=\\"")
     ; __append(escapeFn( (typeof adminBase !== 'undefined' ? adminBase : '/admin') || '/' ))
-    ; __append("\\" class=\\"btn btn-secondary\\">Cancel</a>\\n        <button type=\\"submit\\" class=\\"btn btn-primary\\" style=\\"padding: 10px 28px; font-size: 15px; font-weight: 700;\\">\\n          \u{1F4BE} Save All Settings\\n        </button>\\n      </div>\\n    </div>\\n\\n  </form>\\n</div>\\n\\n<style>\\n  .settings-group-card {\\n    background: #ffffff;\\n    border: 1px solid #e2e8f0;\\n    border-radius: 10px;\\n    padding: 22px 24px;\\n    margin-bottom: 22px;\\n    box-shadow: 0 1px 3px rgba(0,0,0,0.04);\\n    scroll-margin-top: 80px;\\n  }\\n\\n  .settings-group-header {\\n    display: flex;\\n    gap: 12px;\\n    align-items: flex-start;\\n    margin-bottom: 18px;\\n    border-bottom: 1px solid #f1f5f9;\\n    padding-bottom: 14px;\\n  }\\n\\n  .settings-group-icon {\\n    font-size: 24px;\\n    background: #f8fafc;\\n    padding: 8px;\\n    border-radius: 8px;\\n    border: 1px solid #e2e8f0;\\n    line-height: 1;\\n  }\\n\\n  .settings-group-title {\\n    margin: 0;\\n    font-size: 16px;\\n    font-weight: 700;\\n    color: #0f172a;\\n  }\\n\\n  .settings-group-desc {\\n    margin: 4px 0 0 0;\\n    font-size: 12.5px;\\n    color: #64748b;\\n  }\\n\\n  .field-hint {\\n    display: block;\\n    font-size: 11.5px;\\n    color: #64748b;\\n    margin-top: 5px;\\n    line-height: 1.4;\\n  }\\n\\n  .code-editor {\\n    font-family: 'JetBrains Mono', monospace;\\n    font-size: 12.5px;\\n    background: #0f172a !important;\\n    color: #38bdf8 !important;\\n    border: 1px solid #334155 !important;\\n  }\\n\\n  .code-editor::placeholder {\\n    color: #64748b !important;\\n  }\\n\\n  .settings-pill {\\n    text-decoration: none;\\n    font-size: 12.5px;\\n    font-weight: 600;\\n    color: #475569;\\n    background: #f1f5f9;\\n    padding: 6px 14px;\\n    border-radius: 9999px;\\n    transition: all 0.15s ease;\\n  }\\n\\n  .settings-pill:hover, .settings-pill:focus {\\n    background: #ab183d;\\n    color: #ffffff;\\n  }\\n\\n  .layout-option-card {\\n    display: flex;\\n    flex-direction: column;\\n    gap: 10px;\\n    padding: 16px;\\n    border: 2px solid #e2e8f0;\\n    border-radius: 10px;\\n    background: #f8fafc;\\n    cursor: pointer;\\n    transition: all 0.18s ease;\\n    margin: 0;\\n  }\\n\\n  .layout-option-card:hover {\\n    border-color: #94a3b8;\\n    background: #ffffff;\\n  }\\n\\n  .layout-option-card.selected {\\n    border-color: #0066ff;\\n    background: #eff6ff;\\n    box-shadow: 0 4px 12px rgba(0, 102, 255, 0.12);\\n  }\\n\\n  .layout-card-top {\\n    display: flex;\\n    justify-content: space-between;\\n    align-items: center;\\n    gap: 8px;\\n    flex-wrap: wrap;\\n  }\\n\\n  .layout-radio-dot {\\n    width: 16px;\\n    height: 16px;\\n    border-radius: 50%;\\n    border: 2px solid #94a3b8;\\n    background: #ffffff;\\n    display: inline-block;\\n    position: relative;\\n    flex-shrink: 0;\\n  }\\n\\n  .layout-option-card.selected .layout-radio-dot {\\n    border-color: #0066ff;\\n    background: #0066ff;\\n    box-shadow: inset 0 0 0 3px #ffffff;\\n  }\\n\\n  .layout-badge {\\n    font-size: 11px;\\n    font-weight: 700;\\n    padding: 2px 8px;\\n    border-radius: 9999px;\\n  }\\n\\n  .classic-badge {\\n    background: #fee2e2;\\n    color: #991b1b;\\n  }\\n\\n  .blog-badge {\\n    background: #dbeafe;\\n    color: #1e40af;\\n  }\\n\\n  .layout-wireframe {\\n    background: #ffffff;\\n    border: 1px solid #cbd5e1;\\n    border-radius: 6px;\\n    padding: 8px;\\n  }\\n\\n  .layout-card-desc {\\n    margin: 0;\\n    font-size: 12.5px;\\n    color: #475569;\\n    line-height: 1.5;\\n  }\\n\\n  @media (max-width: 600px) {\\n    .settings-group-card {\\n      padding: 16px 14px;\\n    }\\n    .settings-nav-pills {\\n      gap: 6px;\\n      flex-wrap: nowrap !important;\\n      overflow-x: auto;\\n      -webkit-overflow-scrolling: touch;\\n      scrollbar-width: none;\\n      padding-bottom: 10px !important;\\n    }\\n    .settings-nav-pills::-webkit-scrollbar {\\n      display: none;\\n    }\\n    .settings-pill {\\n      font-size: 11.5px;\\n      padding: 6px 12px;\\n      white-space: nowrap;\\n      flex-shrink: 0;\\n    }\\n  }\\n</style>\\n\\n<script>\\n  // Live preview for Logo file input\\n  const logoFileInput = document.getElementById('site_logo_file');\\n  const logoPreviewImg = document.getElementById('logoPreviewImg');\\n  const logoTextInput = document.getElementById('site_logo');\\n  const logoPathText = document.getElementById('logoPathText');\\n  const logoNoLogoText = document.getElementById('logoNoLogoText');\\n  const removeLogoBtn = document.getElementById('removeLogoBtn');\\n\\n  if (logoFileInput && logoPreviewImg) {\\n    logoFileInput.addEventListener('change', function(e) {\\n      const file = e.target.files && e.target.files[0];\\n      if (file) {\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          logoPreviewImg.src = evt.target.result;\\n          logoPreviewImg.style.display = 'block';\\n          if (logoNoLogoText) logoNoLogoText.style.display = 'none';\\n          if (logoPathText) {\\n            logoPathText.style.color = '#0284c7';\\n            logoPathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n          }\\n        };\\n        reader.readAsDataURL(file);\\n      }\\n    });\\n  }\\n\\n  // Live preview for Logo text input\\n  if (logoTextInput && logoPreviewImg) {\\n    logoTextInput.addEventListener('input', function() {\\n      const val = this.value.trim();\\n      if (val) {\\n        logoPreviewImg.src = val;\\n        logoPreviewImg.style.display = 'block';\\n        if (logoNoLogoText) logoNoLogoText.style.display = 'none';\\n        if (logoPathText) {\\n          logoPathText.style.color = '#0284c7';\\n          logoPathText.textContent = val;\\n        }\\n      } else {\\n        logoPreviewImg.src = '';\\n        logoPreviewImg.style.display = 'none';\\n        if (logoNoLogoText) logoNoLogoText.style.display = 'inline-block';\\n        if (logoPathText) {\\n          logoPathText.style.color = '#dc2626';\\n          logoPathText.textContent = 'No logo active (Header displays text title only)';\\n        }\\n      }\\n    });\\n  }\\n\\n  // Live Remove Logo Button\\n  if (removeLogoBtn && logoTextInput) {\\n    removeLogoBtn.addEventListener('click', function() {\\n      logoTextInput.value = '';\\n      if (logoFileInput) logoFileInput.value = '';\\n      if (logoPreviewImg) {\\n        logoPreviewImg.src = '';\\n        logoPreviewImg.style.display = 'none';\\n      }\\n      if (logoNoLogoText) logoNoLogoText.style.display = 'inline-block';\\n      if (logoPathText) {\\n        logoPathText.style.color = '#dc2626';\\n        logoPathText.textContent = 'Logo cleared. Click \\"Save Settings\\" below to apply changes.';\\n      }\\n    });\\n  }\\n\\n  // Live preview for Favicon file input\\n  const faviconFileInput = document.getElementById('site_favicon_file');\\n  const faviconPreviewImg = document.getElementById('faviconPreviewImg');\\n  const faviconTextInput = document.getElementById('site_favicon');\\n  const faviconPathText = document.getElementById('faviconPathText');\\n\\n  if (faviconFileInput && faviconPreviewImg) {\\n    faviconFileInput.addEventListener('change', function(e) {\\n      const file = e.target.files && e.target.files[0];\\n      if (file) {\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          faviconPreviewImg.src = evt.target.result;\\n          if (faviconPathText) faviconPathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n        };\\n        reader.readAsDataURL(file);\\n      }\\n    });\\n  }\\n\\n  // Live preview for Favicon text input\\n  if (faviconTextInput && faviconPreviewImg) {\\n    faviconTextInput.addEventListener('input', function() {\\n      if (this.value.trim()) {\\n        faviconPreviewImg.src = this.value.trim();\\n        if (faviconPathText) faviconPathText.textContent = this.value.trim();\\n      }\\n    });\\n  }\\n\\n  // Interactive visual selection for Post Layout cards\\n  document.querySelectorAll('.layout-option-card input[type=\\"radio\\"]').forEach(function(radio) {\\n    radio.addEventListener('change', function() {\\n      document.querySelectorAll('.layout-option-card').forEach(function(card) {\\n        card.classList.remove('selected');\\n      });\\n      if (this.checked) {\\n        this.closest('.layout-option-card').classList.add('selected');\\n      }\\n    });\\n  });\\n</script>\\n\\n")
+    ; __append("\\" class=\\"btn btn-secondary\\">Cancel</a>\\n        <button type=\\"submit\\" class=\\"btn btn-primary\\" style=\\"padding: 10px 28px; font-size: 15px; font-weight: 700;\\">\\n          \u{1F4BE} Save All Settings\\n        </button>\\n      </div>\\n    </div>\\n\\n  </form>\\n</div>\\n\\n<style>\\n  .settings-group-card {\\n    background: #ffffff;\\n    border: 1px solid #e2e8f0;\\n    border-radius: 10px;\\n    padding: 22px 24px;\\n    margin-bottom: 22px;\\n    box-shadow: 0 1px 3px rgba(0,0,0,0.04);\\n    scroll-margin-top: 80px;\\n  }\\n\\n  .settings-group-header {\\n    display: flex;\\n    gap: 12px;\\n    align-items: flex-start;\\n    margin-bottom: 18px;\\n    border-bottom: 1px solid #f1f5f9;\\n    padding-bottom: 14px;\\n  }\\n\\n  .settings-group-icon {\\n    font-size: 24px;\\n    background: #f8fafc;\\n    padding: 8px;\\n    border-radius: 8px;\\n    border: 1px solid #e2e8f0;\\n    line-height: 1;\\n  }\\n\\n  .settings-group-title {\\n    margin: 0;\\n    font-size: 16px;\\n    font-weight: 700;\\n    color: #0f172a;\\n  }\\n\\n  .settings-group-desc {\\n    margin: 4px 0 0 0;\\n    font-size: 12.5px;\\n    color: #64748b;\\n  }\\n\\n  .field-hint {\\n    display: block;\\n    font-size: 11.5px;\\n    color: #64748b;\\n    margin-top: 5px;\\n    line-height: 1.4;\\n  }\\n\\n  .code-editor {\\n    font-family: 'JetBrains Mono', monospace;\\n    font-size: 12.5px;\\n    background: #0f172a !important;\\n    color: #38bdf8 !important;\\n    border: 1px solid #334155 !important;\\n  }\\n\\n  .code-editor::placeholder {\\n    color: #64748b !important;\\n  }\\n\\n  .settings-pill {\\n    text-decoration: none;\\n    font-size: 12.5px;\\n    font-weight: 600;\\n    color: #475569;\\n    background: #f1f5f9;\\n    padding: 6px 14px;\\n    border-radius: 9999px;\\n    transition: all 0.15s ease;\\n  }\\n\\n  .settings-pill:hover, .settings-pill:focus {\\n    background: #ab183d;\\n    color: #ffffff;\\n  }\\n\\n  .layout-option-card {\\n    display: flex;\\n    flex-direction: column;\\n    gap: 10px;\\n    padding: 16px;\\n    border: 2px solid #e2e8f0;\\n    border-radius: 10px;\\n    background: #f8fafc;\\n    cursor: pointer;\\n    transition: all 0.18s ease;\\n    margin: 0;\\n  }\\n\\n  .layout-option-card:hover {\\n    border-color: #94a3b8;\\n    background: #ffffff;\\n  }\\n\\n  .layout-option-card.selected {\\n    border-color: #0066ff;\\n    background: #eff6ff;\\n    box-shadow: 0 4px 12px rgba(0, 102, 255, 0.12);\\n  }\\n\\n  .layout-card-top {\\n    display: flex;\\n    justify-content: space-between;\\n    align-items: center;\\n    gap: 8px;\\n    flex-wrap: wrap;\\n  }\\n\\n  .layout-radio-dot {\\n    width: 16px;\\n    height: 16px;\\n    border-radius: 50%;\\n    border: 2px solid #94a3b8;\\n    background: #ffffff;\\n    display: inline-block;\\n    position: relative;\\n    flex-shrink: 0;\\n  }\\n\\n  .layout-option-card.selected .layout-radio-dot {\\n    border-color: #0066ff;\\n    background: #0066ff;\\n    box-shadow: inset 0 0 0 3px #ffffff;\\n  }\\n\\n  .layout-badge {\\n    font-size: 11px;\\n    font-weight: 700;\\n    padding: 2px 8px;\\n    border-radius: 9999px;\\n  }\\n\\n  .classic-badge {\\n    background: #fee2e2;\\n    color: #991b1b;\\n  }\\n\\n  .blog-badge {\\n    background: #dbeafe;\\n    color: #1e40af;\\n  }\\n\\n  .layout-wireframe {\\n    background: #ffffff;\\n    border: 1px solid #cbd5e1;\\n    border-radius: 6px;\\n    padding: 8px;\\n  }\\n\\n  .layout-card-desc {\\n    margin: 0;\\n    font-size: 12.5px;\\n    color: #475569;\\n    line-height: 1.5;\\n  }\\n\\n  @media (max-width: 600px) {\\n    .settings-group-card {\\n      padding: 16px 14px;\\n    }\\n    .settings-nav-pills {\\n      gap: 6px;\\n      flex-wrap: nowrap !important;\\n      overflow-x: auto;\\n      -webkit-overflow-scrolling: touch;\\n      scrollbar-width: none;\\n      padding-bottom: 10px !important;\\n    }\\n    .settings-nav-pills::-webkit-scrollbar {\\n      display: none;\\n    }\\n    .settings-pill {\\n      font-size: 11.5px;\\n      padding: 6px 12px;\\n      white-space: nowrap;\\n      flex-shrink: 0;\\n    }\\n  }\\n</style>\\n\\n<script>\\n  /**\\n   * Wire live file preview, URL preview, and remove button for branding assets.\\n   */\\n  function setupMediaAssetControl(opts) {\\n    const fileInput = document.getElementById(opts.fileId);\\n    const previewImg = document.getElementById(opts.imgId);\\n    const textInput = document.getElementById(opts.textId);\\n    const pathText = document.getElementById(opts.pathId);\\n    const emptyText = document.getElementById(opts.emptyId);\\n    const removeBtn = document.getElementById(opts.removeBtnId);\\n\\n    if (fileInput && previewImg) {\\n      fileInput.addEventListener('change', function(e) {\\n        const file = e.target.files && e.target.files[0];\\n        if (!file) return;\\n        const reader = new FileReader();\\n        reader.onload = function(evt) {\\n          previewImg.src = evt.target.result;\\n          previewImg.style.display = 'block';\\n          if (emptyText) emptyText.style.display = 'none';\\n          if (pathText) {\\n            pathText.style.color = '#0284c7';\\n            pathText.textContent = 'Selected: ' + file.name + ' (will upload on save)';\\n          }\\n        };\\n        reader.readAsDataURL(file);\\n      });\\n    }\\n\\n    if (textInput && previewImg) {\\n      textInput.addEventListener('input', function() {\\n        const val = this.value.trim();\\n        if (val) {\\n          previewImg.src = val;\\n          previewImg.style.display = 'block';\\n          if (emptyText) emptyText.style.display = 'none';\\n          if (pathText) {\\n            pathText.style.color = '#0284c7';\\n            pathText.textContent = val;\\n          }\\n        } else {\\n          previewImg.src = '';\\n          previewImg.style.display = 'none';\\n          if (emptyText) emptyText.style.display = 'inline-block';\\n          if (pathText) {\\n            pathText.style.color = '#dc2626';\\n            pathText.textContent = opts.emptyStatus;\\n          }\\n        }\\n      });\\n    }\\n\\n    if (removeBtn && textInput) {\\n      removeBtn.addEventListener('click', function() {\\n        textInput.value = '';\\n        if (fileInput) fileInput.value = '';\\n        if (previewImg) {\\n          previewImg.src = '';\\n          previewImg.style.display = 'none';\\n        }\\n        if (emptyText) emptyText.style.display = 'inline-block';\\n        if (pathText) {\\n          pathText.style.color = '#dc2626';\\n          pathText.textContent = opts.clearedStatus;\\n        }\\n      });\\n    }\\n  }\\n\\n  setupMediaAssetControl({\\n    fileId: 'site_logo_file',\\n    imgId: 'logoPreviewImg',\\n    textId: 'site_logo',\\n    pathId: 'logoPathText',\\n    emptyId: 'logoNoLogoText',\\n    removeBtnId: 'removeLogoBtn',\\n    emptyStatus: 'No logo active (Header displays text title only)',\\n    clearedStatus: 'Logo cleared. Click \\"Save All Settings\\" below to apply changes.'\\n  });\\n\\n  setupMediaAssetControl({\\n    fileId: 'site_favicon_file',\\n    imgId: 'faviconPreviewImg',\\n    textId: 'site_favicon',\\n    pathId: 'faviconPathText',\\n    emptyId: 'faviconNoIconText',\\n    removeBtnId: 'removeFaviconBtn',\\n    emptyStatus: 'No custom favicon active (Browser default)',\\n    clearedStatus: 'Favicon cleared. Click \\"Save All Settings\\" below to apply changes.'\\n  });\\n\\n  // Interactive visual selection for Post Layout cards\\n  document.querySelectorAll('.layout-option-card input[type=\\"radio\\"]').forEach(function(radio) {\\n    radio.addEventListener('change', function() {\\n      document.querySelectorAll('.layout-option-card').forEach(function(card) {\\n        card.classList.remove('selected');\\n      });\\n      if (this.checked) {\\n        this.closest('.layout-option-card').classList.add('selected');\\n      }\\n    });\\n  });\\n</script>\\n\\n")
     ; __append( include('../partials/admin-footer') )
     ; __append("\\n")
   }
@@ -78484,7 +78542,17 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( post ? post.total_vacancy : '' ))
     ; __append("\\"\\n        >\\n      </div>\\n\\n      <div class=\\"form-group\\">\\n        <label for=\\"slug\\">Custom URL Slug (Leave blank for auto)</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"slug\\" \\n          name=\\"slug\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"ssc-cgl-2026-online-form\\" \\n          value=\\"")
     ; __append(escapeFn( post ? post.slug : '' ))
-    ; __append("\\"\\n        >\\n      </div>\\n    </div>\\n\\n    <!-- Cloudflare R2 Document Upload & Link Section -->\\n    <div style=\\"background: #f0fdf4; border: 1px solid #86efac; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <h3 style=\\"color: #166534; font-size: 15px; margin-top: 0; margin-bottom: 12px;\\">\\n        \u2601\uFE0F Official Documents &amp; External Links (R2 File Upload or Direct Web URL)\\n      </h3>\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label>Notification PDF (URL or File)</label>\\n          <input \\n            type=\\"text\\" \\n            name=\\"notification_pdf_url\\" \\n            class=\\"form-control\\" \\n            placeholder=\\"https://... or /uploads/...\\" \\n            value=\\"")
+    ; __append("\\"\\n        >\\n      </div>\\n    </div>\\n\\n    <!-- Post Thumbnail / Featured Image -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F5BC}\uFE0F Post Thumbnail / Featured Image (Optional)</h3>\\n          <small style=\\"color: #64748b;\\">Displayed on the post page &amp; social share previews (OG Image)</small>\\n        </div>\\n        <button type=\\"button\\" id=\\"removeThumbBtn\\" class=\\"btn btn-sm\\" style=\\"background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; font-size: 11.5px; font-weight: 600;\\">\\n          \u{1F5D1}\uFE0F Remove Thumbnail\\n        </button>\\n      </div>\\n      ")
+    ;  const hasThumb = Boolean(post && post.thumbnail && post.thumbnail.trim()); 
+    ; __append("\\n      <div class=\\"form-row\\" style=\\"align-items: center;\\">\\n        <div class=\\"form-group\\" style=\\"max-width: 160px; margin-bottom: 0;\\">\\n          <div style=\\"width: 140px; height: 84px; background: #ffffff; border: 1px dashed #94a3b8; border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; text-align: center;\\">\\n            <img id=\\"thumbPreviewImg\\" src=\\"")
+    ; __append(escapeFn( hasThumb ? post.thumbnail : '' ))
+    ; __append("\\" alt=\\"Post Thumbnail Preview\\" style=\\"width: 100%; height: 100%; object-fit: cover; display: ")
+    ; __append(escapeFn( hasThumb ? 'block' : 'none' ))
+    ; __append(";\\">\\n            <span id=\\"thumbNoImgText\\" style=\\"font-size: 11px; color: #64748b; font-weight: 600; display: ")
+    ; __append(escapeFn( hasThumb ? 'none' : 'inline-block' ))
+    ; __append(";\\">No Thumbnail</span>\\n          </div>\\n        </div>\\n        <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n          <label style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Upload Thumbnail Image (to R2)</label>\\n          <input type=\\"file\\" id=\\"thumbnail_file\\" name=\\"thumbnail_file\\" class=\\"form-control\\" accept=\\"image/png,image/jpeg,image/webp,image/svg+xml\\" style=\\"padding: 6px;\\">\\n        </div>\\n        <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n          <label for=\\"thumbnail_url\\" style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Or Paste Thumbnail Image URL</label>\\n          <input type=\\"text\\" id=\\"thumbnail_url\\" name=\\"thumbnail_url\\" class=\\"form-control\\" placeholder=\\"https://... or /uploads/...\\" value=\\"")
+    ; __append(escapeFn( hasThumb ? post.thumbnail : '' ))
+    ; __append("\\">\\n        </div>\\n      </div>\\n    </div>\\n\\n    <!-- Cloudflare R2 Document Upload & Link Section -->\\n    <div style=\\"background: #f0fdf4; border: 1px solid #86efac; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <h3 style=\\"color: #166534; font-size: 15px; margin-top: 0; margin-bottom: 12px;\\">\\n        \u2601\uFE0F Official Documents &amp; External Links (R2 File Upload or Direct Web URL)\\n      </h3>\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label>Notification PDF (URL or File)</label>\\n          <input \\n            type=\\"text\\" \\n            name=\\"notification_pdf_url\\" \\n            class=\\"form-control\\" \\n            placeholder=\\"https://... or /uploads/...\\" \\n            value=\\"")
     ; __append(escapeFn( post && post.notification_pdf ? post.notification_pdf : '' ))
     ; __append("\\"\\n          >\\n          <div style=\\"margin-top: 6px;\\">\\n            <small style=\\"color: #475569; font-size: 11.5px;\\">Or Upload PDF/Doc:</small>\\n            <input type=\\"file\\" name=\\"notification_file\\" class=\\"form-control\\" style=\\"margin-top: 2px;\\" accept=\\".pdf,.doc,.docx,.jpg,.png\\">\\n          </div>\\n          ")
     ;  if (post && post.notification_pdf) { 
@@ -78502,9 +78570,9 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( post ? (post.application_fee || '[]') : '[]' ))
     ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Vacancy Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;\\">\\n        <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F4CB} Vacancy Details &amp; Eligibility</h3>\\n        <button type=\\"button\\" id=\\"btn-add-vac\\" class=\\"btn btn-secondary btn-sm\\">+ Add Vacancy Row</button>\\n      </div>\\n      <div id=\\"vac-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"vacancy_details\\" name=\\"vacancy_details\\" value=\\"")
     ; __append(escapeFn( post ? (post.vacancy_details || '[]') : '[]' ))
-    ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Category-Wise Vacancy Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F4CA} Category-Wise Vacancy Distribution</h3>\\n          <small style=\\"color: #64748b;\\">Post / Group Name with UR, EWS, OBC, SC, ST breakdown</small>\\n        </div>\\n        <button type=\\"button\\" id=\\"btn-add-cat\\" class=\\"btn btn-secondary btn-sm\\">+ Add Category Row</button>\\n      </div>\\n      <div id=\\"cat-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"category_details\\" name=\\"category_details\\" value=\\"")
+    ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Category-Wise Vacancy Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F4CA} Category-Wise Vacancy Distribution</h3>\\n          <small style=\\"color: #64748b;\\">Create unlimited rows &amp; columns \u2014 rename, add, or remove any column header or row</small>\\n        </div>\\n        <div style=\\"display: flex; gap: 8px; flex-wrap: wrap;\\">\\n          <button type=\\"button\\" id=\\"btn-add-cat-col\\" class=\\"btn btn-secondary btn-sm\\">+ Add Column</button>\\n          <button type=\\"button\\" id=\\"btn-add-cat\\" class=\\"btn btn-primary btn-sm\\">+ Add Row</button>\\n        </div>\\n      </div>\\n      <div id=\\"cat-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"category_details\\" name=\\"category_details\\" value=\\"")
     ; __append(escapeFn( post ? (post.category_details || '[]') : '[]' ))
-    ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Friendly Builder: Age Limit Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <h3 style=\\"margin: 0 0 10px 0; font-size: 15px; color: #1e293b;\\">\u{1F464} Age Limit Details</h3>\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"age_as_on\\">Age Limit (As on Date)</label>\\n          <input type=\\"text\\" id=\\"age_as_on\\" class=\\"form-control\\" placeholder=\\"e.g. 01/08/2026\\">\\n        </div>\\n        <div class=\\"form-group\\">\\n          <label for=\\"age_min\\">Minimum Age</label>\\n          <input type=\\"text\\" id=\\"age_min\\" class=\\"form-control\\" placeholder=\\"e.g. 18 Years\\">\\n        </div>\\n        <div class=\\"form-group\\">\\n          <label for=\\"age_max\\">Maximum Age</label>\\n          <input type=\\"text\\" id=\\"age_max\\" class=\\"form-control\\" placeholder=\\"e.g. 27 Years\\">\\n        </div>\\n      </div>\\n      <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n        <label for=\\"age_relaxation\\">Age Relaxation Details</label>\\n        <input type=\\"text\\" id=\\"age_relaxation\\" class=\\"form-control\\" placeholder=\\"e.g. Age Relaxation Extra as per Rules\\">\\n      </div>\\n      <input type=\\"hidden\\" id=\\"age_limit\\" name=\\"age_limit\\" value=\\"")
+    ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Category-Wise Age Limit Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F464} Age Limit Details (Category-Wise)</h3>\\n          <small style=\\"color: #64748b;\\">Add category-wise Minimum &amp; Maximum age limit rows just like Application Fee Details</small>\\n        </div>\\n        <button type=\\"button\\" id=\\"btn-add-age\\" class=\\"btn btn-secondary btn-sm\\">+ Add Age Row</button>\\n      </div>\\n      <div class=\\"form-row\\" style=\\"margin-bottom: 12px;\\">\\n        <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n          <label for=\\"age_as_on\\">Age Limit (As on Date)</label>\\n          <input type=\\"text\\" id=\\"age_as_on\\" class=\\"form-control\\" placeholder=\\"e.g. 01/08/2026\\">\\n        </div>\\n        <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n          <label for=\\"age_relaxation\\">Extra Age Relaxation Note (Optional)</label>\\n          <input type=\\"text\\" id=\\"age_relaxation\\" class=\\"form-control\\" placeholder=\\"e.g. Age Relaxation Extra as per Rules\\">\\n        </div>\\n      </div>\\n      <div id=\\"age-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"age_limit\\" name=\\"age_limit\\" value=\\"")
     ; __append(escapeFn( post ? (post.age_limit || '{}') : '{}' ))
     ; __append("\\">\\n    </div>\\n\\n    <!-- How to Apply -->\\n    <div class=\\"form-group\\">\\n      <label for=\\"how_to_apply\\">How to Apply Steps</label>\\n      <textarea \\n        id=\\"how_to_apply\\" \\n        name=\\"how_to_apply\\" \\n        class=\\"form-control\\" \\n        rows=\\"4\\" \\n      >")
     ; __append(escapeFn( post ? post.how_to_apply : '1. Candidate Can Apply Online From Official Portal.\\n2. Read Notification Carefully Before Filling Form.\\n3. Keep Ready Photo, Sign & ID Proof.\\n4. Pay Exam Fee and Print Final Application Form.' ))
@@ -78582,7 +78650,17 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( post ? post.total_vacancy : '' ))
     ; __append("\\"\\n        >\\n      </div>\\n\\n      <div class=\\"form-group\\">\\n        <label for=\\"slug\\">Custom URL Slug (Leave blank for auto)</label>\\n        <input \\n          type=\\"text\\" \\n          id=\\"slug\\" \\n          name=\\"slug\\" \\n          class=\\"form-control\\" \\n          placeholder=\\"ssc-cgl-2026-online-form\\" \\n          value=\\"")
     ; __append(escapeFn( post ? post.slug : '' ))
-    ; __append("\\"\\n        >\\n      </div>\\n    </div>\\n\\n    <!-- Cloudflare R2 Document Upload & Link Section -->\\n    <div style=\\"background: #f0fdf4; border: 1px solid #86efac; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <h3 style=\\"color: #166534; font-size: 15px; margin-top: 0; margin-bottom: 12px;\\">\\n        \u2601\uFE0F Official Documents &amp; External Links (R2 File Upload or Direct Web URL)\\n      </h3>\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label>Notification PDF (URL or File)</label>\\n          <input \\n            type=\\"text\\" \\n            name=\\"notification_pdf_url\\" \\n            class=\\"form-control\\" \\n            placeholder=\\"https://... or /uploads/...\\" \\n            value=\\"")
+    ; __append("\\"\\n        >\\n      </div>\\n    </div>\\n\\n    <!-- Post Thumbnail / Featured Image -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F5BC}\uFE0F Post Thumbnail / Featured Image (Optional)</h3>\\n          <small style=\\"color: #64748b;\\">Displayed on the post page &amp; social share previews (OG Image)</small>\\n        </div>\\n        <button type=\\"button\\" id=\\"removeThumbBtn\\" class=\\"btn btn-sm\\" style=\\"background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; font-size: 11.5px; font-weight: 600;\\">\\n          \u{1F5D1}\uFE0F Remove Thumbnail\\n        </button>\\n      </div>\\n      ")
+    ;  const hasThumb = Boolean(post && post.thumbnail && post.thumbnail.trim()); 
+    ; __append("\\n      <div class=\\"form-row\\" style=\\"align-items: center;\\">\\n        <div class=\\"form-group\\" style=\\"max-width: 160px; margin-bottom: 0;\\">\\n          <div style=\\"width: 140px; height: 84px; background: #ffffff; border: 1px dashed #94a3b8; border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; text-align: center;\\">\\n            <img id=\\"thumbPreviewImg\\" src=\\"")
+    ; __append(escapeFn( hasThumb ? post.thumbnail : '' ))
+    ; __append("\\" alt=\\"Post Thumbnail Preview\\" style=\\"width: 100%; height: 100%; object-fit: cover; display: ")
+    ; __append(escapeFn( hasThumb ? 'block' : 'none' ))
+    ; __append(";\\">\\n            <span id=\\"thumbNoImgText\\" style=\\"font-size: 11px; color: #64748b; font-weight: 600; display: ")
+    ; __append(escapeFn( hasThumb ? 'none' : 'inline-block' ))
+    ; __append(";\\">No Thumbnail</span>\\n          </div>\\n        </div>\\n        <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n          <label style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Upload Thumbnail Image (to R2)</label>\\n          <input type=\\"file\\" id=\\"thumbnail_file\\" name=\\"thumbnail_file\\" class=\\"form-control\\" accept=\\"image/png,image/jpeg,image/webp,image/svg+xml\\" style=\\"padding: 6px;\\">\\n        </div>\\n        <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n          <label for=\\"thumbnail_url\\" style=\\"font-size: 12px; font-weight: 600; color: #475569;\\">Or Paste Thumbnail Image URL</label>\\n          <input type=\\"text\\" id=\\"thumbnail_url\\" name=\\"thumbnail_url\\" class=\\"form-control\\" placeholder=\\"https://... or /uploads/...\\" value=\\"")
+    ; __append(escapeFn( hasThumb ? post.thumbnail : '' ))
+    ; __append("\\">\\n        </div>\\n      </div>\\n    </div>\\n\\n    <!-- Cloudflare R2 Document Upload & Link Section -->\\n    <div style=\\"background: #f0fdf4; border: 1px solid #86efac; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <h3 style=\\"color: #166534; font-size: 15px; margin-top: 0; margin-bottom: 12px;\\">\\n        \u2601\uFE0F Official Documents &amp; External Links (R2 File Upload or Direct Web URL)\\n      </h3>\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label>Notification PDF (URL or File)</label>\\n          <input \\n            type=\\"text\\" \\n            name=\\"notification_pdf_url\\" \\n            class=\\"form-control\\" \\n            placeholder=\\"https://... or /uploads/...\\" \\n            value=\\"")
     ; __append(escapeFn( post && post.notification_pdf ? post.notification_pdf : '' ))
     ; __append("\\"\\n          >\\n          <div style=\\"margin-top: 6px;\\">\\n            <small style=\\"color: #475569; font-size: 11.5px;\\">Or Upload PDF/Doc:</small>\\n            <input type=\\"file\\" name=\\"notification_file\\" class=\\"form-control\\" style=\\"margin-top: 2px;\\" accept=\\".pdf,.doc,.docx,.jpg,.png\\">\\n          </div>\\n          ")
     ;  if (post && post.notification_pdf) { 
@@ -78600,9 +78678,9 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( post ? (post.application_fee || '[]') : '[]' ))
     ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Vacancy Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;\\">\\n        <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F4CB} Vacancy Details &amp; Eligibility</h3>\\n        <button type=\\"button\\" id=\\"btn-add-vac\\" class=\\"btn btn-secondary btn-sm\\">+ Add Vacancy Row</button>\\n      </div>\\n      <div id=\\"vac-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"vacancy_details\\" name=\\"vacancy_details\\" value=\\"")
     ; __append(escapeFn( post ? (post.vacancy_details || '[]') : '[]' ))
-    ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Category-Wise Vacancy Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F4CA} Category-Wise Vacancy Distribution</h3>\\n          <small style=\\"color: #64748b;\\">Post / Group Name with UR, EWS, OBC, SC, ST breakdown</small>\\n        </div>\\n        <button type=\\"button\\" id=\\"btn-add-cat\\" class=\\"btn btn-secondary btn-sm\\">+ Add Category Row</button>\\n      </div>\\n      <div id=\\"cat-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"category_details\\" name=\\"category_details\\" value=\\"")
+    ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Category-Wise Vacancy Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F4CA} Category-Wise Vacancy Distribution</h3>\\n          <small style=\\"color: #64748b;\\">Create unlimited rows &amp; columns \u2014 rename, add, or remove any column header or row</small>\\n        </div>\\n        <div style=\\"display: flex; gap: 8px; flex-wrap: wrap;\\">\\n          <button type=\\"button\\" id=\\"btn-add-cat-col\\" class=\\"btn btn-secondary btn-sm\\">+ Add Column</button>\\n          <button type=\\"button\\" id=\\"btn-add-cat\\" class=\\"btn btn-primary btn-sm\\">+ Add Row</button>\\n        </div>\\n      </div>\\n      <div id=\\"cat-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"category_details\\" name=\\"category_details\\" value=\\"")
     ; __append(escapeFn( post ? (post.category_details || '[]') : '[]' ))
-    ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Friendly Builder: Age Limit Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <h3 style=\\"margin: 0 0 10px 0; font-size: 15px; color: #1e293b;\\">\u{1F464} Age Limit Details</h3>\\n      <div class=\\"form-row\\">\\n        <div class=\\"form-group\\">\\n          <label for=\\"age_as_on\\">Age Limit (As on Date)</label>\\n          <input type=\\"text\\" id=\\"age_as_on\\" class=\\"form-control\\" placeholder=\\"e.g. 01/08/2026\\">\\n        </div>\\n        <div class=\\"form-group\\">\\n          <label for=\\"age_min\\">Minimum Age</label>\\n          <input type=\\"text\\" id=\\"age_min\\" class=\\"form-control\\" placeholder=\\"e.g. 18 Years\\">\\n        </div>\\n        <div class=\\"form-group\\">\\n          <label for=\\"age_max\\">Maximum Age</label>\\n          <input type=\\"text\\" id=\\"age_max\\" class=\\"form-control\\" placeholder=\\"e.g. 27 Years\\">\\n        </div>\\n      </div>\\n      <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n        <label for=\\"age_relaxation\\">Age Relaxation Details</label>\\n        <input type=\\"text\\" id=\\"age_relaxation\\" class=\\"form-control\\" placeholder=\\"e.g. Age Relaxation Extra as per Rules\\">\\n      </div>\\n      <input type=\\"hidden\\" id=\\"age_limit\\" name=\\"age_limit\\" value=\\"")
+    ; __append("\\">\\n    </div>\\n\\n    <!-- Visual Interactive Builder: Category-Wise Age Limit Details -->\\n    <div style=\\"background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px; margin-bottom: 20px;\\">\\n      <div style=\\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;\\">\\n        <div>\\n          <h3 style=\\"margin: 0; font-size: 15px; color: #1e293b;\\">\u{1F464} Age Limit Details (Category-Wise)</h3>\\n          <small style=\\"color: #64748b;\\">Add category-wise Minimum &amp; Maximum age limit rows just like Application Fee Details</small>\\n        </div>\\n        <button type=\\"button\\" id=\\"btn-add-age\\" class=\\"btn btn-secondary btn-sm\\">+ Add Age Row</button>\\n      </div>\\n      <div class=\\"form-row\\" style=\\"margin-bottom: 12px;\\">\\n        <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n          <label for=\\"age_as_on\\">Age Limit (As on Date)</label>\\n          <input type=\\"text\\" id=\\"age_as_on\\" class=\\"form-control\\" placeholder=\\"e.g. 01/08/2026\\">\\n        </div>\\n        <div class=\\"form-group\\" style=\\"margin-bottom: 0;\\">\\n          <label for=\\"age_relaxation\\">Extra Age Relaxation Note (Optional)</label>\\n          <input type=\\"text\\" id=\\"age_relaxation\\" class=\\"form-control\\" placeholder=\\"e.g. Age Relaxation Extra as per Rules\\">\\n        </div>\\n      </div>\\n      <div id=\\"age-rows-container\\" style=\\"overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;\\"></div>\\n      <input type=\\"hidden\\" id=\\"age_limit\\" name=\\"age_limit\\" value=\\"")
     ; __append(escapeFn( post ? (post.age_limit || '{}') : '{}' ))
     ; __append("\\">\\n    </div>\\n\\n    <!-- How to Apply -->\\n    <div class=\\"form-group\\">\\n      <label for=\\"how_to_apply\\">How to Apply Steps</label>\\n      <textarea \\n        id=\\"how_to_apply\\" \\n        name=\\"how_to_apply\\" \\n        class=\\"form-control\\" \\n        rows=\\"4\\" \\n      >")
     ; __append(escapeFn( post ? post.how_to_apply : '1. Candidate Can Apply Online From Official Portal.\\n2. Read Notification Carefully Before Filling Form.\\n3. Keep Ready Photo, Sign & ID Proof.\\n4. Pay Exam Fee and Print Final Application Form.' ))
@@ -80992,7 +81070,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( baseAdmin ))
     ; __append("/settings\\" class=\\"bottom-nav-item ")
     ; __append(escapeFn( isSettingsActive ? 'active' : '' ))
-    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u2699\uFE0F</span>\\n    <span class=\\"bottom-nav-label\\">Settings</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261124e\\"></script>\\n</body>\\n</html>\\n")
+    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u2699\uFE0F</span>\\n    <span class=\\"bottom-nav-label\\">Settings</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261125a\\"></script>\\n</body>\\n</html>\\n")
   }
   return __output;
 `,
@@ -81024,7 +81102,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( baseAdmin ))
     ; __append("/settings\\" class=\\"bottom-nav-item ")
     ; __append(escapeFn( isSettingsActive ? 'active' : '' ))
-    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u2699\uFE0F</span>\\n    <span class=\\"bottom-nav-label\\">Settings</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261124e\\"></script>\\n</body>\\n</html>\\n")
+    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u2699\uFE0F</span>\\n    <span class=\\"bottom-nav-label\\">Settings</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261125a\\"></script>\\n</body>\\n</html>\\n")
   }
   return __output;
 `,
@@ -81229,7 +81307,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( isAuthNew ? 'active' : '' ))
     ; __append("\\">\\n    <span class=\\"bottom-nav-fab\\" style=\\"background: linear-gradient(135deg, #2563eb, #1d4ed8); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);\\">\uFF0B</span>\\n    <span class=\\"bottom-nav-label\\">Write</span>\\n  </a>\\n\\n  <a href=\\"/author-portal/profile\\" class=\\"bottom-nav-item ")
     ; __append(escapeFn( isAuthProfile ? 'active' : '' ))
-    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u{1F464}</span>\\n    <span class=\\"bottom-nav-label\\">Profile</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261124d\\"></script>\\n</body>\\n</html>\\n")
+    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u{1F464}</span>\\n    <span class=\\"bottom-nav-label\\">Profile</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261125a\\"></script>\\n</body>\\n</html>\\n")
   }
   return __output;
 `,
@@ -81252,7 +81330,7 @@ var require_templateEngine = __commonJS({
     ; __append(escapeFn( isAuthNew ? 'active' : '' ))
     ; __append("\\">\\n    <span class=\\"bottom-nav-fab\\" style=\\"background: linear-gradient(135deg, #2563eb, #1d4ed8); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);\\">\uFF0B</span>\\n    <span class=\\"bottom-nav-label\\">Write</span>\\n  </a>\\n\\n  <a href=\\"/author-portal/profile\\" class=\\"bottom-nav-item ")
     ; __append(escapeFn( isAuthProfile ? 'active' : '' ))
-    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u{1F464}</span>\\n    <span class=\\"bottom-nav-label\\">Profile</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261124d\\"></script>\\n</body>\\n</html>\\n")
+    ; __append("\\">\\n    <span class=\\"bottom-nav-icon\\">\u{1F464}</span>\\n    <span class=\\"bottom-nav-label\\">Profile</span>\\n  </a>\\n\\n  <button type=\\"button\\" class=\\"bottom-nav-item bottom-nav-menu-btn\\" id=\\"bottomMenuTrigger\\" aria-label=\\"Open Full Menu\\">\\n    <span class=\\"bottom-nav-icon\\">\u2630</span>\\n    <span class=\\"bottom-nav-label\\">Menu</span>\\n  </button>\\n</nav>\\n\\n<script src=\\"/js/admin.js?v=20261125a\\"></script>\\n</body>\\n</html>\\n")
   }
   return __output;
 `,
@@ -81403,6 +81481,14 @@ var require_templateEngine = __commonJS({
     (links && links.length > 0)
   );
 
+    ; __append("\\n\\n<!-- Post Featured Thumbnail Image (if provided) -->\\n")
+    ;  if (post.thumbnail && post.thumbnail.trim()) { 
+    ; __append("\\n  <div class=\\"post-featured-thumb\\" style=\\"margin: 0 0 18px 0; text-align: center;\\">\\n    <img src=\\"")
+    ; __append(escapeFn( post.thumbnail.trim() ))
+    ; __append("\\" alt=\\"")
+    ; __append(escapeFn( post.title ))
+    ; __append("\\" loading=\\"lazy\\" style=\\"max-width: 100%; height: auto; max-height: 440px; border-radius: 8px; border: 1px solid #e2e8f0; object-fit: cover; box-shadow: 0 2px 8px rgba(0,0,0,0.06);\\">\\n  </div>\\n")
+    ;  } 
     ; __append("\\n\\n<!-- Short Information -->\\n")
     ;  if (post.short_desc) { 
     ; __append("\\n  ")
@@ -81462,21 +81548,46 @@ var require_templateEngine = __commonJS({
     ; __append("\\n    </div>\\n  </div>\\n</div>\\n")
     ;  } 
     ; __append("\\n\\n<!-- Age Limit Details -->\\n")
-    ;  if (ageLimit && (ageLimit.min_age || ageLimit.max_age || ageLimit.relaxation)) { 
+    ; 
+  const hasCategoryAges = Boolean(ageLimit && Array.isArray(ageLimit.categories) && ageLimit.categories.length > 0);
+  const hasLegacyAges = Boolean(ageLimit && (ageLimit.min_age || ageLimit.max_age || ageLimit.relaxation));
+
+    ; __append("\\n")
+    ;  if (hasCategoryAges || hasLegacyAges) { 
     ; __append("\\n  <div class=\\"info-card\\" style=\\"margin-bottom: 20px;\\" id=\\"agelimit\\">\\n    <div class=\\"info-card-header\\" style=\\"background: #006400;\\">\\n      ")
     ; __append(escapeFn( post.category === 'syllabus' ? 'Age Limit & Eligibility Overview ' : (post.category === 'admit-card' ? 'Age Limit & Eligibility Criteria ' : 'Age Limit Details ') ))
     ; __append(escapeFn( ageLimit.as_on ? \`(as on \${ageLimit.as_on})\` : '' ))
     ; __append("\\n    </div>\\n    <div class=\\"info-card-body\\">\\n      <ul>\\n        ")
+    ;  if (hasCategoryAges) { 
+    ; __append("\\n          ")
+    ;  ageLimit.categories.forEach(item => { 
+    ; __append("\\n            ")
+    ; 
+              const rangeParts = [];
+              if (item.min_age) rangeParts.push('Min: ' + item.min_age);
+              if (item.max_age) rangeParts.push('Max: ' + item.max_age);
+            
+    ; __append("\\n            <li>\\n              <span class=\\"info-label\\">")
+    ; __append(escapeFn( item.category ))
+    ; __append(" : </span>\\n              <b class=\\"important-val-text\\">")
+    ; __append(escapeFn( rangeParts.join(' | ') ))
+    ; __append("</b>\\n            </li>\\n          ")
+    ;  }) 
+    ; __append("\\n        ")
+    ;  } else { 
+    ; __append("\\n          ")
     ;  if (ageLimit.min_age) { 
-    ; __append("\\n          <li><span class=\\"info-label\\">Minimum Age : </span><b class=\\"important-val-text\\">")
+    ; __append("\\n            <li><span class=\\"info-label\\">Minimum Age : </span><b class=\\"important-val-text\\">")
     ; __append(escapeFn( ageLimit.min_age ))
-    ; __append("</b></li>\\n        ")
+    ; __append("</b></li>\\n          ")
+    ;  } 
+    ; __append("\\n          ")
+    ;  if (ageLimit.max_age) { 
+    ; __append("\\n            <li><span class=\\"info-label\\">Maximum Age : </span><b class=\\"important-val-text\\">")
+    ; __append(escapeFn( ageLimit.max_age ))
+    ; __append("</b></li>\\n          ")
     ;  } 
     ; __append("\\n        ")
-    ;  if (ageLimit.max_age) { 
-    ; __append("\\n          <li><span class=\\"info-label\\">Maximum Age : </span><b class=\\"important-val-text\\">")
-    ; __append(escapeFn( ageLimit.max_age ))
-    ; __append("</b></li>\\n        ")
     ;  } 
     ; __append("\\n        ")
     ;  if (ageLimit.relaxation) { 
@@ -81513,32 +81624,74 @@ var require_templateEngine = __commonJS({
     ; __append("\\n      </tbody>\\n    </table>\\n  </div>\\n")
     ;  } 
     ; __append("\\n</div>\\n\\n<!-- Category-wise Vacancy Distribution Table -->\\n")
-    ;  if (categoryDetails && categoryDetails.length > 0) { 
+    ; 
+  const isCustomCatTable = Boolean(
+    categoryDetails &&
+    !Array.isArray(categoryDetails) &&
+    Array.isArray(categoryDetails.columns) &&
+    categoryDetails.columns.length > 0 &&
+    Array.isArray(categoryDetails.rows) &&
+    categoryDetails.rows.length > 0
+  );
+  const isLegacyCatTable = Boolean(Array.isArray(categoryDetails) && categoryDetails.length > 0);
+
+    ; __append("\\n")
+    ;  if (isCustomCatTable || isLegacyCatTable) { 
     ; __append("\\n  <div style=\\"text-align: center; margin: 15px 0 5px 0;\\">\\n    <h3 style=\\"color: #2b547e; font-size: 18px;\\">\\n      ")
     ; __append(escapeFn( post.category === 'syllabus' ? 'Category-Wise Minimum Qualifying Marks Standards' : 'Category Wise Vacancy Details' ))
-    ; __append("\\n    </h3>\\n  </div>\\n  <div class=\\"table-responsive\\">\\n    <table class=\\"detail-table table-wide\\">\\n      <thead>\\n        <tr style=\\"background: #2b547e;\\">\\n          <th>")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Stage / Paper' : 'Post Name' ))
-    ; __append("</th>\\n          <th>UR / Gen</th>\\n          <th>EWS</th>\\n          <th>OBC</th>\\n          <th>SC</th>\\n          <th>ST</th>\\n          <th>")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Standard' : 'Total' ))
-    ; __append("</th>\\n        </tr>\\n      </thead>\\n      <tbody>\\n        ")
-    ;  categoryDetails.forEach(c => { 
-    ; __append("\\n          <tr style=\\"text-align: center;\\">\\n            <td style=\\"text-align: left; font-weight: bold;\\">")
-    ; __append(escapeFn( c.post_name ))
-    ; __append("</td>\\n            <td>")
-    ; __append(escapeFn( c.ur || '-' ))
-    ; __append("</td>\\n            <td>")
-    ; __append(escapeFn( c.ews || '-' ))
-    ; __append("</td>\\n            <td>")
-    ; __append(escapeFn( c.obc || '-' ))
-    ; __append("</td>\\n            <td>")
-    ; __append(escapeFn( c.sc || '-' ))
-    ; __append("</td>\\n            <td>")
-    ; __append(escapeFn( c.st || '-' ))
-    ; __append("</td>\\n            <td style=\\"font-weight: bold; color: var(--primary-red);\\">")
-    ; __append(escapeFn( c.total || '-' ))
-    ; __append("</td>\\n          </tr>\\n        ")
+    ; __append("\\n    </h3>\\n  </div>\\n  <div class=\\"table-responsive\\">\\n    <table class=\\"detail-table table-wide\\">\\n      ")
+    ;  if (isCustomCatTable) { 
+    ; __append("\\n        <thead>\\n          <tr style=\\"background: #2b547e;\\">\\n            ")
+    ;  categoryDetails.columns.forEach(col => { 
+    ; __append("\\n              <th>")
+    ; __append(escapeFn( col ))
+    ; __append("</th>\\n            ")
     ;  }) 
-    ; __append("\\n      </tbody>\\n    </table>\\n  </div>\\n")
+    ; __append("\\n          </tr>\\n        </thead>\\n        <tbody>\\n          ")
+    ;  categoryDetails.rows.forEach(row => { 
+    ; __append("\\n            <tr style=\\"text-align: center;\\">\\n              ")
+    ;  categoryDetails.columns.forEach((col, idx) => { 
+    ; __append("\\n                ")
+    ; 
+                  const cellVal = (Array.isArray(row) && row[idx] !== undefined && row[idx] !== '') ? row[idx] : '-';
+                  const isFirstCol = idx === 0;
+                  const isTotalCol = idx === categoryDetails.columns.length - 1 && /total|standard/i.test(String(col || ''));
+                
+    ; __append("\\n                <td style=\\"")
+    ; __append(escapeFn( isFirstCol ? 'text-align: left; font-weight: bold;' : (isTotalCol ? 'font-weight: bold; color: var(--primary-red);' : '') ))
+    ; __append("\\">")
+    ; __append(escapeFn( cellVal ))
+    ; __append("</td>\\n              ")
+    ;  }) 
+    ; __append("\\n            </tr>\\n          ")
+    ;  }) 
+    ; __append("\\n        </tbody>\\n      ")
+    ;  } else { 
+    ; __append("\\n        <thead>\\n          <tr style=\\"background: #2b547e;\\">\\n            <th>")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Stage / Paper' : 'Post Name' ))
+    ; __append("</th>\\n            <th>UR / Gen</th>\\n            <th>EWS</th>\\n            <th>OBC</th>\\n            <th>SC</th>\\n            <th>ST</th>\\n            <th>")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Standard' : 'Total' ))
+    ; __append("</th>\\n          </tr>\\n        </thead>\\n        <tbody>\\n          ")
+    ;  categoryDetails.forEach(c => { 
+    ; __append("\\n            <tr style=\\"text-align: center;\\">\\n              <td style=\\"text-align: left; font-weight: bold;\\">")
+    ; __append(escapeFn( c.post_name ))
+    ; __append("</td>\\n              <td>")
+    ; __append(escapeFn( c.ur || '-' ))
+    ; __append("</td>\\n              <td>")
+    ; __append(escapeFn( c.ews || '-' ))
+    ; __append("</td>\\n              <td>")
+    ; __append(escapeFn( c.obc || '-' ))
+    ; __append("</td>\\n              <td>")
+    ; __append(escapeFn( c.sc || '-' ))
+    ; __append("</td>\\n              <td>")
+    ; __append(escapeFn( c.st || '-' ))
+    ; __append("</td>\\n              <td style=\\"font-weight: bold; color: var(--primary-red);\\">")
+    ; __append(escapeFn( c.total || '-' ))
+    ; __append("</td>\\n            </tr>\\n          ")
+    ;  }) 
+    ; __append("\\n        </tbody>\\n      ")
+    ;  } 
+    ; __append("\\n    </table>\\n  </div>\\n")
     ;  } 
     ; __append("\\n\\n<!-- How to Apply Instructions -->\\n<div id=\\"howto\\">\\n")
     ;  if (post.how_to_apply && post.how_to_apply.trim()) { 
@@ -81623,6 +81776,14 @@ var require_templateEngine = __commonJS({
     (links && links.length > 0)
   );
 
+    ; __append("\\n\\n<!-- Post Featured Thumbnail Image (if provided) -->\\n")
+    ;  if (post.thumbnail && post.thumbnail.trim()) { 
+    ; __append("\\n  <div class=\\"post-featured-thumb\\" style=\\"margin: 0 0 18px 0; text-align: center;\\">\\n    <img src=\\"")
+    ; __append(escapeFn( post.thumbnail.trim() ))
+    ; __append("\\" alt=\\"")
+    ; __append(escapeFn( post.title ))
+    ; __append("\\" loading=\\"lazy\\" style=\\"max-width: 100%; height: auto; max-height: 440px; border-radius: 8px; border: 1px solid #e2e8f0; object-fit: cover; box-shadow: 0 2px 8px rgba(0,0,0,0.06);\\">\\n  </div>\\n")
+    ;  } 
     ; __append("\\n\\n<!-- Short Information -->\\n")
     ;  if (post.short_desc) { 
     ; __append("\\n  ")
@@ -81682,21 +81843,46 @@ var require_templateEngine = __commonJS({
     ; __append("\\n    </div>\\n  </div>\\n</div>\\n")
     ;  } 
     ; __append("\\n\\n<!-- Age Limit Details -->\\n")
-    ;  if (ageLimit && (ageLimit.min_age || ageLimit.max_age || ageLimit.relaxation)) { 
+    ; 
+  const hasCategoryAges = Boolean(ageLimit && Array.isArray(ageLimit.categories) && ageLimit.categories.length > 0);
+  const hasLegacyAges = Boolean(ageLimit && (ageLimit.min_age || ageLimit.max_age || ageLimit.relaxation));
+
+    ; __append("\\n")
+    ;  if (hasCategoryAges || hasLegacyAges) { 
     ; __append("\\n  <div class=\\"info-card\\" style=\\"margin-bottom: 20px;\\" id=\\"agelimit\\">\\n    <div class=\\"info-card-header\\" style=\\"background: #006400;\\">\\n      ")
     ; __append(escapeFn( post.category === 'syllabus' ? 'Age Limit & Eligibility Overview ' : (post.category === 'admit-card' ? 'Age Limit & Eligibility Criteria ' : 'Age Limit Details ') ))
     ; __append(escapeFn( ageLimit.as_on ? \`(as on \${ageLimit.as_on})\` : '' ))
     ; __append("\\n    </div>\\n    <div class=\\"info-card-body\\">\\n      <ul>\\n        ")
+    ;  if (hasCategoryAges) { 
+    ; __append("\\n          ")
+    ;  ageLimit.categories.forEach(item => { 
+    ; __append("\\n            ")
+    ; 
+              const rangeParts = [];
+              if (item.min_age) rangeParts.push('Min: ' + item.min_age);
+              if (item.max_age) rangeParts.push('Max: ' + item.max_age);
+            
+    ; __append("\\n            <li>\\n              <span class=\\"info-label\\">")
+    ; __append(escapeFn( item.category ))
+    ; __append(" : </span>\\n              <b class=\\"important-val-text\\">")
+    ; __append(escapeFn( rangeParts.join(' | ') ))
+    ; __append("</b>\\n            </li>\\n          ")
+    ;  }) 
+    ; __append("\\n        ")
+    ;  } else { 
+    ; __append("\\n          ")
     ;  if (ageLimit.min_age) { 
-    ; __append("\\n          <li><span class=\\"info-label\\">Minimum Age : </span><b class=\\"important-val-text\\">")
+    ; __append("\\n            <li><span class=\\"info-label\\">Minimum Age : </span><b class=\\"important-val-text\\">")
     ; __append(escapeFn( ageLimit.min_age ))
-    ; __append("</b></li>\\n        ")
+    ; __append("</b></li>\\n          ")
+    ;  } 
+    ; __append("\\n          ")
+    ;  if (ageLimit.max_age) { 
+    ; __append("\\n            <li><span class=\\"info-label\\">Maximum Age : </span><b class=\\"important-val-text\\">")
+    ; __append(escapeFn( ageLimit.max_age ))
+    ; __append("</b></li>\\n          ")
     ;  } 
     ; __append("\\n        ")
-    ;  if (ageLimit.max_age) { 
-    ; __append("\\n          <li><span class=\\"info-label\\">Maximum Age : </span><b class=\\"important-val-text\\">")
-    ; __append(escapeFn( ageLimit.max_age ))
-    ; __append("</b></li>\\n        ")
     ;  } 
     ; __append("\\n        ")
     ;  if (ageLimit.relaxation) { 
@@ -81733,32 +81919,74 @@ var require_templateEngine = __commonJS({
     ; __append("\\n      </tbody>\\n    </table>\\n  </div>\\n")
     ;  } 
     ; __append("\\n</div>\\n\\n<!-- Category-wise Vacancy Distribution Table -->\\n")
-    ;  if (categoryDetails && categoryDetails.length > 0) { 
+    ; 
+  const isCustomCatTable = Boolean(
+    categoryDetails &&
+    !Array.isArray(categoryDetails) &&
+    Array.isArray(categoryDetails.columns) &&
+    categoryDetails.columns.length > 0 &&
+    Array.isArray(categoryDetails.rows) &&
+    categoryDetails.rows.length > 0
+  );
+  const isLegacyCatTable = Boolean(Array.isArray(categoryDetails) && categoryDetails.length > 0);
+
+    ; __append("\\n")
+    ;  if (isCustomCatTable || isLegacyCatTable) { 
     ; __append("\\n  <div style=\\"text-align: center; margin: 15px 0 5px 0;\\">\\n    <h3 style=\\"color: #2b547e; font-size: 18px;\\">\\n      ")
     ; __append(escapeFn( post.category === 'syllabus' ? 'Category-Wise Minimum Qualifying Marks Standards' : 'Category Wise Vacancy Details' ))
-    ; __append("\\n    </h3>\\n  </div>\\n  <div class=\\"table-responsive\\">\\n    <table class=\\"detail-table table-wide\\">\\n      <thead>\\n        <tr style=\\"background: #2b547e;\\">\\n          <th>")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Stage / Paper' : 'Post Name' ))
-    ; __append("</th>\\n          <th>UR / Gen</th>\\n          <th>EWS</th>\\n          <th>OBC</th>\\n          <th>SC</th>\\n          <th>ST</th>\\n          <th>")
-    ; __append(escapeFn( post.category === 'syllabus' ? 'Standard' : 'Total' ))
-    ; __append("</th>\\n        </tr>\\n      </thead>\\n      <tbody>\\n        ")
-    ;  categoryDetails.forEach(c => { 
-    ; __append("\\n          <tr style=\\"text-align: center;\\">\\n            <td style=\\"text-align: left; font-weight: bold;\\">")
-    ; __append(escapeFn( c.post_name ))
-    ; __append("</td>\\n            <td>")
-    ; __append(escapeFn( c.ur || '-' ))
-    ; __append("</td>\\n            <td>")
-    ; __append(escapeFn( c.ews || '-' ))
-    ; __append("</td>\\n            <td>")
-    ; __append(escapeFn( c.obc || '-' ))
-    ; __append("</td>\\n            <td>")
-    ; __append(escapeFn( c.sc || '-' ))
-    ; __append("</td>\\n            <td>")
-    ; __append(escapeFn( c.st || '-' ))
-    ; __append("</td>\\n            <td style=\\"font-weight: bold; color: var(--primary-red);\\">")
-    ; __append(escapeFn( c.total || '-' ))
-    ; __append("</td>\\n          </tr>\\n        ")
+    ; __append("\\n    </h3>\\n  </div>\\n  <div class=\\"table-responsive\\">\\n    <table class=\\"detail-table table-wide\\">\\n      ")
+    ;  if (isCustomCatTable) { 
+    ; __append("\\n        <thead>\\n          <tr style=\\"background: #2b547e;\\">\\n            ")
+    ;  categoryDetails.columns.forEach(col => { 
+    ; __append("\\n              <th>")
+    ; __append(escapeFn( col ))
+    ; __append("</th>\\n            ")
     ;  }) 
-    ; __append("\\n      </tbody>\\n    </table>\\n  </div>\\n")
+    ; __append("\\n          </tr>\\n        </thead>\\n        <tbody>\\n          ")
+    ;  categoryDetails.rows.forEach(row => { 
+    ; __append("\\n            <tr style=\\"text-align: center;\\">\\n              ")
+    ;  categoryDetails.columns.forEach((col, idx) => { 
+    ; __append("\\n                ")
+    ; 
+                  const cellVal = (Array.isArray(row) && row[idx] !== undefined && row[idx] !== '') ? row[idx] : '-';
+                  const isFirstCol = idx === 0;
+                  const isTotalCol = idx === categoryDetails.columns.length - 1 && /total|standard/i.test(String(col || ''));
+                
+    ; __append("\\n                <td style=\\"")
+    ; __append(escapeFn( isFirstCol ? 'text-align: left; font-weight: bold;' : (isTotalCol ? 'font-weight: bold; color: var(--primary-red);' : '') ))
+    ; __append("\\">")
+    ; __append(escapeFn( cellVal ))
+    ; __append("</td>\\n              ")
+    ;  }) 
+    ; __append("\\n            </tr>\\n          ")
+    ;  }) 
+    ; __append("\\n        </tbody>\\n      ")
+    ;  } else { 
+    ; __append("\\n        <thead>\\n          <tr style=\\"background: #2b547e;\\">\\n            <th>")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Stage / Paper' : 'Post Name' ))
+    ; __append("</th>\\n            <th>UR / Gen</th>\\n            <th>EWS</th>\\n            <th>OBC</th>\\n            <th>SC</th>\\n            <th>ST</th>\\n            <th>")
+    ; __append(escapeFn( post.category === 'syllabus' ? 'Standard' : 'Total' ))
+    ; __append("</th>\\n          </tr>\\n        </thead>\\n        <tbody>\\n          ")
+    ;  categoryDetails.forEach(c => { 
+    ; __append("\\n            <tr style=\\"text-align: center;\\">\\n              <td style=\\"text-align: left; font-weight: bold;\\">")
+    ; __append(escapeFn( c.post_name ))
+    ; __append("</td>\\n              <td>")
+    ; __append(escapeFn( c.ur || '-' ))
+    ; __append("</td>\\n              <td>")
+    ; __append(escapeFn( c.ews || '-' ))
+    ; __append("</td>\\n              <td>")
+    ; __append(escapeFn( c.obc || '-' ))
+    ; __append("</td>\\n              <td>")
+    ; __append(escapeFn( c.sc || '-' ))
+    ; __append("</td>\\n              <td>")
+    ; __append(escapeFn( c.st || '-' ))
+    ; __append("</td>\\n              <td style=\\"font-weight: bold; color: var(--primary-red);\\">")
+    ; __append(escapeFn( c.total || '-' ))
+    ; __append("</td>\\n            </tr>\\n          ")
+    ;  }) 
+    ; __append("\\n        </tbody>\\n      ")
+    ;  } 
+    ; __append("\\n    </table>\\n  </div>\\n")
     ;  } 
     ; __append("\\n\\n<!-- How to Apply Instructions -->\\n<div id=\\"howto\\">\\n")
     ;  if (post.how_to_apply && post.how_to_apply.trim()) { 
@@ -81902,9 +82130,11 @@ var require_templateEngine = __commonJS({
       : 'https://govtexamzone.com';
     const pagePath = (typeof currentPath !== 'undefined' && currentPath !== '/') ? currentPath : '';
     const canonicalUrl = typeof fullUrl !== 'undefined' ? fullUrl : (siteBase + pagePath);
-    const logoAbsolute = (typeof settings !== 'undefined' && settings.site_logo) 
-      ? (settings.site_logo.startsWith('http') ? settings.site_logo : siteBase + settings.site_logo) 
-      : siteBase + '/images/gez-logo.svg';
+    const logoAbsolute = (typeof post !== 'undefined' && post && post.thumbnail && post.thumbnail.trim())
+      ? (post.thumbnail.trim().startsWith('http') ? post.thumbnail.trim() : siteBase + post.thumbnail.trim())
+      : ((typeof settings !== 'undefined' && settings.site_logo) 
+          ? (settings.site_logo.startsWith('http') ? settings.site_logo : siteBase + settings.site_logo) 
+          : siteBase + '/images/gez-logo.svg');
     const activeMetaDesc = (typeof metaDescription !== 'undefined' && metaDescription) 
       ? metaDescription 
       : ((typeof settings !== 'undefined' && settings.meta_description) 
@@ -81958,14 +82188,23 @@ var require_templateEngine = __commonJS({
     ; __append("\\">\\n\\n  <!-- Mobile & PWA Theme -->\\n  <meta name=\\"theme-color\\" content=\\"#ab183d\\">\\n  <meta name=\\"apple-mobile-web-app-capable\\" content=\\"yes\\">\\n  <meta name=\\"apple-mobile-web-app-status-bar-style\\" content=\\"black-translucent\\">\\n  <meta name=\\"apple-mobile-web-app-title\\" content=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' ))
     ; __append("\\">\\n  <link rel=\\"manifest\\" href=\\"/manifest.json\\">\\n  ")
-    ;  const activeFavicon = (typeof settings !== 'undefined' && settings.site_favicon && settings.site_favicon.trim()) ? settings.site_favicon.trim() : '/images/gez-logo.svg'; 
+    ; 
+    const hasCustomFaviconSetting = typeof settings !== 'undefined' && typeof settings.site_favicon === 'string';
+    const activeFavicon = hasCustomFaviconSetting
+      ? settings.site_favicon.trim()
+      : '/images/gez-logo.svg';
+  
+    ; __append("\\n  ")
+    ;  if (activeFavicon) { 
     ; __append("\\n  <link rel=\\"icon\\" type=\\"image/x-icon\\" href=\\"/favicon.ico\\">\\n  <link rel=\\"icon\\" href=\\"")
     ; __append(escapeFn( activeFavicon ))
     ; __append("\\">\\n  <link rel=\\"shortcut icon\\" href=\\"")
     ; __append(escapeFn( activeFavicon ))
     ; __append("\\">\\n  <link rel=\\"apple-touch-icon\\" href=\\"")
     ; __append(escapeFn( activeFavicon ))
-    ; __append("\\">\\n\\n  <!-- Stylesheet -->\\n  <link rel=\\"stylesheet\\" href=\\"/css/style.css\\">\\n\\n  <!-- High-Speed Menu Prefetching for Instant Navigation -->\\n  <link rel=\\"prefetch\\" href=\\"/category/latest-jobs\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/result\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/admit-card\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/answer-key\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/syllabus\\">\\n\\n  <!-- JSON-LD Schema.org Structured Data: WebSite -->\\n  <script type=\\"application/ld+json\\">\\n  {\\n    \\"@context\\": \\"https://schema.org\\",\\n    \\"@type\\": \\"WebSite\\",\\n    \\"name\\": \\"")
+    ; __append("\\">\\n  ")
+    ;  } 
+    ; __append("\\n\\n  <!-- Stylesheet -->\\n  <link rel=\\"stylesheet\\" href=\\"/css/style.css\\">\\n\\n  <!-- High-Speed Menu Prefetching for Instant Navigation -->\\n  <link rel=\\"prefetch\\" href=\\"/category/latest-jobs\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/result\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/admit-card\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/answer-key\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/syllabus\\">\\n\\n  <!-- JSON-LD Schema.org Structured Data: WebSite -->\\n  <script type=\\"application/ld+json\\">\\n  {\\n    \\"@context\\": \\"https://schema.org\\",\\n    \\"@type\\": \\"WebSite\\",\\n    \\"name\\": \\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' ))
     ; __append("\\",\\n    \\"alternateName\\": [\\"GovtExamZone\\", \\"Govt Exam Zone Official\\", \\"GEZ Official\\"],\\n    \\"url\\": \\"")
     ; __append(escapeFn( siteBase ))
@@ -82077,9 +82316,11 @@ var require_templateEngine = __commonJS({
       : 'https://govtexamzone.com';
     const pagePath = (typeof currentPath !== 'undefined' && currentPath !== '/') ? currentPath : '';
     const canonicalUrl = typeof fullUrl !== 'undefined' ? fullUrl : (siteBase + pagePath);
-    const logoAbsolute = (typeof settings !== 'undefined' && settings.site_logo) 
-      ? (settings.site_logo.startsWith('http') ? settings.site_logo : siteBase + settings.site_logo) 
-      : siteBase + '/images/gez-logo.svg';
+    const logoAbsolute = (typeof post !== 'undefined' && post && post.thumbnail && post.thumbnail.trim())
+      ? (post.thumbnail.trim().startsWith('http') ? post.thumbnail.trim() : siteBase + post.thumbnail.trim())
+      : ((typeof settings !== 'undefined' && settings.site_logo) 
+          ? (settings.site_logo.startsWith('http') ? settings.site_logo : siteBase + settings.site_logo) 
+          : siteBase + '/images/gez-logo.svg');
     const activeMetaDesc = (typeof metaDescription !== 'undefined' && metaDescription) 
       ? metaDescription 
       : ((typeof settings !== 'undefined' && settings.meta_description) 
@@ -82133,14 +82374,23 @@ var require_templateEngine = __commonJS({
     ; __append("\\">\\n\\n  <!-- Mobile & PWA Theme -->\\n  <meta name=\\"theme-color\\" content=\\"#ab183d\\">\\n  <meta name=\\"apple-mobile-web-app-capable\\" content=\\"yes\\">\\n  <meta name=\\"apple-mobile-web-app-status-bar-style\\" content=\\"black-translucent\\">\\n  <meta name=\\"apple-mobile-web-app-title\\" content=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' ))
     ; __append("\\">\\n  <link rel=\\"manifest\\" href=\\"/manifest.json\\">\\n  ")
-    ;  const activeFavicon = (typeof settings !== 'undefined' && settings.site_favicon && settings.site_favicon.trim()) ? settings.site_favicon.trim() : '/images/gez-logo.svg'; 
+    ; 
+    const hasCustomFaviconSetting = typeof settings !== 'undefined' && typeof settings.site_favicon === 'string';
+    const activeFavicon = hasCustomFaviconSetting
+      ? settings.site_favicon.trim()
+      : '/images/gez-logo.svg';
+  
+    ; __append("\\n  ")
+    ;  if (activeFavicon) { 
     ; __append("\\n  <link rel=\\"icon\\" type=\\"image/x-icon\\" href=\\"/favicon.ico\\">\\n  <link rel=\\"icon\\" href=\\"")
     ; __append(escapeFn( activeFavicon ))
     ; __append("\\">\\n  <link rel=\\"shortcut icon\\" href=\\"")
     ; __append(escapeFn( activeFavicon ))
     ; __append("\\">\\n  <link rel=\\"apple-touch-icon\\" href=\\"")
     ; __append(escapeFn( activeFavicon ))
-    ; __append("\\">\\n\\n  <!-- Stylesheet -->\\n  <link rel=\\"stylesheet\\" href=\\"/css/style.css\\">\\n\\n  <!-- High-Speed Menu Prefetching for Instant Navigation -->\\n  <link rel=\\"prefetch\\" href=\\"/category/latest-jobs\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/result\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/admit-card\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/answer-key\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/syllabus\\">\\n\\n  <!-- JSON-LD Schema.org Structured Data: WebSite -->\\n  <script type=\\"application/ld+json\\">\\n  {\\n    \\"@context\\": \\"https://schema.org\\",\\n    \\"@type\\": \\"WebSite\\",\\n    \\"name\\": \\"")
+    ; __append("\\">\\n  ")
+    ;  } 
+    ; __append("\\n\\n  <!-- Stylesheet -->\\n  <link rel=\\"stylesheet\\" href=\\"/css/style.css\\">\\n\\n  <!-- High-Speed Menu Prefetching for Instant Navigation -->\\n  <link rel=\\"prefetch\\" href=\\"/category/latest-jobs\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/result\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/admit-card\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/answer-key\\">\\n  <link rel=\\"prefetch\\" href=\\"/category/syllabus\\">\\n\\n  <!-- JSON-LD Schema.org Structured Data: WebSite -->\\n  <script type=\\"application/ld+json\\">\\n  {\\n    \\"@context\\": \\"https://schema.org\\",\\n    \\"@type\\": \\"WebSite\\",\\n    \\"name\\": \\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' ))
     ; __append("\\",\\n    \\"alternateName\\": [\\"GovtExamZone\\", \\"Govt Exam Zone Official\\", \\"GEZ Official\\"],\\n    \\"url\\": \\"")
     ; __append(escapeFn( siteBase ))

@@ -11,9 +11,11 @@
       : 'https://govtexamzone.com';
     const pagePath = (typeof currentPath !== 'undefined' && currentPath !== '/') ? currentPath : '';
     const canonicalUrl = typeof fullUrl !== 'undefined' ? fullUrl : (siteBase + pagePath);
-    const logoAbsolute = (typeof settings !== 'undefined' && settings.site_logo) 
-      ? (settings.site_logo.startsWith('http') ? settings.site_logo : siteBase + settings.site_logo) 
-      : siteBase + '/images/gez-logo.svg';
+    const logoAbsolute = (typeof post !== 'undefined' && post && post.thumbnail && post.thumbnail.trim())
+      ? (post.thumbnail.trim().startsWith('http') ? post.thumbnail.trim() : siteBase + post.thumbnail.trim())
+      : ((typeof settings !== 'undefined' && settings.site_logo) 
+          ? (settings.site_logo.startsWith('http') ? settings.site_logo : siteBase + settings.site_logo) 
+          : siteBase + '/images/gez-logo.svg');
     const activeMetaDesc = (typeof metaDescription !== 'undefined' && metaDescription) 
       ? metaDescription 
       : ((typeof settings !== 'undefined' && settings.meta_description) 
@@ -59,11 +61,18 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="<%= (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' %>">
   <link rel="manifest" href="/manifest.json">
-  <% const activeFavicon = (typeof settings !== 'undefined' && settings.site_favicon && settings.site_favicon.trim()) ? settings.site_favicon.trim() : '/images/gez-logo.svg'; %>
+  <%
+    const hasCustomFaviconSetting = typeof settings !== 'undefined' && typeof settings.site_favicon === 'string';
+    const activeFavicon = hasCustomFaviconSetting
+      ? settings.site_favicon.trim()
+      : '/images/gez-logo.svg';
+  %>
+  <% if (activeFavicon) { %>
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="icon" href="<%= activeFavicon %>">
   <link rel="shortcut icon" href="<%= activeFavicon %>">
   <link rel="apple-touch-icon" href="<%= activeFavicon %>">
+  <% } %>
 
   <!-- Stylesheet -->
   <link rel="stylesheet" href="/css/style.css">
