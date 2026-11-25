@@ -199,19 +199,20 @@ if (typeof WebSocketPair === 'undefined' && !globalThis.__CF_ENV__ && !globalThi
   });
 }
 
-// Run async database initialization in background without blocking port listener
-(async function initDatabase() {
-  try {
-    console.log('🚀 Initializing Sarkari Result Portal DB...');
-    await d1.init();
-    console.log('✅ Database schema verified and active.');
-    // Only auto-seed local SQLite; native Cloudflare D1 will be seeded without blocking
-    if (!d1.isNativeD1) {
-      await seedDatabase();
+// Run async database initialization in Node.js only (Cloudflare Workers disallow D1 I/O in global module scope)
+if (typeof WebSocketPair === 'undefined' && !globalThis.__CF_ENV__ && !globalThis.__CF_PAGES__) {
+  (async function initDatabase() {
+    try {
+      console.log('🚀 Initializing Sarkari Result Portal DB...');
+      await d1.init();
+      console.log('✅ Database schema verified and active.');
+      if (!d1.isNativeD1) {
+        await seedDatabase();
+      }
+    } catch (err) {
+      console.warn('⚠️ Database init notice:', err.message);
     }
-  } catch (err) {
-    console.warn('⚠️ Database init notice:', err.message);
-  }
-})();
+  })();
+}
 
 module.exports = app;

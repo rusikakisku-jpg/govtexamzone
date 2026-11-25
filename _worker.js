@@ -28339,12 +28339,18 @@ var require_d1Client = __commonJS({
       async init() {
         const nativeD1 = this.getNativeD1();
         if (nativeD1) {
-          if (!this.nativeSchemaRun) {
-            this.nativeSchemaRun = true;
-            this.initialized = true;
+          if (this.nativeSchemaRun) return;
+          if (!this._nativeInitPromise) {
             console.log("\u26A1 Connected to Native Cloudflare D1 Database Binding");
-            await this.runNativeSchema();
+            this._nativeInitPromise = this.runNativeSchema().then(() => {
+              this.nativeSchemaRun = true;
+              this.initialized = true;
+            }).catch((err) => {
+              this._nativeInitPromise = null;
+              throw err;
+            });
           }
+          await this._nativeInitPromise;
           return;
         }
         if (this.initialized) return;
@@ -74987,6 +74993,10 @@ var require_adminRoutes = __commonJS({
       // 25MB max
     });
     router.use(async (req, res, next) => {
+      try {
+        await d1.init();
+      } catch (initErr) {
+      }
       res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
       res.locals.isAdminSubdomain = isAdminSubdomainRequest(req);
       res.locals.adminBase = getAdminBase(req);
@@ -75922,6 +75932,10 @@ var require_authorRoutes = __commonJS({
       // 25MB max
     });
     router.use(async (req, res, next) => {
+      try {
+        await d1.init();
+      } catch (initErr) {
+      }
       res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
       res.locals.currentPath = (req.originalUrl || "/author-portal").split("?")[0].replace(/\/$/, "") || "/author-portal";
       try {
@@ -83322,18 +83336,20 @@ var require_server = __commonJS({
         console.log(`=======================================================`);
       });
     }
-    (async function initDatabase() {
-      try {
-        console.log("\u{1F680} Initializing Sarkari Result Portal DB...");
-        await d1.init();
-        console.log("\u2705 Database schema verified and active.");
-        if (!d1.isNativeD1) {
-          await seedDatabase();
+    if (typeof WebSocketPair === "undefined" && !globalThis.__CF_ENV__ && !globalThis.__CF_PAGES__) {
+      (async function initDatabase() {
+        try {
+          console.log("\u{1F680} Initializing Sarkari Result Portal DB...");
+          await d1.init();
+          console.log("\u2705 Database schema verified and active.");
+          if (!d1.isNativeD1) {
+            await seedDatabase();
+          }
+        } catch (err) {
+          console.warn("\u26A0\uFE0F Database init notice:", err.message);
         }
-      } catch (err) {
-        console.warn("\u26A0\uFE0F Database init notice:", err.message);
-      }
-    })();
+      })();
+    }
     module.exports = app2;
   }
 });

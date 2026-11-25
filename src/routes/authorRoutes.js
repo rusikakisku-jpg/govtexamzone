@@ -22,6 +22,9 @@ const upload = multer({
 
 // Middleware to inject site settings & active path into author portal views
 router.use(async (req, res, next) => {
+  try {
+    await d1.init();
+  } catch (initErr) {}
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.locals.currentPath = (req.originalUrl || '/author-portal').split('?')[0].replace(/\/$/, '') || '/author-portal';
   try {

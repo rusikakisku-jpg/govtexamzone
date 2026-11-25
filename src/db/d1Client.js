@@ -140,12 +140,20 @@ class D1Client {
     // 1. Native Cloudflare D1 Binding check (when running on Cloudflare Workers)
     const nativeD1 = this.getNativeD1();
     if (nativeD1) {
-      if (!this.nativeSchemaRun) {
-        this.nativeSchemaRun = true;
-        this.initialized = true;
+      if (this.nativeSchemaRun) return;
+      if (!this._nativeInitPromise) {
         console.log('⚡ Connected to Native Cloudflare D1 Database Binding');
-        await this.runNativeSchema();
+        this._nativeInitPromise = this.runNativeSchema()
+          .then(() => {
+            this.nativeSchemaRun = true;
+            this.initialized = true;
+          })
+          .catch((err) => {
+            this._nativeInitPromise = null;
+            throw err;
+          });
       }
+      await this._nativeInitPromise;
       return;
     }
 

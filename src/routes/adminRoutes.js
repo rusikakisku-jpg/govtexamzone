@@ -19,6 +19,9 @@ const upload = multer({
 
 // Middleware to inject site settings & active path into all admin views
 router.use(async (req, res, next) => {
+  try {
+    await d1.init();
+  } catch (initErr) {}
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.locals.isAdminSubdomain = isAdminSubdomainRequest(req);
   res.locals.adminBase = getAdminBase(req);
