@@ -82814,6 +82814,7 @@ var require_templateEngine = __commonJS({
     ; 
   const _isBlogMode = (typeof settings !== 'undefined' && settings.post_detail_layout === 'blog_2col');
   const _hasRichArticle = Boolean(post.article_content && post.article_content.trim());
+  const _showSarkariSections = (!_isBlogMode || !_hasRichArticle);
   const _hasDates = Boolean(importantDates && importantDates.length > 0);
   const _hasFees = Boolean(applicationFee && applicationFee.length > 0);
   const _hasAnyLink = Boolean(
@@ -82849,13 +82850,15 @@ var require_templateEngine = __commonJS({
     ;  } 
     ; __append("\\n")
     ;  } 
-    ; __append("\\n\\n<!-- Optional Full Blog Article / Detailed Editorial Content -->\\n")
-    ;  if (_hasRichArticle) { 
+    ; __append("\\n\\n<!-- Optional Full Blog Article / Detailed Editorial Content (Shown ONLY in 2-Column Blog Layout) -->\\n")
+    ;  if (_isBlogMode && _hasRichArticle) { 
     ; __append("\\n  <div class=\\"gez-article-content\\" id=\\"article-content\\">\\n    ")
     ; __append( post.article_content )
     ; __append("\\n  </div>\\n")
     ;  } 
-    ; __append("\\n\\n<!-- 2-Column Info Grid: Important Dates & Application Fee -->\\n")
+    ; __append("\\n\\n")
+    ;  if (_showSarkariSections) { 
+    ; __append("\\n<!-- 2-Column Info Grid: Important Dates & Application Fee -->\\n")
     ;  if (!_isBlogMode || _hasDates || _hasFees || !_hasRichArticle) { 
     ; __append("\\n<div class=\\"detail-info-grid\\">\\n  <!-- Important Dates -->\\n  <div class=\\"info-card\\" id=\\"dates\\">\\n    <div class=\\"info-card-header\\">")
     ; __append(escapeFn( post.category === 'syllabus' ? 'Important Exam & Syllabus Dates' : (post.category === 'admit-card' ? 'Important Dates & Exam Schedule' : (post.category === 'result' ? 'Important Dates & Result Schedule' : 'Important Dates')) ))
@@ -83098,6 +83101,8 @@ var require_templateEngine = __commonJS({
     ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n          </td>\\n        </tr>\\n      ")
     ;  } 
     ; __append("\\n    </tbody>\\n  </table>\\n</div>\\n")
+    ;  } 
+    ; __append("\\n")
     ;  } 
     ; __append("\\n")
   }
@@ -83109,6 +83114,7 @@ var require_templateEngine = __commonJS({
     ; 
   const _isBlogMode = (typeof settings !== 'undefined' && settings.post_detail_layout === 'blog_2col');
   const _hasRichArticle = Boolean(post.article_content && post.article_content.trim());
+  const _showSarkariSections = (!_isBlogMode || !_hasRichArticle);
   const _hasDates = Boolean(importantDates && importantDates.length > 0);
   const _hasFees = Boolean(applicationFee && applicationFee.length > 0);
   const _hasAnyLink = Boolean(
@@ -83144,13 +83150,15 @@ var require_templateEngine = __commonJS({
     ;  } 
     ; __append("\\n")
     ;  } 
-    ; __append("\\n\\n<!-- Optional Full Blog Article / Detailed Editorial Content -->\\n")
-    ;  if (_hasRichArticle) { 
+    ; __append("\\n\\n<!-- Optional Full Blog Article / Detailed Editorial Content (Shown ONLY in 2-Column Blog Layout) -->\\n")
+    ;  if (_isBlogMode && _hasRichArticle) { 
     ; __append("\\n  <div class=\\"gez-article-content\\" id=\\"article-content\\">\\n    ")
     ; __append( post.article_content )
     ; __append("\\n  </div>\\n")
     ;  } 
-    ; __append("\\n\\n<!-- 2-Column Info Grid: Important Dates & Application Fee -->\\n")
+    ; __append("\\n\\n")
+    ;  if (_showSarkariSections) { 
+    ; __append("\\n<!-- 2-Column Info Grid: Important Dates & Application Fee -->\\n")
     ;  if (!_isBlogMode || _hasDates || _hasFees || !_hasRichArticle) { 
     ; __append("\\n<div class=\\"detail-info-grid\\">\\n  <!-- Important Dates -->\\n  <div class=\\"info-card\\" id=\\"dates\\">\\n    <div class=\\"info-card-header\\">")
     ; __append(escapeFn( post.category === 'syllabus' ? 'Important Exam & Syllabus Dates' : (post.category === 'admit-card' ? 'Important Dates & Exam Schedule' : (post.category === 'result' ? 'Important Dates & Result Schedule' : 'Important Dates')) ))
@@ -83393,6 +83401,8 @@ var require_templateEngine = __commonJS({
     ; __append("\\" target=\\"_blank\\" class=\\"useful-link-text\\">Click Here</a>\\n          </td>\\n        </tr>\\n      ")
     ;  } 
     ; __append("\\n    </tbody>\\n  </table>\\n</div>\\n")
+    ;  } 
+    ; __append("\\n")
     ;  } 
     ; __append("\\n")
   }
