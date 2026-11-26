@@ -27314,9 +27314,11 @@ var require_seed = __commonJS({
   "src/db/seed.js"(exports, module) {
     var d1 = require_d1Client();
     async function seedDatabase() {
-      await d1.init();
+      if (!d1._inNativeSchema && !d1.nativeSchemaRun) {
+        await d1.init();
+      }
       console.log("\u{1F331} Seeding initial Govt Exam Zone database...");
-      if (d1.CORE_TABLES && Array.isArray(d1.CORE_TABLES)) {
+      if (!d1._inNativeSchema && d1.CORE_TABLES && Array.isArray(d1.CORE_TABLES)) {
         for (const sql of d1.CORE_TABLES) {
           try {
             await d1.prepare(sql).run();
@@ -27353,8 +27355,8 @@ var require_seed = __commonJS({
         if (!authorCount || authorCount.count === 0) {
           const initialAuthors = [
             {
-              name: "Govt Exam Zone Editorial Team",
-              slug: "editorial-team",
+              name: "Mangal",
+              slug: "mangal",
               role: "Senior Recruitment Analyst & Fact-Checker Lead",
               email: "editor@govtexamzone.com",
               bio: "The official editorial and verification desk of Govt Exam Zone. Our research team meticulously verifies all central and state government job notifications, admit cards, answer keys, and results directly from official gazettes and commissions.",
@@ -27377,7 +27379,7 @@ var require_seed = __commonJS({
           ];
           for (const a of initialAuthors) {
             const { hashPassword } = require_authorAuth();
-            const defaultPassword = a.slug === "editorial-team" ? "editor@2026" : "author@2026";
+            const defaultPassword = a.slug === "mangal" || a.slug === "editorial-team" ? "editor@2026" : "author@2026";
             const passwordHash = hashPassword(defaultPassword);
             await d1.prepare(`
           INSERT INTO authors (name, slug, role, email, password_hash, bio, qualification, experience, avatar_url, telegram_url, is_active)
@@ -28310,11 +28312,15 @@ var require_d1Client = __commonJS({
       `CREATE INDEX IF NOT EXISTS idx_posts_category ON posts(category)`,
       `CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug)`,
       `CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_posts_status_id ON posts(status, id DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_posts_cat_status_id ON posts(category, status, id DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id)`,
       `CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at)`,
       `CREATE INDEX IF NOT EXISTS idx_authors_slug ON authors(slug)`,
       `CREATE INDEX IF NOT EXISTS idx_daily_views_date ON post_daily_views(view_date)`,
-      `CREATE INDEX IF NOT EXISTS idx_post_categories_cat_bump ON post_categories(category, bumped_at DESC)`
+      `CREATE INDEX IF NOT EXISTS idx_post_categories_cat_bump ON post_categories(category, bumped_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_badges_active_order ON badges(is_active, display_order, id)`,
+      `CREATE INDEX IF NOT EXISTS idx_marquees_active_order ON marquees(is_active, display_order, id)`
     ];
     var EMBEDDED_SCHEMA_SQL = CORE_TABLES.concat(CORE_INDEXES).join(";\n\n") + ";";
     function getSchemaSql() {
@@ -28345,6 +28351,7 @@ var require_d1Client = __commonJS({
         return null;
       }
       async init() {
+        if (this._inNativeSchema) return;
         const nativeD1 = this.getNativeD1();
         if (nativeD1) {
           if (this.nativeSchemaRun) return;
@@ -28498,38 +28505,62 @@ var require_d1Client = __commonJS({
         }
       }
       async runNativeSchema() {
+        if (this._inNativeSchema) return;
+        this._inNativeSchema = true;
         try {
           const nativeD1 = this.getNativeD1();
           if (!nativeD1) return;
-          for (const tableSql of CORE_TABLES) {
-            try {
-              if (typeof nativeD1.prepare === "function") {
-                await nativeD1.prepare(tableSql).run();
-              } else if (typeof nativeD1.exec === "function") {
-                await nativeD1.exec(tableSql);
+          let allCoreTablesExist = false;
+          try {
+            const tblCountRow = await nativeD1.prepare(
+              "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name IN ('posts','authors','marquees','badges','uploads','settings','post_daily_views','post_categories')"
+            ).first();
+            allCoreTablesExist = Boolean(tblCountRow && tblCountRow.count >= 8);
+          } catch (chkErr) {
+          }
+          if (!allCoreTablesExist) {
+            for (const tableSql of CORE_TABLES) {
+              try {
+                if (typeof nativeD1.prepare === "function") {
+                  await nativeD1.prepare(tableSql).run();
+                } else if (typeof nativeD1.exec === "function") {
+                  await nativeD1.exec(tableSql);
+                }
+              } catch (tableErr) {
+                console.warn("D1 create table notice:", tableErr.message);
               }
-            } catch (tableErr) {
-              console.warn("D1 create table notice:", tableErr.message);
             }
           }
-          for (const indexSql of CORE_INDEXES) {
-            try {
-              if (typeof nativeD1.prepare === "function") {
-                await nativeD1.prepare(indexSql).run();
-              } else if (typeof nativeD1.exec === "function") {
-                await nativeD1.exec(indexSql);
+          let allExpectedIndexesExist = false;
+          try {
+            const idxCountRow = await nativeD1.prepare(
+              "SELECT COUNT(*) as count FROM sqlite_master WHERE type='index' AND name IN ('idx_posts_status_id','idx_posts_cat_status_id','idx_badges_active_order','idx_marquees_active_order')"
+            ).first();
+            allExpectedIndexesExist = Boolean(idxCountRow && idxCountRow.count >= 4);
+          } catch (idxChkErr) {
+          }
+          if (!allCoreTablesExist || !allExpectedIndexesExist) {
+            for (const indexSql of CORE_INDEXES) {
+              try {
+                if (typeof nativeD1.prepare === "function") {
+                  await nativeD1.prepare(indexSql).run();
+                } else if (typeof nativeD1.exec === "function") {
+                  await nativeD1.exec(indexSql);
+                }
+              } catch (idxErr) {
               }
-            } catch (idxErr) {
             }
           }
           console.log("\u2705 Native Cloudflare D1 tables and indexes verified.");
-          try {
-            await nativeD1.prepare("ALTER TABLE posts ADD COLUMN article_content TEXT").run();
-          } catch (colErr) {
-          }
-          try {
-            await nativeD1.prepare("ALTER TABLE posts ADD COLUMN thumbnail TEXT").run();
-          } catch (colErr) {
+          if (!allCoreTablesExist) {
+            try {
+              await nativeD1.prepare("ALTER TABLE posts ADD COLUMN article_content TEXT").run();
+            } catch (colErr) {
+            }
+            try {
+              await nativeD1.prepare("ALTER TABLE posts ADD COLUMN thumbnail TEXT").run();
+            } catch (colErr) {
+            }
           }
           try {
             await nativeD1.prepare(`
@@ -28555,6 +28586,8 @@ var require_d1Client = __commonJS({
           }
         } catch (err) {
           console.warn("\u26A0\uFE0F Warning during native D1 schema check:", err.message);
+        } finally {
+          this._inNativeSchema = false;
         }
       }
       prepare(sql) {
@@ -29213,11 +29246,11 @@ var require_webRoutes = __commonJS({
         const categoryDetails = safeJsonParse(post.category_details, []);
         const links = safeJsonParse(post.links, []);
         const author = authorRow || {
-          name: "Govt Exam Zone Editorial Team",
-          slug: "editorial-team",
+          name: "Mangal",
+          slug: "mangal",
           role: "Senior Recruitment Analyst & Fact-Checker Lead",
           avatar_url: "/images/default-avatar.svg",
-          bio: "The official editorial and verification desk of Govt Exam Zone."
+          bio: "Verified recruitment researcher and content editor at Govt Exam Zone."
         };
         res.set("Cache-Control", "public, max-age=30, s-maxage=60, stale-while-revalidate=120");
         res.render("pages/detail", {
@@ -29258,6 +29291,7 @@ var require_webRoutes = __commonJS({
         res.render("pages/search", {
           title: `Search: ${query || "Government Jobs 2026"} - Govt Exam Zone`,
           metaDescription: `Search results for "${query || "Govt Jobs"}" across latest government vacancies, admit cards, and results at Govt Exam Zone.`,
+          metaRobots: "noindex, follow",
           query,
           posts
         });
@@ -29286,7 +29320,7 @@ var require_webRoutes = __commonJS({
     router.get("/sitemap.xml", async (req, res) => {
       try {
         const posts = await d1.prepare(
-          "SELECT slug, category, updated_at FROM posts WHERE status = 'active' ORDER BY id DESC LIMIT 1000"
+          "SELECT slug, category, updated_at FROM posts WHERE status = 'active' ORDER BY id DESC LIMIT 5000"
         ).all();
         const baseDomain = (res.locals.settings?.site_domain || "").trim();
         const host = baseDomain ? baseDomain.startsWith("http") ? baseDomain.replace(/\/$/, "") : "https://" + baseDomain.replace(/\/$/, "") : `${req.protocol}://${req.get("host")}`;
@@ -29386,8 +29420,12 @@ Disallow: /admin
 Disallow: /admin/*
 Disallow: /api
 Disallow: /api/*
-
-Crawl-delay: 1
+Disallow: /author-portal
+Disallow: /author-portal/*
+Disallow: /editor-portal
+Disallow: /editor-portal/*
+Disallow: /editor
+Disallow: /author
 
 Sitemap: ${host}/sitemap.xml
 `);
@@ -76266,6 +76304,7 @@ var require_authorRoutes = __commonJS({
       } catch (initErr) {
       }
       res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+      res.set("X-Robots-Tag", "noindex, nofollow, noarchive");
       res.locals.currentPath = (req.originalUrl || "/author-portal").split("?")[0].replace(/\/$/, "") || "/author-portal";
       try {
         const sRows = await d1.prepare("SELECT * FROM settings").all();
@@ -78395,7 +78434,7 @@ var require_templateEngine = __commonJS({
     ;  }) 
     ; __append("\\n          ")
     ;  } else { 
-    ; __append("\\n            <option value=\\"1\\">Govt Exam Zone Editorial Team</option>\\n          ")
+    ; __append("\\n            <option value=\\"1\\">Mangal</option>\\n          ")
     ;  } 
     ; __append("\\n        </select>\\n      </div>\\n\\n      <div class=\\"form-group\\">\\n        <label for=\\"status\\">Publication Status</label>\\n        <select id=\\"status\\" name=\\"status\\" class=\\"form-control\\">\\n          <option value=\\"active\\" ")
     ; __append(escapeFn( post && post.status === 'active' ? 'selected' : '' ))
@@ -78523,7 +78562,7 @@ var require_templateEngine = __commonJS({
     ;  }) 
     ; __append("\\n          ")
     ;  } else { 
-    ; __append("\\n            <option value=\\"1\\">Govt Exam Zone Editorial Team</option>\\n          ")
+    ; __append("\\n            <option value=\\"1\\">Mangal</option>\\n          ")
     ;  } 
     ; __append("\\n        </select>\\n      </div>\\n\\n      <div class=\\"form-group\\">\\n        <label for=\\"status\\">Publication Status</label>\\n        <select id=\\"status\\" name=\\"status\\" class=\\"form-control\\">\\n          <option value=\\"active\\" ")
     ; __append(escapeFn( post && post.status === 'active' ? 'selected' : '' ))
@@ -79404,7 +79443,7 @@ var require_templateEngine = __commonJS({
       "author/login.ejs": `  var __output = "";
   function __append(s) { if (s !== undefined && s !== null) __output += s }
   with (locals || {}) {
-    ; __append("<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0, maximum-scale=5.0\\">\\n  <meta name=\\"theme-color\\" content=\\"#1e293b\\">\\n  <title>")
+    ; __append("<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0, maximum-scale=5.0\\">\\n  <meta name=\\"robots\\" content=\\"noindex, nofollow, noarchive\\">\\n  <meta name=\\"theme-color\\" content=\\"#1e293b\\">\\n  <title>")
     ; __append(escapeFn( title ))
     ; __append("</title>\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link href=\\"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap\\" rel=\\"stylesheet\\">\\n  <link rel=\\"icon\\" href=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_favicon) ? settings.site_favicon : '/images/gez-logo.svg' ))
@@ -79429,7 +79468,7 @@ var require_templateEngine = __commonJS({
       "views/author/login.ejs": `  var __output = "";
   function __append(s) { if (s !== undefined && s !== null) __output += s }
   with (locals || {}) {
-    ; __append("<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0, maximum-scale=5.0\\">\\n  <meta name=\\"theme-color\\" content=\\"#1e293b\\">\\n  <title>")
+    ; __append("<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0, maximum-scale=5.0\\">\\n  <meta name=\\"robots\\" content=\\"noindex, nofollow, noarchive\\">\\n  <meta name=\\"theme-color\\" content=\\"#1e293b\\">\\n  <title>")
     ; __append(escapeFn( title ))
     ; __append("</title>\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link href=\\"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap\\" rel=\\"stylesheet\\">\\n  <link rel=\\"icon\\" href=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_favicon) ? settings.site_favicon : '/images/gez-logo.svg' ))
@@ -80722,7 +80761,7 @@ var require_templateEngine = __commonJS({
     ; __append("</h1>\\n\\n            <div class=\\"gez-article-meta\\">\\n              <span class=\\"gez-meta-byline\\">\\n                by <a href=\\"")
     ; __append(escapeFn( author.slug ? '/author/' + author.slug : '/authors' ))
     ; __append("\\">")
-    ; __append(escapeFn( author.name || 'Govt Exam Zone Team' ))
+    ; __append(escapeFn( author.name || 'Mangal' ))
     ; __append("</a>\\n              </span>\\n              <span class=\\"gez-meta-date\\">\\n                <svg width=\\"14\\" height=\\"14\\" viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2.2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\" aria-hidden=\\"true\\">\\n                  <rect x=\\"3\\" y=\\"4\\" width=\\"18\\" height=\\"18\\" rx=\\"2\\" ry=\\"2\\"/>\\n                  <line x1=\\"16\\" y1=\\"2\\" x2=\\"16\\" y2=\\"6\\"/>\\n                  <line x1=\\"8\\" y1=\\"2\\" x2=\\"8\\" y2=\\"6\\"/>\\n                  <line x1=\\"3\\" y1=\\"10\\" x2=\\"21\\" y2=\\"10\\"/>\\n                </svg>\\n                ")
     ; __append(escapeFn( post.post_date || formatDate(post.created_at) ))
     ; __append("\\n              </span>\\n              ")
@@ -80949,7 +80988,7 @@ var require_templateEngine = __commonJS({
     ; __append("</h1>\\n\\n            <div class=\\"gez-article-meta\\">\\n              <span class=\\"gez-meta-byline\\">\\n                by <a href=\\"")
     ; __append(escapeFn( author.slug ? '/author/' + author.slug : '/authors' ))
     ; __append("\\">")
-    ; __append(escapeFn( author.name || 'Govt Exam Zone Team' ))
+    ; __append(escapeFn( author.name || 'Mangal' ))
     ; __append("</a>\\n              </span>\\n              <span class=\\"gez-meta-date\\">\\n                <svg width=\\"14\\" height=\\"14\\" viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2.2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\" aria-hidden=\\"true\\">\\n                  <rect x=\\"3\\" y=\\"4\\" width=\\"18\\" height=\\"18\\" rx=\\"2\\" ry=\\"2\\"/>\\n                  <line x1=\\"16\\" y1=\\"2\\" x2=\\"16\\" y2=\\"6\\"/>\\n                  <line x1=\\"8\\" y1=\\"2\\" x2=\\"8\\" y2=\\"6\\"/>\\n                  <line x1=\\"3\\" y1=\\"10\\" x2=\\"21\\" y2=\\"10\\"/>\\n                </svg>\\n                ")
     ; __append(escapeFn( post.post_date || formatDate(post.created_at) ))
     ; __append("\\n              </span>\\n              ")
@@ -82188,7 +82227,7 @@ var require_templateEngine = __commonJS({
       "partials/author-nav.ejs": `  var __output = "";
   function __append(s) { if (s !== undefined && s !== null) __output += s }
   with (locals || {}) {
-    ; __append("<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0, viewport-fit=cover\\">\\n  <meta name=\\"theme-color\\" content=\\"#0f172a\\">\\n  <title>")
+    ; __append("<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0, viewport-fit=cover\\">\\n  <meta name=\\"robots\\" content=\\"noindex, nofollow, noarchive\\">\\n  <meta name=\\"theme-color\\" content=\\"#0f172a\\">\\n  <title>")
     ; __append(escapeFn( typeof title !== 'undefined' ? title : 'Author Workspace - Govt Exam Zone' ))
     ; __append("</title>\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link href=\\"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap\\" rel=\\"stylesheet\\">\\n  <link rel=\\"stylesheet\\" href=\\"/css/admin.css?v=20261124d\\">\\n  <link rel=\\"icon\\" href=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_favicon) ? settings.site_favicon : '/images/gez-logo.svg' ))
@@ -82253,7 +82292,7 @@ var require_templateEngine = __commonJS({
       "views/partials/author-nav.ejs": `  var __output = "";
   function __append(s) { if (s !== undefined && s !== null) __output += s }
   with (locals || {}) {
-    ; __append("<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0, viewport-fit=cover\\">\\n  <meta name=\\"theme-color\\" content=\\"#0f172a\\">\\n  <title>")
+    ; __append("<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0, viewport-fit=cover\\">\\n  <meta name=\\"robots\\" content=\\"noindex, nofollow, noarchive\\">\\n  <meta name=\\"theme-color\\" content=\\"#0f172a\\">\\n  <title>")
     ; __append(escapeFn( typeof title !== 'undefined' ? title : 'Author Workspace - Govt Exam Zone' ))
     ; __append("</title>\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link href=\\"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap\\" rel=\\"stylesheet\\">\\n  <link rel=\\"stylesheet\\" href=\\"/css/admin.css?v=20261124d\\">\\n  <link rel=\\"icon\\" href=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_favicon) ? settings.site_favicon : '/images/gez-logo.svg' ))
@@ -83047,8 +83086,10 @@ var require_templateEngine = __commonJS({
     ; __append("\\">\\n  <meta name=\\"keywords\\" content=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.meta_keywords) ? settings.meta_keywords : 'Govt Exam Zone, govtexamzone, govtexamzone.com, Govt Jobs 2026, Latest Online Form, Admit Card, Exam Zone, SSC CGL 2026, UP Police, Railway Recruitment' ))
     ; __append("\\">\\n  <meta name=\\"author\\" content=\\"")
-    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' ))
-    ; __append("\\">\\n  <meta name=\\"robots\\" content=\\"index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1\\">\\n  <link rel=\\"canonical\\" href=\\"")
+    ; __append(escapeFn( (typeof author !== 'undefined' && author && author.name) ? author.name : ((typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone') ))
+    ; __append("\\">\\n  <meta name=\\"robots\\" content=\\"")
+    ; __append(escapeFn( (typeof metaRobots !== 'undefined' && metaRobots) ? metaRobots : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1' ))
+    ; __append("\\">\\n  <link rel=\\"canonical\\" href=\\"")
     ; __append(escapeFn( canonicalUrl ))
     ; __append("\\">\\n  <link rel=\\"alternate\\" type=\\"application/rss+xml\\" title=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' ))
@@ -83274,8 +83315,10 @@ var require_templateEngine = __commonJS({
     ; __append("\\">\\n  <meta name=\\"keywords\\" content=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.meta_keywords) ? settings.meta_keywords : 'Govt Exam Zone, govtexamzone, govtexamzone.com, Govt Jobs 2026, Latest Online Form, Admit Card, Exam Zone, SSC CGL 2026, UP Police, Railway Recruitment' ))
     ; __append("\\">\\n  <meta name=\\"author\\" content=\\"")
-    ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' ))
-    ; __append("\\">\\n  <meta name=\\"robots\\" content=\\"index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1\\">\\n  <link rel=\\"canonical\\" href=\\"")
+    ; __append(escapeFn( (typeof author !== 'undefined' && author && author.name) ? author.name : ((typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone') ))
+    ; __append("\\">\\n  <meta name=\\"robots\\" content=\\"")
+    ; __append(escapeFn( (typeof metaRobots !== 'undefined' && metaRobots) ? metaRobots : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1' ))
+    ; __append("\\">\\n  <link rel=\\"canonical\\" href=\\"")
     ; __append(escapeFn( canonicalUrl ))
     ; __append("\\">\\n  <link rel=\\"alternate\\" type=\\"application/rss+xml\\" title=\\"")
     ; __append(escapeFn( (typeof settings !== 'undefined' && settings.site_title) ? settings.site_title : 'Govt Exam Zone' ))

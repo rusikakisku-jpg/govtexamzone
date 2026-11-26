@@ -1,12 +1,14 @@
 const d1 = require('./d1Client');
 
 async function seedDatabase() {
-  await d1.init();
+  if (!d1._inNativeSchema && !d1.nativeSchemaRun) {
+    await d1.init();
+  }
 
   console.log('🌱 Seeding initial Govt Exam Zone database...');
 
-  // 0. Ensure all core tables exist before querying or inserting
-  if (d1.CORE_TABLES && Array.isArray(d1.CORE_TABLES)) {
+  // 0. Ensure all core tables exist before querying or inserting (already ensured if inside runNativeSchema)
+  if (!d1._inNativeSchema && d1.CORE_TABLES && Array.isArray(d1.CORE_TABLES)) {
     for (const sql of d1.CORE_TABLES) {
       try {
         await d1.prepare(sql).run();
@@ -46,8 +48,8 @@ async function seedDatabase() {
     if (!authorCount || authorCount.count === 0) {
       const initialAuthors = [
         {
-          name: 'Govt Exam Zone Editorial Team',
-          slug: 'editorial-team',
+          name: 'Mangal',
+          slug: 'mangal',
           role: 'Senior Recruitment Analyst & Fact-Checker Lead',
           email: 'editor@govtexamzone.com',
           bio: 'The official editorial and verification desk of Govt Exam Zone. Our research team meticulously verifies all central and state government job notifications, admit cards, answer keys, and results directly from official gazettes and commissions.',
@@ -71,7 +73,7 @@ async function seedDatabase() {
 
       for (const a of initialAuthors) {
         const { hashPassword } = require('../middleware/authorAuth');
-        const defaultPassword = a.slug === 'editorial-team' ? 'editor@2026' : 'author@2026';
+        const defaultPassword = (a.slug === 'mangal' || a.slug === 'editorial-team') ? 'editor@2026' : 'author@2026';
         const passwordHash = hashPassword(defaultPassword);
         await d1.prepare(`
           INSERT INTO authors (name, slug, role, email, password_hash, bio, qualification, experience, avatar_url, telegram_url, is_active)
